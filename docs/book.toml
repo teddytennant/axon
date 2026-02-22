@@ -1,0 +1,13 @@
+[book]
+authors = ["Teddy Tennant"]
+language = "en"
+multilingual = false
+src = "src"
+title = "Axon — Decentralized AI Agent Mesh"
+
+[output.html]
+default-theme = "mocha"
+preferred-dark-theme = "mocha"
+additional-css = ["./theme/catppuccin.css"]
+git-repository-url = "https://github.com/teddytennant/axon"
+git-repository-icon = "fa-github"
