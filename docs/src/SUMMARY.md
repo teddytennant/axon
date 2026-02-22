@@ -37,3 +37,9 @@
 
 - [TUI Dashboard](./operations/tui.md)
 - [CLI Reference](./operations/cli.md)
+
+# Development
+
+- [Build Matrix](./dev/build-matrix.md)
+- [Test Suite](./dev/tests.md)
+- [Contributing](./dev/contributing.md)
