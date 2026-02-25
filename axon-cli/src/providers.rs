@@ -233,14 +233,10 @@ impl LlmProvider for OpenAiCompatibleProvider {
             .unwrap_or("")
             .to_string();
 
-        let usage = if let Some(u) = json.get("usage") {
-            Some(Usage {
-                prompt_tokens: u["prompt_tokens"].as_u64().unwrap_or(0) as u32,
-                completion_tokens: u["completion_tokens"].as_u64().unwrap_or(0) as u32,
-            })
-        } else {
-            None
-        };
+        let usage = json.get("usage").map(|u| Usage {
+            prompt_tokens: u["prompt_tokens"].as_u64().unwrap_or(0) as u32,
+            completion_tokens: u["completion_tokens"].as_u64().unwrap_or(0) as u32,
+        });
 
         Ok(CompletionResponse {
             text,

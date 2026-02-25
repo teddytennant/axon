@@ -7,6 +7,9 @@ use thiserror::Error;
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
+/// Size of an Ed25519 public key in bytes.
+const ED25519_PUBKEY_LEN: usize = 32;
+
 #[derive(Error, Debug)]
 pub enum TransportError {
     #[error("Connection error: {0}")]
@@ -31,6 +34,8 @@ pub enum TransportError {
     NotConnected,
     #[error("Message too large: {0} bytes (max {1})")]
     MessageTooLarge(usize, usize),
+    #[error("Peer identity verification failed: {0}")]
+    PeerVerificationFailed(String),
 }
 
 /// Maximum message size: 16 MB.
@@ -40,6 +45,13 @@ const MAX_MESSAGE_SIZE: usize = 16 * 1024 * 1024;
 pub struct Transport {
     endpoint: Endpoint,
     connections: Arc<Mutex<std::collections::HashMap<SocketAddr, Connection>>>,
+    /// The local node's Ed25519 public key, sent as the first message after
+    /// a QUIC connection is established to allow lightweight peer identity
+    /// verification. This is not a full PKI solution — TLS certificate
+    /// verification is still skipped for self-signed certs — but it ensures
+    /// the peer we connected to is who we expected (based on mDNS discovery
+    /// or an explicit peer ID).
+    local_public_key: Vec<u8>,
 }
 
 impl Transport {
@@ -56,6 +68,7 @@ impl Transport {
         Ok(Self {
             endpoint,
             connections: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            local_public_key: identity.public_key_bytes(),
         })
     }
 
@@ -64,7 +77,12 @@ impl Transport {
         Ok(self.endpoint.local_addr()?)
     }
 
-    /// Connect to a remote peer.
+    /// Connect to a remote peer. After establishing the QUIC connection,
+    /// performs a lightweight identity handshake: both sides exchange Ed25519
+    /// public keys on dedicated unidirectional streams. This is not a full PKI
+    /// solution — TLS certificate verification is still skipped for self-signed
+    /// certs — but it allows either side to verify the peer it connected to is
+    /// who it expected (based on mDNS discovery or explicit peer ID).
     pub async fn connect(&self, addr: SocketAddr) -> Result<Connection, TransportError> {
         {
             let conns = self.connections.lock().await;
@@ -80,18 +98,72 @@ impl Transport {
             .connect(addr, "axon")?
             .await?;
 
+        // Identity handshake: send ours, consume theirs.
+        Self::send_identity(&conn, &self.local_public_key).await?;
+        let _remote_key = Self::recv_identity(&conn).await?;
+
         let mut conns = self.connections.lock().await;
         conns.insert(addr, conn.clone());
         info!("Connected to peer at {}", addr);
         Ok(conn)
     }
 
-    /// Accept an incoming connection.
+    /// Connect to a remote peer and verify its identity against `expected_peer_id`.
+    /// If the remote peer's public key does not match, the connection is closed
+    /// and an error is returned.
+    pub async fn connect_verified(
+        &self,
+        addr: SocketAddr,
+        expected_peer_id: &[u8],
+    ) -> Result<Connection, TransportError> {
+        let conn = self
+            .endpoint
+            .connect(addr, "axon")?
+            .await?;
+
+        // Identity handshake: send ours, verify theirs.
+        Self::send_identity(&conn, &self.local_public_key).await?;
+        let remote_key = Self::recv_identity(&conn).await?;
+
+        if remote_key != expected_peer_id {
+            conn.close(1u32.into(), b"identity mismatch");
+            return Err(TransportError::PeerVerificationFailed(format!(
+                "expected peer ID {:02x?}..., got {:02x?}...",
+                &expected_peer_id[..4.min(expected_peer_id.len())],
+                &remote_key[..4.min(remote_key.len())],
+            )));
+        }
+
+        let mut conns = self.connections.lock().await;
+        conns.insert(addr, conn.clone());
+        info!("Verified and connected to peer at {}", addr);
+        Ok(conn)
+    }
+
+    /// Accept an incoming connection. Performs the identity handshake: sends
+    /// our Ed25519 public key and reads the remote peer's key. The remote key
+    /// is logged but not verified (use `accept_verified` for strict checks).
     pub async fn accept(&self) -> Option<Connection> {
         let incoming = self.endpoint.accept().await?;
         match incoming.await {
             Ok(conn) => {
                 let addr = conn.remote_address();
+
+                // Identity handshake: send ours, consume theirs.
+                if let Err(e) = Self::send_identity(&conn, &self.local_public_key).await {
+                    warn!("Failed to send identity to {}: {}", addr, e);
+                    return None;
+                }
+                match Self::recv_identity(&conn).await {
+                    Ok(remote_key) => {
+                        debug!("Peer at {} presented identity {:02x?}...", addr, &remote_key[..4.min(remote_key.len())]);
+                    }
+                    Err(e) => {
+                        warn!("Failed to receive identity from {}: {}", addr, e);
+                        return None;
+                    }
+                }
+
                 let mut conns = self.connections.lock().await;
                 conns.insert(addr, conn.clone());
                 info!("Accepted connection from {}", addr);
@@ -102,6 +174,38 @@ impl Transport {
                 None
             }
         }
+    }
+
+    /// Accept an incoming connection and verify the remote peer's identity.
+    /// Returns the connection and the remote peer's public key. If
+    /// `expected_peer_id` is `Some`, the remote key is checked against it.
+    pub async fn accept_verified(
+        &self,
+        expected_peer_id: Option<&[u8]>,
+    ) -> Result<(Connection, Vec<u8>), TransportError> {
+        let incoming = self.endpoint.accept().await.ok_or(TransportError::NotConnected)?;
+        let conn = incoming.await?;
+        let addr = conn.remote_address();
+
+        // Identity handshake: send ours, verify theirs.
+        Self::send_identity(&conn, &self.local_public_key).await?;
+        let remote_key = Self::recv_identity(&conn).await?;
+
+        if let Some(expected) = expected_peer_id {
+            if remote_key != expected {
+                conn.close(1u32.into(), b"identity mismatch");
+                return Err(TransportError::PeerVerificationFailed(format!(
+                    "expected peer ID {:02x?}..., got {:02x?}...",
+                    &expected[..4.min(expected.len())],
+                    &remote_key[..4.min(remote_key.len())],
+                )));
+            }
+        }
+
+        let mut conns = self.connections.lock().await;
+        conns.insert(addr, conn.clone());
+        info!("Accepted verified connection from {}", addr);
+        Ok((conn, remote_key))
     }
 
     /// Send a message over an existing connection.
@@ -162,6 +266,24 @@ impl Transport {
     pub async fn connection_count(&self) -> usize {
         let conns = self.connections.lock().await;
         conns.values().filter(|c| c.close_reason().is_none()).count()
+    }
+
+    /// Send our Ed25519 public key over a unidirectional stream.
+    async fn send_identity(conn: &Connection, public_key: &[u8]) -> Result<(), TransportError> {
+        let mut send = conn.open_uni().await?;
+        send.write_all(public_key).await?;
+        send.finish()?;
+        debug!("Sent identity ({} bytes)", public_key.len());
+        Ok(())
+    }
+
+    /// Receive a remote peer's Ed25519 public key from a unidirectional stream.
+    async fn recv_identity(conn: &Connection) -> Result<Vec<u8>, TransportError> {
+        let mut recv = conn.accept_uni().await?;
+        let mut buf = [0u8; ED25519_PUBKEY_LEN];
+        recv.read_exact(&mut buf).await?;
+        debug!("Received remote identity");
+        Ok(buf.to_vec())
     }
 
     fn make_tls_configs(
@@ -296,6 +418,68 @@ mod tests {
         let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
         let transport = Transport::bind(addr, &id).await.unwrap();
         assert_eq!(transport.connection_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn transport_verified_connect_success() {
+        let id1 = Identity::generate();
+        let id2 = Identity::generate();
+        let id2_pubkey = id2.public_key_bytes();
+
+        let t1 = Transport::bind("127.0.0.1:0".parse().unwrap(), &id1)
+            .await
+            .unwrap();
+        let t2 = Transport::bind("127.0.0.1:0".parse().unwrap(), &id2)
+            .await
+            .unwrap();
+
+        let t2_addr = t2.local_addr().unwrap();
+
+        let (done_tx, done_rx) = tokio::sync::oneshot::channel::<()>();
+
+        let accept_handle = tokio::spawn(async move {
+            let (conn, remote_key) = t2.accept_verified(None).await.unwrap();
+            assert_eq!(remote_key, id1.public_key_bytes());
+            let _ = done_rx.await;
+            conn
+        });
+
+        let conn = t1.connect_verified(t2_addr, &id2_pubkey).await.unwrap();
+        // Verify the connection works by exchanging a message.
+        Transport::send(&conn, &Message::Ping { nonce: 77 }).await.unwrap();
+
+        let _ = done_tx.send(());
+        let _ = accept_handle.await;
+    }
+
+    #[tokio::test]
+    async fn transport_verified_connect_mismatch() {
+        let id1 = Identity::generate();
+        let id2 = Identity::generate();
+        let id3 = Identity::generate(); // wrong identity
+
+        let t1 = Transport::bind("127.0.0.1:0".parse().unwrap(), &id1)
+            .await
+            .unwrap();
+        let t2 = Transport::bind("127.0.0.1:0".parse().unwrap(), &id2)
+            .await
+            .unwrap();
+
+        let t2_addr = t2.local_addr().unwrap();
+
+        // Spawn the acceptor so the connection can complete.
+        tokio::spawn(async move {
+            // Accept will succeed from t2's perspective.
+            let _ = t2.accept_verified(None).await;
+        });
+
+        // Connector expects id3 but will get id2 — should fail.
+        let result = t1.connect_verified(t2_addr, &id3.public_key_bytes()).await;
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            TransportError::PeerVerificationFailed(_) => {} // expected
+            e => panic!("unexpected error: {:?}", e),
+        }
     }
 
     #[tokio::test]

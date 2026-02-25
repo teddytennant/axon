@@ -166,7 +166,7 @@ impl Router {
     pub fn record_success(&mut self, peer_id: &[u8], latency_ms: u64) {
         self.stats
             .entry(peer_id.to_vec())
-            .or_insert_with(PeerStats::new)
+            .or_default()
             .record_success(latency_ms);
     }
 
@@ -174,7 +174,7 @@ impl Router {
     pub fn record_failure(&mut self, peer_id: &[u8]) {
         self.stats
             .entry(peer_id.to_vec())
-            .or_insert_with(PeerStats::new)
+            .or_default()
             .record_failure();
     }
 
