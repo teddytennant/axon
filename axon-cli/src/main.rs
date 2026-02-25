@@ -149,13 +149,54 @@ async fn main() -> anyhow::Result<()> {
             send_task(peer, &namespace, &name, data.as_bytes()).await?;
         }
         Commands::Peers { node } => {
-            println!("Querying node at {}...", node);
-            let path = Identity::default_path();
-            if path.exists() {
-                let id = Identity::load_or_generate(&path)?;
-                println!("Local Peer ID: {}", id.peer_id_hex());
+            tracing_subscriber::fmt::init();
+            println!("Querying node at {} for peers...\n", node);
+
+            let identity = Identity::load_or_generate(&Identity::default_path())?;
+            let transport = Transport::bind("0.0.0.0:0".parse()?, &identity).await?;
+            let conn = transport.connect(node).await?;
+
+            // Ask the remote node for peers that match any capability.
+            let discover = Message::Discover {
+                capability: Capability::new("*", "*", 0),
+            };
+            Transport::send(&conn, &discover).await?;
+
+            let resp = Transport::recv(&conn).await?;
+            match resp {
+                Message::DiscoverResponse { peers } => {
+                    if peers.is_empty() {
+                        println!("No peers known by this node.");
+                    } else {
+                        println!(
+                            "{:<10} {:<24} {:<30} LAST SEEN",
+                            "PEER ID", "ADDRESS", "CAPABILITIES"
+                        );
+                        println!("{}", "-".repeat(76));
+                        for p in &peers {
+                            let id_short = short_id(&p.peer_id);
+                            let caps = p
+                                .capabilities
+                                .iter()
+                                .map(|c| c.tag())
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            let ago = {
+                                let now = now_secs();
+                                let diff = now.saturating_sub(p.last_seen);
+                                format!("{}s ago", diff)
+                            };
+                            println!("{:<10} {:<24} {:<30} {}", id_short, p.addr, caps, ago);
+                        }
+                        println!("\n{} peer(s) total.", peers.len());
+                    }
+                }
+                other => {
+                    println!("Unexpected response from node: {:?}", other);
+                }
             }
-            println!("(Peer discovery query not yet implemented over network)");
+
+            transport.shutdown().await;
         }
         Commands::Identity => {
             let path = Identity::default_path();
@@ -244,6 +285,22 @@ async fn run_node(
                             }
                             Err(e) => {
                                 info!("Connection from {} closed: {}", remote, e);
+                                // Remove disconnected peer from the peer table so
+                                // stale entries don't linger until the eviction timer.
+                                let mut table = pt.write().await;
+                                let peers_snapshot: Vec<_> = table.all_peers_owned();
+                                for peer in &peers_snapshot {
+                                    if peer.addr == remote.to_string() {
+                                        table.remove(&peer.peer_id);
+                                        let mut state = ds.write().await;
+                                        state.add_log(format!(
+                                            "Removed disconnected peer {} at {}",
+                                            short_id(&peer.peer_id),
+                                            peer.addr
+                                        ));
+                                        break;
+                                    }
+                                }
                                 break;
                             }
                         }

@@ -2,9 +2,10 @@ use crate::protocol::{Capability, TaskRequest, TaskResponse, TaskStatus};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 use thiserror::Error;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 #[derive(Error, Debug)]
 pub enum AgentError {
@@ -77,24 +78,42 @@ impl Runtime {
     }
 
     /// Dispatch a task to the first matching agent.
+    ///
+    /// Enforces the timeout specified in `request.timeout_ms`. A value of 0
+    /// is treated as "use the default" (30 seconds). If the handler does not
+    /// complete within the deadline, a `TaskStatus::Timeout` response is
+    /// returned.
     pub async fn dispatch(&self, request: TaskRequest) -> TaskResponse {
         let start = std::time::Instant::now();
         let agents = self.agents.read().await;
 
+        // Use the request timeout, falling back to 30s when unset (0).
+        let timeout_ms = if request.timeout_ms == 0 { 30_000 } else { request.timeout_ms };
+        let deadline = Duration::from_millis(timeout_ms);
+
         // Find an agent that can handle the requested capability
         for agent in agents.iter() {
             if agent.capabilities().iter().any(|c| c.matches(&request.capability)) {
-                debug!("Dispatching task {} to agent '{}'", request.id, agent.name());
-                match agent.handle(request.clone()).await {
-                    Ok(mut response) => {
+                debug!("Dispatching task {} to agent '{}' (timeout {}ms)", request.id, agent.name(), timeout_ms);
+                match tokio::time::timeout(deadline, agent.handle(request.clone())).await {
+                    Ok(Ok(mut response)) => {
                         response.duration_ms = start.elapsed().as_millis() as u64;
                         return response;
                     }
-                    Err(e) => {
+                    Ok(Err(e)) => {
                         error!("Agent '{}' failed: {}", agent.name(), e);
                         return TaskResponse {
                             request_id: request.id,
                             status: TaskStatus::Error(e.to_string()),
+                            payload: vec![],
+                            duration_ms: start.elapsed().as_millis() as u64,
+                        };
+                    }
+                    Err(_) => {
+                        warn!("Agent '{}' timed out after {}ms for task {}", agent.name(), timeout_ms, request.id);
+                        return TaskResponse {
+                            request_id: request.id,
+                            status: TaskStatus::Timeout,
                             payload: vec![],
                             duration_ms: start.elapsed().as_millis() as u64,
                         };
@@ -285,6 +304,44 @@ mod tests {
         let resp = rt.dispatch(req).await;
         // Duration should be set (>= 0)
         assert!(resp.duration_ms < 1000); // shouldn't take more than 1s
+    }
+
+    struct SlowAgent;
+
+    #[async_trait]
+    impl Agent for SlowAgent {
+        fn name(&self) -> &str {
+            "slow"
+        }
+
+        fn capabilities(&self) -> Vec<Capability> {
+            vec![Capability::new("test", "slow", 1)]
+        }
+
+        async fn handle(&self, request: TaskRequest) -> Result<TaskResponse, AgentError> {
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            Ok(TaskResponse {
+                request_id: request.id,
+                status: TaskStatus::Success,
+                payload: vec![],
+                duration_ms: 0,
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn runtime_dispatch_timeout() {
+        let rt = Runtime::new();
+        rt.register(Arc::new(SlowAgent)).await;
+
+        let req = TaskRequest {
+            id: Uuid::new_v4(),
+            capability: Capability::new("test", "slow", 1),
+            payload: vec![],
+            timeout_ms: 50, // 50ms timeout — the SlowAgent sleeps for 10s
+        };
+        let resp = rt.dispatch(req).await;
+        assert_eq!(resp.status, TaskStatus::Timeout);
     }
 
     #[tokio::test]

@@ -127,7 +127,7 @@ impl<T: Clone + Eq + std::hash::Hash> ORSet<T> {
 
         self.elements
             .entry(element)
-            .or_insert_with(HashSet::new)
+            .or_default()
             .insert(tag);
     }
 
@@ -178,7 +178,7 @@ impl<T: Clone + Eq + std::hash::Hash> ORSet<T> {
 
         // Merge elements: union of tags, minus tombstones
         for (elem, other_tags) in &other.elements {
-            let tags = self.elements.entry(elem.clone()).or_insert_with(HashSet::new);
+            let tags = self.elements.entry(elem.clone()).or_default();
             for tag in other_tags {
                 if !self.tombstones.contains(tag) {
                     tags.insert(tag.clone());

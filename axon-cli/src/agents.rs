@@ -55,10 +55,9 @@ impl Agent for SystemInfoAgent {
 }
 
 fn hostname() -> String {
-    std::fs::read_to_string("/etc/hostname")
+    std::env::var("HOSTNAME")
+        .or_else(|_| std::fs::read_to_string("/etc/hostname").map(|s| s.trim().to_string()))
         .unwrap_or_else(|_| "unknown".to_string())
-        .trim()
-        .to_string()
 }
 
 /// Multi-provider LLM agent — routes to any configured LLM backend.
