@@ -67,7 +67,13 @@ pub async fn run_gossip(
         drop(conns);
 
         // Periodic stale peer eviction
-        if gossip_tick.is_multiple_of(config.eviction_interval_secs / config.interval_secs) {
+        let eviction_every = if config.interval_secs > 0 {
+            config.eviction_interval_secs / config.interval_secs
+        } else {
+            1
+        };
+        let eviction_every = eviction_every.max(1);
+        if gossip_tick % eviction_every == 0 {
             let mut table = peer_table.write().await;
             table.touch_local();
             let evicted = table.evict_stale();
