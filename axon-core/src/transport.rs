@@ -28,6 +28,8 @@ pub enum TransportError {
     Io(#[from] std::io::Error),
     #[error("TLS error: {0}")]
     Rustls(#[from] rustls::Error),
+    #[error("Certificate generation error: {0}")]
+    CertGen(#[from] rcgen::Error),
     #[error("Stream closed")]
     ClosedStream(#[from] quinn::ClosedStream),
     #[error("No connection to peer")]
@@ -290,13 +292,13 @@ impl Transport {
         _identity: &Identity,
     ) -> Result<(ServerConfig, ClientConfig), TransportError> {
         // Generate a self-signed certificate for QUIC
-        let key_pair = rcgen::KeyPair::generate_for(&rcgen::PKCS_ED25519).unwrap();
-        let params = rcgen::CertificateParams::new(vec!["axon".to_string()]).unwrap();
-        let cert = params.self_signed(&key_pair).unwrap();
+        let key_pair = rcgen::KeyPair::generate_for(&rcgen::PKCS_ED25519)?;
+        let params = rcgen::CertificateParams::new(vec!["axon".to_string()])?;
+        let cert = params.self_signed(&key_pair)?;
 
         let cert_der = rustls::pki_types::CertificateDer::from(cert.der().to_vec());
         let key_der = rustls::pki_types::PrivateKeyDer::try_from(key_pair.serialize_der())
-            .unwrap();
+            .map_err(|e| TransportError::Rustls(rustls::Error::General(e.to_string())))?;
 
         // Server config
         let server_config = ServerConfig::with_single_cert(
@@ -311,7 +313,8 @@ impl Transport {
             .with_no_client_auth();
 
         let client_config = ClientConfig::new(Arc::new(
-            quinn::crypto::rustls::QuicClientConfig::try_from(client_crypto).unwrap(),
+            quinn::crypto::rustls::QuicClientConfig::try_from(client_crypto)
+                .map_err(|e| TransportError::Rustls(rustls::Error::General(e.to_string())))?,
         ));
 
         Ok((server_config, client_config))
@@ -370,6 +373,13 @@ impl rustls::client::danger::ServerCertVerifier for SkipVerification {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tls_config_generation_succeeds() {
+        let identity = Identity::generate();
+        let result = Transport::make_tls_configs(&identity);
+        assert!(result.is_ok(), "TLS config generation should not fail: {:?}", result.err());
+    }
 
     #[tokio::test]
     async fn transport_bind_and_get_addr() {
