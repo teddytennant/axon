@@ -142,6 +142,9 @@ fn parse_capability_tags(s: &str) -> Vec<Capability> {
 }
 
 fn hex_decode(s: &str) -> Vec<u8> {
+    if !s.is_ascii() {
+        return vec![];
+    }
     // Guard against odd-length strings to avoid out-of-bounds slice
     let len = s.len() & !1; // round down to even
     (0..len)
@@ -202,5 +205,23 @@ mod tests {
         let hex_str: String = original.iter().map(|b| format!("{:02x}", b)).collect();
         let decoded = hex_decode(&hex_str);
         assert_eq!(decoded, original);
+    }
+
+    #[test]
+    fn hex_decode_non_ascii_returns_empty() {
+        let result = hex_decode("caf\u{00e9}");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn hex_decode_empty_string() {
+        let result = hex_decode("");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn hex_decode_odd_length() {
+        let result = hex_decode("abc");
+        assert_eq!(result, vec![0xab]);
     }
 }
