@@ -8,6 +8,7 @@ use ratatui::{
     prelude::*,
     widgets::{Block, Borders, Cell, List, ListItem, Paragraph, Row, Table, Tabs, Wrap},
 };
+use std::collections::VecDeque;
 use std::io::stdout;
 use std::sync::Arc;
 use std::time::Duration;
@@ -67,7 +68,7 @@ pub struct DashboardState {
     pub agent_names: Vec<String>,
     pub capabilities: Vec<Capability>,
     pub task_log: Vec<TaskLogEntry>,
-    pub logs: Vec<String>,
+    pub logs: VecDeque<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -88,14 +89,14 @@ impl DashboardState {
             agent_names: Vec::new(),
             capabilities: Vec::new(),
             task_log: Vec::new(),
-            logs: Vec::new(),
+            logs: VecDeque::new(),
         }
     }
 
     pub fn add_log(&mut self, msg: String) {
-        self.logs.push(msg);
+        self.logs.push_back(msg);
         if self.logs.len() > 1000 {
-            self.logs.remove(0);
+            self.logs.pop_front();
         }
     }
 }
@@ -334,7 +335,7 @@ impl Dashboard {
                     _ => Style::default().fg(Color::Gray),
                 };
                 Row::new(vec![
-                    Cell::from(t.id[..8].to_string()),
+                    Cell::from(t.id[..8.min(t.id.len())].to_string()),
                     Cell::from(t.capability.clone()),
                     Cell::from(t.status.clone()).style(status_style),
                     Cell::from(format!("{}ms", t.duration_ms)),
