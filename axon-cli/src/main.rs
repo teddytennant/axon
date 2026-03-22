@@ -314,7 +314,6 @@ async fn run_node(
     for peer_addr in &bootstrap_peers {
         let t = transport.clone();
         let addr = *peer_addr;
-        let _pt = peer_table.clone();
         let ds = dashboard_state.clone();
         let id = identity.public_key_bytes();
         let caps = runtime.all_capabilities().await;
@@ -429,9 +428,10 @@ async fn run_node(
         .await;
     });
 
-    // Spawn periodic peer table sync to dashboard
+    // Spawn periodic peer table sync to dashboard + connection cleanup
     let sync_pt = peer_table.clone();
     let sync_ds = dashboard_state.clone();
+    let sync_conns = active_connections.clone();
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
@@ -440,6 +440,11 @@ async fn run_node(
             drop(table);
             let mut state = sync_ds.write().await;
             state.peers = peers;
+            drop(state);
+
+            // Prune closed connections to prevent memory leaks.
+            let mut conns = sync_conns.write().await;
+            conns.retain(|(_, conn)| conn.close_reason().is_none());
         }
     });
 
@@ -515,10 +520,15 @@ async fn handle_message(
         }
         Message::Discover { capability } => {
             let pt = peer_table.read().await;
-            let peers = pt.find_by_capability(&capability)
-                .into_iter()
-                .cloned()
-                .collect();
+            // Wildcard discover: return all peers when namespace is "*".
+            let peers: Vec<PeerInfo> = if capability.namespace == "*" {
+                pt.all_peers_owned()
+            } else {
+                pt.find_by_capability(&capability)
+                    .into_iter()
+                    .cloned()
+                    .collect()
+            };
             let _ = Transport::send(conn, &Message::DiscoverResponse { peers }).await;
         }
         _ => {}
