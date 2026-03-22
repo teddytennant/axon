@@ -17,13 +17,13 @@ impl GCounter {
     /// Increment the counter for a specific node.
     pub fn increment(&mut self, node_id: &str) {
         let entry = self.counts.entry(node_id.to_string()).or_insert(0);
-        *entry += 1;
+        *entry = entry.saturating_add(1);
     }
 
     /// Increment by a specific amount.
     pub fn increment_by(&mut self, node_id: &str, amount: u64) {
         let entry = self.counts.entry(node_id.to_string()).or_insert(0);
-        *entry += amount;
+        *entry = entry.saturating_add(amount);
     }
 
     /// Get the total count across all nodes.
@@ -122,7 +122,7 @@ impl<T: Clone + Eq + std::hash::Hash> ORSet<T> {
     /// Add an element tagged with the given node_id.
     pub fn add(&mut self, node_id: &str, element: T) {
         let counter = self.counters.entry(node_id.to_string()).or_insert(0);
-        *counter += 1;
+        *counter = counter.saturating_add(1);
         let tag = (node_id.to_string(), *counter);
 
         self.elements
@@ -297,6 +297,14 @@ mod tests {
         let v1 = c1.value();
         c1.merge(&c2);
         assert_eq!(c1.value(), v1);
+    }
+
+    #[test]
+    fn gcounter_saturating_increment() {
+        let mut c = GCounter::new();
+        c.increment_by("node1", u64::MAX);
+        c.increment("node1");
+        assert_eq!(c.node_value("node1"), u64::MAX);
     }
 
     // ===== LWWRegister Tests =====
