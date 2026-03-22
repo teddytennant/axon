@@ -60,13 +60,13 @@ impl PeerStats {
     }
 
     pub fn record_success(&mut self, latency_ms: u64) {
-        self.total_tasks += 1;
-        self.successful_tasks += 1;
-        self.total_latency_ms += latency_ms;
+        self.total_tasks = self.total_tasks.saturating_add(1);
+        self.successful_tasks = self.successful_tasks.saturating_add(1);
+        self.total_latency_ms = self.total_latency_ms.saturating_add(latency_ms);
     }
 
     pub fn record_failure(&mut self) {
-        self.total_tasks += 1;
+        self.total_tasks = self.total_tasks.saturating_add(1);
     }
 }
 
@@ -367,6 +367,19 @@ mod tests {
         // latency_factor = 1/(1+0) = 1.0
         // score = 0.6*0 + 0.4*1.0 = 0.4
         assert!(s.score() < 0.5);
+    }
+
+    #[test]
+    fn peer_stats_saturating_arithmetic() {
+        let mut s = PeerStats::new();
+        s.total_tasks = u64::MAX;
+        s.record_failure();
+        assert_eq!(s.total_tasks, u64::MAX);
+
+        let mut s2 = PeerStats::new();
+        s2.total_latency_ms = u64::MAX;
+        s2.record_success(1000);
+        assert_eq!(s2.total_latency_ms, u64::MAX);
     }
 
     #[test]
