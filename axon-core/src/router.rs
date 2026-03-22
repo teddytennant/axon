@@ -31,12 +31,12 @@ impl PeerStats {
         }
     }
 
-    /// Average latency in ms, or u64::MAX if no data.
+    /// Average latency in ms, or u64::MAX if no successful tasks.
     pub fn avg_latency_ms(&self) -> u64 {
-        if self.total_tasks == 0 {
+        if self.successful_tasks == 0 {
             return u64::MAX;
         }
-        self.total_latency_ms / self.total_tasks
+        self.total_latency_ms / self.successful_tasks
     }
 
     /// Success rate as a float [0.0, 1.0].
@@ -361,12 +361,21 @@ mod tests {
         let mut s = PeerStats::new();
         s.record_failure();
         s.record_failure();
-        // 0% success, no latency data but total_tasks > 0
+        // 0% success, no successful tasks so avg_latency = u64::MAX
         // success_factor = 0.0
-        // avg_latency = 0 (0/2)
-        // latency_factor = 1/(1+0) = 1.0
-        // score = 0.6*0 + 0.4*1.0 = 0.4
+        // latency_factor = 1/(1 + u64::MAX/1000) ≈ 0.0
+        // score = 0.6*0 + 0.4*~0 ≈ 0.0
         assert!(s.score() < 0.5);
+    }
+
+    #[test]
+    fn peer_stats_avg_latency_ignores_failures() {
+        let mut s = PeerStats::new();
+        s.record_success(100);
+        s.record_success(300);
+        s.record_failure(); // should not affect avg latency
+        // avg = (100+300)/2 = 200, not (100+300)/3 = 133
+        assert_eq!(s.avg_latency_ms(), 200);
     }
 
     #[test]
