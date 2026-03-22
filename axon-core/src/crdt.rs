@@ -28,7 +28,7 @@ impl GCounter {
 
     /// Get the total count across all nodes.
     pub fn value(&self) -> u64 {
-        self.counts.values().sum()
+        self.counts.values().fold(0u64, |acc, &v| acc.saturating_add(v))
     }
 
     /// Get the count for a specific node.
@@ -305,6 +305,14 @@ mod tests {
         c.increment_by("node1", u64::MAX);
         c.increment("node1");
         assert_eq!(c.node_value("node1"), u64::MAX);
+    }
+
+    #[test]
+    fn gcounter_value_saturating_across_nodes() {
+        let mut c = GCounter::new();
+        c.increment_by("node1", u64::MAX);
+        c.increment_by("node2", 1);
+        assert_eq!(c.value(), u64::MAX);
     }
 
     // ===== LWWRegister Tests =====
