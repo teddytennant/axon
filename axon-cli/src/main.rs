@@ -514,6 +514,9 @@ async fn handle_message(
                     duration_ms: resp.duration_ms,
                     peer: remote.to_string(),
                 });
+                if state.task_log.len() > 1000 {
+                    state.task_log.remove(0);
+                }
             }
 
             let _ = Transport::send(conn, &Message::TaskResponse(resp)).await;
@@ -531,7 +534,12 @@ async fn handle_message(
             };
             let _ = Transport::send(conn, &Message::DiscoverResponse { peers }).await;
         }
-        _ => {}
+        Message::Pong { nonce } => {
+            tracing::debug!("Received Pong from {} with nonce {}", remote, nonce);
+        }
+        _ => {
+            tracing::warn!("Unhandled message type from {}", remote);
+        }
     }
 }
 
