@@ -1,4 +1,5 @@
 mod agents;
+mod config;
 mod providers;
 mod tui;
 
@@ -9,6 +10,7 @@ use axon_core::{
 use clap::{Parser, Subcommand};
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::RwLock;
 use tracing::{error, info};
 use uuid::Uuid;
@@ -16,6 +18,31 @@ use uuid::Uuid;
 use agents::{EchoAgent, LlmAgent, SystemInfoAgent};
 use providers::ProviderKind;
 use tui::{Dashboard, DashboardState, TaskLogEntry};
+
+/// Atomic counters for node-level metrics.
+pub struct NodeMetrics {
+    pub tasks_processed: AtomicU64,
+    pub tasks_failed: AtomicU64,
+    pub messages_received: AtomicU64,
+    pub messages_sent: AtomicU64,
+    pub started_at: std::time::Instant,
+}
+
+impl NodeMetrics {
+    fn new() -> Self {
+        Self {
+            tasks_processed: AtomicU64::new(0),
+            tasks_failed: AtomicU64::new(0),
+            messages_received: AtomicU64::new(0),
+            messages_sent: AtomicU64::new(0),
+            started_at: std::time::Instant::now(),
+        }
+    }
+
+    fn uptime_secs(&self) -> u64 {
+        self.started_at.elapsed().as_secs()
+    }
+}
 
 #[derive(Parser)]
 #[command(name = "axon", about = "Decentralized AI Agent Mesh", version)]
@@ -88,6 +115,9 @@ enum Commands {
 
     /// Generate a new identity
     Identity,
+
+    /// Generate example config file at ~/.config/axon/config.toml
+    Init,
 }
 
 #[tokio::main]
@@ -104,7 +134,33 @@ async fn main() -> anyhow::Result<()> {
             api_key,
             model,
         } => {
-            if !headless {
+            // Load config file, then overlay CLI flags
+            let file_config = config::load_config();
+
+            let effective_listen = if listen.to_string() == "0.0.0.0:4242" {
+                // CLI is at default — use config file value if set
+                file_config.node.listen
+            } else {
+                listen
+            };
+
+            let effective_headless = headless || file_config.node.headless;
+
+            let mut effective_peers = file_config.node.peers.clone();
+            for p in &bootstrap_peers {
+                if !effective_peers.contains(p) {
+                    effective_peers.push(*p);
+                }
+            }
+
+            let effective_provider: ProviderKind = if provider.to_string() == "ollama" {
+                // CLI at default — try config file
+                file_config.llm.provider.parse().unwrap_or(provider)
+            } else {
+                provider
+            };
+
+            if !effective_headless {
                 tracing_subscriber::fmt()
                     .with_writer(std::io::sink)
                     .init();
@@ -112,22 +168,39 @@ async fn main() -> anyhow::Result<()> {
                 tracing_subscriber::fmt::init();
             }
 
-            // Resolve provider config
-            let api_key = providers::resolve_api_key(&api_key, &provider);
-            let model = if model.is_empty() {
-                providers::default_model(&provider).to_string()
+            // Resolve provider config: CLI flag > config file > env var > default
+            let effective_api_key = if !api_key.is_empty() {
+                api_key
+            } else if !file_config.llm.api_key.is_empty() {
+                file_config.llm.api_key
             } else {
+                providers::resolve_api_key("", &effective_provider)
+            };
+
+            let effective_model = if !model.is_empty() {
                 model
-            };
-            let endpoint = if llm_endpoint.is_empty() {
-                providers::default_endpoint(&provider).to_string()
+            } else if !file_config.llm.model.is_empty() {
+                file_config.llm.model
             } else {
-                llm_endpoint
+                providers::default_model(&effective_provider).to_string()
             };
 
-            let llm_provider = providers::build_provider(&provider, &endpoint, &api_key, &model)?;
+            let effective_endpoint = if !llm_endpoint.is_empty() {
+                llm_endpoint
+            } else if !file_config.llm.endpoint.is_empty() {
+                file_config.llm.endpoint
+            } else {
+                providers::default_endpoint(&effective_provider).to_string()
+            };
 
-            run_node(listen, bootstrap_peers, headless, llm_provider).await?;
+            let llm_provider = providers::build_provider(
+                &effective_provider,
+                &effective_endpoint,
+                &effective_api_key,
+                &effective_model,
+            )?;
+
+            run_node(effective_listen, effective_peers, effective_headless, llm_provider).await?;
         }
         Commands::Status => {
             println!("axon mesh node status");
@@ -205,6 +278,11 @@ async fn main() -> anyhow::Result<()> {
             println!("Peer ID: {}", id.peer_id_hex());
             println!("Short ID: {}", id.peer_id_short());
         }
+        Commands::Init => {
+            let path = config::generate_example_config()?;
+            println!("Config file created at: {}", path.display());
+            println!("Edit it to configure your node, then run `axon start`.");
+        }
     }
 
     Ok(())
@@ -239,6 +317,7 @@ async fn run_node(
     };
 
     let peer_table = Arc::new(RwLock::new(PeerTable::new(local_peer)));
+    let metrics = Arc::new(NodeMetrics::new());
 
     let dashboard_state = Arc::new(RwLock::new(DashboardState::new(
         peer_id_hex.clone(),
@@ -253,6 +332,9 @@ async fn run_node(
         state.add_log(format!("Listening on {}", local_addr));
     }
 
+    // Shutdown coordination: a broadcast channel that all tasks listen to.
+    let (shutdown_tx, _) = tokio::sync::broadcast::channel::<()>(1);
+
     let transport = Arc::new(transport);
     let active_connections: Arc<RwLock<Vec<(String, quinn::Connection)>>> =
         Arc::new(RwLock::new(Vec::new()));
@@ -263,49 +345,61 @@ async fn run_node(
     let accept_peer_table = peer_table.clone();
     let accept_dashboard = dashboard_state.clone();
     let accept_conns = active_connections.clone();
+    let accept_metrics = metrics.clone();
+    let mut accept_shutdown = shutdown_tx.subscribe();
 
     tokio::spawn(async move {
         loop {
-            if let Some(conn) = accept_transport.accept().await {
-                let rt = accept_runtime.clone();
-                let pt = accept_peer_table.clone();
-                let ds = accept_dashboard.clone();
-                let remote = conn.remote_address();
+            tokio::select! {
+                maybe_conn = accept_transport.accept() => {
+                    let conn = match maybe_conn {
+                        Some(c) => c,
+                        None => continue,
+                    };
+                    let rt = accept_runtime.clone();
+                    let pt = accept_peer_table.clone();
+                    let ds = accept_dashboard.clone();
+                    let m = accept_metrics.clone();
+                    let remote = conn.remote_address();
 
-                {
-                    let mut conns = accept_conns.write().await;
-                    conns.push((remote.to_string(), conn.clone()));
-                }
+                    {
+                        let mut conns = accept_conns.write().await;
+                        conns.push((remote.to_string(), conn.clone()));
+                    }
 
-                tokio::spawn(async move {
-                    loop {
-                        match Transport::recv(&conn).await {
-                            Ok(msg) => {
-                                handle_message(msg, &conn, &rt, &pt, &ds, remote).await;
-                            }
-                            Err(e) => {
-                                info!("Connection from {} closed: {}", remote, e);
-                                // Remove disconnected peer from the peer table so
-                                // stale entries don't linger until the eviction timer.
-                                let mut table = pt.write().await;
-                                let peers_snapshot: Vec<_> = table.all_peers_owned();
-                                for peer in &peers_snapshot {
-                                    if peer.addr == remote.to_string() {
-                                        table.remove(&peer.peer_id);
-                                        let mut state = ds.write().await;
-                                        state.add_log(format!(
-                                            "Removed disconnected peer {} at {}",
-                                            short_id(&peer.peer_id),
-                                            peer.addr
-                                        ));
-                                        break;
-                                    }
+                    tokio::spawn(async move {
+                        loop {
+                            match Transport::recv(&conn).await {
+                                Ok(msg) => {
+                                    m.messages_received.fetch_add(1, Ordering::Relaxed);
+                                    handle_message(msg, &conn, &rt, &pt, &ds, remote, &m).await;
                                 }
-                                break;
+                                Err(e) => {
+                                    info!("Connection from {} closed: {}", remote, e);
+                                    let mut table = pt.write().await;
+                                    let peers_snapshot: Vec<_> = table.all_peers_owned();
+                                    for peer in &peers_snapshot {
+                                        if peer.addr == remote.to_string() {
+                                            table.remove(&peer.peer_id);
+                                            let mut state = ds.write().await;
+                                            state.add_log(format!(
+                                                "Removed disconnected peer {} at {}",
+                                                short_id(&peer.peer_id),
+                                                peer.addr
+                                            ));
+                                            break;
+                                        }
+                                    }
+                                    break;
+                                }
                             }
                         }
-                    }
-                });
+                    });
+                }
+                _ = accept_shutdown.recv() => {
+                    info!("Acceptor shutting down");
+                    break;
+                }
             }
         }
     });
@@ -428,39 +522,79 @@ async fn run_node(
         .await;
     });
 
-    // Spawn periodic peer table sync to dashboard + connection cleanup
+    // Spawn periodic peer table sync to dashboard + connection cleanup + metrics
     let sync_pt = peer_table.clone();
     let sync_ds = dashboard_state.clone();
     let sync_conns = active_connections.clone();
+    let sync_metrics = metrics.clone();
+    let mut sync_shutdown = shutdown_tx.subscribe();
     tokio::spawn(async move {
         loop {
-            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-            let table = sync_pt.read().await;
-            let peers = table.all_peers_owned();
-            drop(table);
-            let mut state = sync_ds.write().await;
-            state.peers = peers;
-            drop(state);
+            tokio::select! {
+                _ = tokio::time::sleep(tokio::time::Duration::from_secs(1)) => {
+                    let table = sync_pt.read().await;
+                    let peers = table.all_peers_owned();
+                    drop(table);
+                    let mut state = sync_ds.write().await;
+                    state.peers = peers;
+                    state.uptime_secs = sync_metrics.uptime_secs();
+                    state.tasks_total = sync_metrics.tasks_processed.load(Ordering::Relaxed);
+                    state.tasks_failed = sync_metrics.tasks_failed.load(Ordering::Relaxed);
+                    drop(state);
 
-            // Prune closed connections to prevent memory leaks.
-            let mut conns = sync_conns.write().await;
-            conns.retain(|(_, conn)| conn.close_reason().is_none());
+                    // Prune closed connections to prevent memory leaks.
+                    let mut conns = sync_conns.write().await;
+                    conns.retain(|(_, conn)| conn.close_reason().is_none());
+                }
+                _ = sync_shutdown.recv() => {
+                    break;
+                }
+            }
         }
     });
 
     if headless {
         info!("Running in headless mode. Press Ctrl+C to stop.");
-        tokio::signal::ctrl_c().await?;
+        // Wait for SIGINT or SIGTERM
+        let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {
+                info!("Received SIGINT");
+            }
+            _ = sigterm.recv() => {
+                info!("Received SIGTERM");
+            }
+        }
     } else {
         let mut dashboard = Dashboard::new(dashboard_state.clone());
         dashboard.run().await?;
     }
 
+    // --- Graceful shutdown sequence ---
+    info!("Initiating graceful shutdown...");
+
+    // 1. Signal all background tasks to stop
+    let _ = shutdown_tx.send(());
+
+    // 2. Log final metrics
+    let uptime = metrics.uptime_secs();
+    let total_tasks = metrics.tasks_processed.load(Ordering::Relaxed);
+    let failed_tasks = metrics.tasks_failed.load(Ordering::Relaxed);
+    let total_msgs = metrics.messages_received.load(Ordering::Relaxed);
+    info!(
+        "Session stats: uptime={}s, tasks={} (failed={}), messages={}",
+        uptime, total_tasks, failed_tasks, total_msgs
+    );
+
+    // 3. Shut down mDNS (stops advertising)
     if let Some(mdns) = _mdns {
         mdns.shutdown();
+        info!("mDNS discovery stopped");
     }
+
+    // 4. Close transport (sends close frames to all peers)
     transport.shutdown().await;
-    info!("Node shut down.");
+    info!("Node shut down cleanly.");
     Ok(())
 }
 
@@ -471,11 +605,13 @@ async fn handle_message(
     peer_table: &Arc<RwLock<PeerTable>>,
     dashboard: &Arc<RwLock<DashboardState>>,
     remote: SocketAddr,
+    metrics: &Arc<NodeMetrics>,
 ) {
     match msg {
         Message::Ping { nonce } => {
             let pong = Message::Pong { nonce };
             let _ = Transport::send(conn, &pong).await;
+            metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
         }
         Message::Announce(info) => {
             let mut pt = peer_table.write().await;
@@ -497,6 +633,16 @@ async fn handle_message(
             let req_id = req.id.to_string();
             let cap_tag = req.capability.tag();
             let resp = runtime.dispatch(req).await;
+
+            match &resp.status {
+                TaskStatus::Success => {
+                    metrics.tasks_processed.fetch_add(1, Ordering::Relaxed);
+                }
+                _ => {
+                    metrics.tasks_processed.fetch_add(1, Ordering::Relaxed);
+                    metrics.tasks_failed.fetch_add(1, Ordering::Relaxed);
+                }
+            }
 
             let status_str = match &resp.status {
                 TaskStatus::Success => "Success".to_string(),
@@ -520,10 +666,10 @@ async fn handle_message(
             }
 
             let _ = Transport::send(conn, &Message::TaskResponse(resp)).await;
+            metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
         }
         Message::Discover { capability } => {
             let pt = peer_table.read().await;
-            // Wildcard discover: return all peers when namespace is "*".
             let peers: Vec<PeerInfo> = if capability.namespace == "*" {
                 pt.all_peers_owned()
             } else {
@@ -533,6 +679,7 @@ async fn handle_message(
                     .collect()
             };
             let _ = Transport::send(conn, &Message::DiscoverResponse { peers }).await;
+            metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
         }
         Message::Pong { nonce } => {
             tracing::debug!("Received Pong from {} with nonce {}", remote, nonce);
