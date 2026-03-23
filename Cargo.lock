@@ -115,7 +115,6 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bincode",
- "bytes",
  "dirs",
  "ed25519-dalek",
  "mdns-sd",
