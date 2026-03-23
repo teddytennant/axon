@@ -69,6 +69,9 @@ pub struct DashboardState {
     pub capabilities: Vec<Capability>,
     pub task_log: Vec<TaskLogEntry>,
     pub logs: VecDeque<String>,
+    pub uptime_secs: u64,
+    pub tasks_total: u64,
+    pub tasks_failed: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -90,6 +93,9 @@ impl DashboardState {
             capabilities: Vec::new(),
             task_log: Vec::new(),
             logs: VecDeque::new(),
+            uptime_secs: 0,
+            tasks_total: 0,
+            tasks_failed: 0,
         }
     }
 
@@ -188,11 +194,14 @@ impl Dashboard {
             .split(frame.area());
 
         // Header
+        let uptime = format_uptime(state.uptime_secs);
         let header = Paragraph::new(format!(
-            " axon mesh  |  Peer: {}  |  Listen: {}  |  Peers: {}",
+            " axon mesh  |  Peer: {}  |  Listen: {}  |  Peers: {}  |  Tasks: {}  |  Up: {}",
             &state.peer_id[..8.min(state.peer_id.len())],
             state.listen_addr,
             state.peers.len(),
+            state.tasks_total,
+            uptime,
         ))
         .block(Block::default().borders(Borders::ALL).title(" Axon "))
         .style(Style::default().fg(Color::Cyan));
@@ -392,4 +401,17 @@ fn elapsed_secs(timestamp: u64) -> u64 {
         .unwrap_or_default()
         .as_secs();
     now.saturating_sub(timestamp)
+}
+
+fn format_uptime(secs: u64) -> String {
+    let h = secs / 3600;
+    let m = (secs % 3600) / 60;
+    let s = secs % 60;
+    if h > 0 {
+        format!("{}h{}m{}s", h, m, s)
+    } else if m > 0 {
+        format!("{}m{}s", m, s)
+    } else {
+        format!("{}s", s)
+    }
 }
