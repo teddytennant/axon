@@ -521,6 +521,7 @@ async fn run_node(
     });
 
     // Connect to bootstrap peers
+    let bootstrap_tools = mcp_bridge.all_tools().await;
     for peer_addr in &bootstrap_peers {
         let t = transport.clone();
         let addr = *peer_addr;
@@ -528,12 +529,13 @@ async fn run_node(
         let id = identity.public_key_bytes();
         let caps = runtime.all_capabilities().await;
         let la = local_addr.to_string();
+        let tools = bootstrap_tools.clone();
 
         tokio::spawn(async move {
             match t.connect(addr).await {
                 Ok(conn) => {
                     let announce = Message::Announce(PeerInfo {
-                        peer_id: id,
+                        peer_id: id.clone(),
                         addr: la,
                         capabilities: caps,
                         last_seen: now_secs(),
@@ -541,6 +543,8 @@ async fn run_node(
                     if let Err(e) = Transport::send(&conn, &announce).await {
                         error!("Failed to announce to {}: {}", addr, e);
                     } else {
+                        // Send our ToolCatalog so the peer discovers our MCP tools
+                        axon_core::gossip::send_tool_catalog(&conn, &id, &tools).await;
                         let mut state = ds.write().await;
                         state.add_log(format!("Connected to bootstrap peer: {}", addr));
                     }
@@ -558,6 +562,7 @@ async fn run_node(
     let all_caps = runtime.all_capabilities().await;
     let mdns_result = MdnsDiscovery::new(peer_id_hex.clone(), local_addr.port(), all_caps);
 
+    let mdns_tools = mcp_bridge.all_tools().await;
     let _mdns = if let Ok((mdns, mut mdns_rx)) = mdns_result {
         let mdns_pt = peer_table.clone();
         let mdns_ds = dashboard_state.clone();
@@ -565,6 +570,7 @@ async fn run_node(
         let mdns_id = identity.public_key_bytes();
         let mdns_caps = runtime.all_capabilities().await;
         let mdns_la = local_addr.to_string();
+        let mdns_tools = mdns_tools.clone();
 
         tokio::spawn(async move {
             while let Some(event) = mdns_rx.recv().await {
@@ -590,6 +596,11 @@ async fn run_node(
                                             last_seen: now_secs(),
                                         });
                                         let _ = Transport::send(&conn, &announce).await;
+                                        // Share our MCP tools with the new peer
+                                        axon_core::gossip::send_tool_catalog(
+                                            &conn, &mdns_id, &mdns_tools,
+                                        )
+                                        .await;
                                     }
                                     Err(e) => {
                                         let mut state = mdns_ds.write().await;
@@ -623,6 +634,32 @@ async fn run_node(
         None
     };
 
+    // Build local tool catalog for gossip propagation
+    let local_mcp_tools = mcp_bridge.all_tools().await;
+    let local_catalog = if local_mcp_tools.is_empty() {
+        None
+    } else {
+        Some(axon_core::LocalToolCatalog {
+            peer_id: identity.public_key_bytes(),
+            tools: local_mcp_tools.clone(),
+        })
+    };
+
+    // Broadcast ToolCatalog to all currently connected peers
+    if !local_mcp_tools.is_empty() {
+        axon_core::broadcast_tool_catalog(
+            &active_connections,
+            &identity.public_key_bytes(),
+            &local_mcp_tools,
+        )
+        .await;
+        let mut state = dashboard_state.write().await;
+        state.add_log(format!(
+            "Broadcast {} MCP tools to connected peers",
+            local_mcp_tools.len()
+        ));
+    }
+
     // Spawn gossip protocol
     let gossip_pt = peer_table.clone();
     let gossip_transport = transport.clone();
@@ -633,6 +670,7 @@ async fn run_node(
             gossip_transport,
             gossip_conns,
             axon_core::GossipConfig::default(),
+            local_catalog,
         )
         .await;
     });
@@ -922,6 +960,10 @@ async fn handle_message(
             metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
         }
         Message::Announce(info) => {
+            let local_peer_id = {
+                let pt_read = peer_table.read().await;
+                pt_read.local_peer().peer_id.clone()
+            };
             let mut pt = peer_table.write().await;
             pt.upsert(info.clone());
             drop(pt);
@@ -931,6 +973,23 @@ async fn handle_message(
                 short_id(&info.peer_id),
                 info.addr
             ));
+            drop(state);
+            // Share our MCP tools with the new peer
+            let local_tools: Vec<_> = {
+                let reg = tool_registry.read().await;
+                reg.tools_for_peer(&local_peer_id)
+                    .into_iter()
+                    .cloned()
+                    .collect()
+            };
+            if !local_tools.is_empty() {
+                let catalog = Message::ToolCatalog {
+                    peer_id: local_peer_id,
+                    tools: local_tools,
+                };
+                let _ = Transport::send(conn, &catalog).await;
+                metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
+            }
         }
         Message::Gossip { peers } => {
             let mut pt = peer_table.write().await;
