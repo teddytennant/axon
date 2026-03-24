@@ -1,6 +1,6 @@
+use crate::discovery::PeerTable;
 use crate::protocol::Message;
 use crate::transport::Transport;
-use crate::discovery::PeerTable;
 use quinn::Connection;
 use std::sync::Arc;
 use tokio::sync::RwLock;

@@ -46,7 +46,10 @@ impl MdnsDiscovery {
         )?;
 
         daemon.register(service_info)?;
-        info!("Registered mDNS service: {}.{}", instance_name, SERVICE_TYPE);
+        info!(
+            "Registered mDNS service: {}.{}",
+            instance_name, SERVICE_TYPE
+        );
 
         // Browse for peers
         let receiver = daemon.browse(SERVICE_TYPE)?;
@@ -66,10 +69,8 @@ impl MdnsDiscovery {
                                 continue;
                             }
 
-                            let caps_str = info
-                                .get_property_val_str("caps")
-                                .unwrap_or("")
-                                .to_string();
+                            let caps_str =
+                                info.get_property_val_str("caps").unwrap_or("").to_string();
                             let capabilities = parse_capability_tags(&caps_str);
 
                             let addr = if let Some(addr) = info.get_addresses().iter().next() {
@@ -87,8 +88,12 @@ impl MdnsDiscovery {
                                 last_seen: now_secs(),
                             };
 
-                            info!("mDNS: discovered peer {} at {}", peer_id_str, peer_info.addr);
-                            let _ = event_tx.blocking_send(DiscoveryEvent::PeerDiscovered(peer_info));
+                            info!(
+                                "mDNS: discovered peer {} at {}",
+                                peer_id_str, peer_info.addr
+                            );
+                            let _ =
+                                event_tx.blocking_send(DiscoveryEvent::PeerDiscovered(peer_info));
                         }
                     }
                     ServiceEvent::ServiceRemoved(_, fullname) => {

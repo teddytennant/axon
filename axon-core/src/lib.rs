@@ -9,13 +9,13 @@ pub mod runtime;
 pub mod taskqueue;
 pub mod transport;
 
+pub use crdt::{GCounter, LWWRegister, ORSet};
+pub use discovery::PeerTable;
+pub use gossip::GossipConfig;
 pub use identity::Identity;
+pub use mdns::{DiscoveryEvent, MdnsDiscovery};
 pub use protocol::{Capability, Message, PeerInfo, TaskRequest, TaskResponse, TaskStatus};
 pub use router::{Router, Strategy};
 pub use runtime::{Agent, AgentError, Runtime};
-pub use discovery::PeerTable;
-pub use crdt::{GCounter, LWWRegister, ORSet};
+pub use taskqueue::{QueueError, QueueStats, TaskQueue, TaskQueueConfig, TaskRecord, TaskState};
 pub use transport::Transport;
-pub use mdns::{MdnsDiscovery, DiscoveryEvent};
-pub use gossip::GossipConfig;
-pub use taskqueue::{TaskQueue, TaskQueueConfig, TaskRecord, TaskState, QueueStats, QueueError};

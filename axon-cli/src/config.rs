@@ -113,7 +113,8 @@ pub fn load_config() -> NodeConfig {
 
 /// Generate an example config file at the default path.
 pub fn generate_example_config() -> anyhow::Result<PathBuf> {
-    let path = config_path().ok_or_else(|| anyhow::anyhow!("Could not determine config directory"))?;
+    let path =
+        config_path().ok_or_else(|| anyhow::anyhow!("Could not determine config directory"))?;
 
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;

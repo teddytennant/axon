@@ -294,7 +294,10 @@ impl TaskQueue {
 
             info!(
                 "Task {} failed (attempt {}/{}), re-enqueued: {}",
-                task_id, record.attempts, record.max_retries + 1, error
+                task_id,
+                record.attempts,
+                record.max_retries + 1,
+                error
             );
             Ok(true)
         } else {
@@ -331,7 +334,9 @@ impl TaskQueue {
 
             info!(
                 "Task {} timed out (attempt {}/{}), re-enqueued",
-                task_id, record.attempts, record.max_retries + 1
+                task_id,
+                record.attempts,
+                record.max_retries + 1
             );
             Ok(true)
         } else {
@@ -404,8 +409,7 @@ impl TaskQueue {
 
                 record.state = TaskState::Pending;
                 record.updated_at = now;
-                self.tasks
-                    .insert(&key, bincode::serialize(&record)?)?;
+                self.tasks.insert(&key, bincode::serialize(&record)?)?;
 
                 let pkey = pending_key(self.next_seq(), task_id);
                 self.pending.insert(&pkey, task_id.as_bytes())?;

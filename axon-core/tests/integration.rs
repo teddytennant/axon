@@ -1,8 +1,8 @@
+use async_trait::async_trait;
 use axon_core::{
     Agent, AgentError, Capability, Identity, Message, PeerInfo, PeerTable, Runtime, TaskQueue,
     TaskQueueConfig, TaskRequest, TaskResponse, TaskState, TaskStatus, Transport,
 };
-use async_trait::async_trait;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -642,14 +642,21 @@ async fn tls_identity_derived_certs_work() {
     let t2_handle = tokio::spawn(async move {
         let conn = t2.accept().await.unwrap();
         let msg = Transport::recv(&conn).await.unwrap();
-        Transport::send(&conn, &Message::Pong { nonce: 42 }).await.unwrap();
+        Transport::send(&conn, &Message::Pong { nonce: 42 })
+            .await
+            .unwrap();
         let _ = done_rx.await;
         msg
     });
 
     // connect_verified checks both TLS cert and identity handshake
-    let conn = t1.connect_verified(t2_addr, &id2.public_key_bytes()).await.unwrap();
-    Transport::send(&conn, &Message::Ping { nonce: 42 }).await.unwrap();
+    let conn = t1
+        .connect_verified(t2_addr, &id2.public_key_bytes())
+        .await
+        .unwrap();
+    Transport::send(&conn, &Message::Ping { nonce: 42 })
+        .await
+        .unwrap();
 
     let resp = Transport::recv(&conn).await.unwrap();
     match resp {

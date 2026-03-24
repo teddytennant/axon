@@ -106,8 +106,8 @@ impl Identity {
 
         let mut pk_bytes = [0u8; 32];
         pk_bytes.copy_from_slice(public_key);
-        let verifying_key = VerifyingKey::from_bytes(&pk_bytes)
-            .map_err(|_| IdentityError::VerificationFailed)?;
+        let verifying_key =
+            VerifyingKey::from_bytes(&pk_bytes).map_err(|_| IdentityError::VerificationFailed)?;
 
         let mut sig_bytes = [0u8; 64];
         sig_bytes.copy_from_slice(signature);
