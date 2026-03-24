@@ -82,6 +82,10 @@ enum Commands {
         /// Model name (defaults per provider)
         #[arg(long, default_value = "")]
         model: String,
+
+        /// Enable health check TCP endpoint on this port (e.g., 4243)
+        #[arg(long)]
+        health_port: Option<u16>,
     },
 
     /// Show node status
@@ -133,6 +137,7 @@ async fn main() -> anyhow::Result<()> {
             llm_endpoint,
             api_key,
             model,
+            health_port,
         } => {
             // Load config file, then overlay CLI flags
             let file_config = config::load_config();
@@ -200,7 +205,9 @@ async fn main() -> anyhow::Result<()> {
                 &effective_model,
             )?;
 
-            run_node(effective_listen, effective_peers, effective_headless, llm_provider).await?;
+            let effective_health_port = health_port.or(file_config.node.health_port);
+
+            run_node(effective_listen, effective_peers, effective_headless, llm_provider, effective_health_port).await?;
         }
         Commands::Status => {
             println!("axon mesh node status");
@@ -293,6 +300,7 @@ async fn run_node(
     bootstrap_peers: Vec<SocketAddr>,
     headless: bool,
     llm_provider: Box<dyn providers::LlmProvider>,
+    health_port: Option<u16>,
 ) -> anyhow::Result<()> {
     let identity = Identity::load_or_generate(&Identity::default_path())?;
     let peer_id_hex = identity.peer_id_hex();
@@ -681,6 +689,78 @@ async fn run_node(
             }
         }
     });
+
+    // Spawn health check TCP endpoint if configured.
+    if let Some(port) = health_port {
+        let health_metrics = metrics.clone();
+        let health_pt = peer_table.clone();
+        let health_peer_id = peer_id_hex.clone();
+        let health_queue = task_queue.clone();
+        let mut health_shutdown = shutdown_tx.subscribe();
+
+        tokio::spawn(async move {
+            let bind_addr: SocketAddr = ([0, 0, 0, 0], port).into();
+            let listener = match tokio::net::TcpListener::bind(bind_addr).await {
+                Ok(l) => l,
+                Err(e) => {
+                    error!("Failed to bind health check on port {}: {}", port, e);
+                    return;
+                }
+            };
+            info!("Health check listening on port {}", port);
+
+            loop {
+                tokio::select! {
+                    result = listener.accept() => {
+                        if let Ok((mut stream, _)) = result {
+                            let uptime = health_metrics.uptime_secs();
+                            let tasks = health_metrics.tasks_processed.load(Ordering::Relaxed);
+                            let failed = health_metrics.tasks_failed.load(Ordering::Relaxed);
+                            let msgs_in = health_metrics.messages_received.load(Ordering::Relaxed);
+                            let msgs_out = health_metrics.messages_sent.load(Ordering::Relaxed);
+                            let peer_count = health_pt.read().await.len();
+                            let (q_pending, q_total) = health_queue.stats()
+                                .map(|s| (s.pending, s.total()))
+                                .unwrap_or((0, 0));
+
+                            let json = format!(
+                                concat!(
+                                    "{{",
+                                    "\"status\":\"healthy\",",
+                                    "\"peer_id\":\"{}\",",
+                                    "\"uptime_secs\":{},",
+                                    "\"tasks_processed\":{},",
+                                    "\"tasks_failed\":{},",
+                                    "\"messages_received\":{},",
+                                    "\"messages_sent\":{},",
+                                    "\"peers\":{},",
+                                    "\"queue_pending\":{},",
+                                    "\"queue_total\":{}",
+                                    "}}\n"
+                                ),
+                                health_peer_id, uptime, tasks, failed, msgs_in, msgs_out,
+                                peer_count, q_pending, q_total,
+                            );
+
+                            let _ = tokio::io::AsyncWriteExt::write_all(
+                                &mut stream,
+                                json.as_bytes(),
+                            ).await;
+                        }
+                    }
+                    _ = health_shutdown.recv() => {
+                        info!("Health check shutting down");
+                        break;
+                    }
+                }
+            }
+        });
+
+        {
+            let mut state = dashboard_state.write().await;
+            state.add_log(format!("Health check enabled on port {}", port));
+        }
+    }
 
     if headless {
         info!("Running in headless mode. Press Ctrl+C to stop.");
