@@ -15,8 +15,9 @@ pub use discovery::PeerTable;
 pub use gossip::{broadcast_tool_catalog, send_tool_catalog, GossipConfig, LocalToolCatalog};
 pub use identity::Identity;
 pub use mcp::{
-    McpBridge, McpBridgeAgent, McpClient, McpClientError, McpServerConfig, McpToolSchema,
-    ToolFilter, ToolRegistry, ToolSearchResult,
+    BudgetSearchResult, CompactToolSchema, McpBridge, McpBridgeAgent, McpClient, McpClientError,
+    McpServerConfig, McpToolSchema, SchemaDetail, SummaryToolSchema, ToolFilter, ToolRegistry,
+    ToolSearchResult,
 };
 pub use mdns::{DiscoveryEvent, MdnsDiscovery};
 pub use protocol::{

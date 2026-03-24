@@ -108,10 +108,18 @@ pub enum Message {
         query: String,
         server_filter: Option<String>,
         limit: u32,
+        /// Maximum token budget for results. 0 = unlimited.
+        max_tokens: u32,
+        /// Schema detail level: 0=Full, 1=Summary, 2=Compact.
+        detail: u8,
     },
     /// Response to a ToolQuery with matching tools and relevance scores.
     ToolQueryResponse {
         tools: Vec<ToolQueryResult>,
+        /// Total tokens consumed by returned tools.
+        total_tokens: u32,
+        /// Whether results were truncated due to budget or limit.
+        truncated: bool,
     },
 }
 
@@ -345,6 +353,8 @@ mod tests {
             query: "read file".to_string(),
             server_filter: Some("filesystem".to_string()),
             limit: 5,
+            max_tokens: 2000,
+            detail: 1,
         };
         let encoded = msg.encode().unwrap();
         let decoded = Message::decode(&encoded).unwrap();
@@ -353,10 +363,14 @@ mod tests {
                 query,
                 server_filter,
                 limit,
+                max_tokens,
+                detail,
             } => {
                 assert_eq!(query, "read file");
                 assert_eq!(server_filter, Some("filesystem".to_string()));
                 assert_eq!(limit, 5);
+                assert_eq!(max_tokens, 2000);
+                assert_eq!(detail, 1);
             }
             _ => panic!("wrong message type"),
         }
@@ -368,6 +382,8 @@ mod tests {
             query: "anything".to_string(),
             server_filter: None,
             limit: 10,
+            max_tokens: 0,
+            detail: 0,
         };
         let encoded = msg.encode().unwrap();
         let decoded = Message::decode(&encoded).unwrap();
@@ -375,10 +391,14 @@ mod tests {
             Message::ToolQuery {
                 server_filter,
                 limit,
+                max_tokens,
+                detail,
                 ..
             } => {
                 assert!(server_filter.is_none());
                 assert_eq!(limit, 10);
+                assert_eq!(max_tokens, 0);
+                assert_eq!(detail, 0);
             }
             _ => panic!("wrong message type"),
         }
@@ -399,15 +419,23 @@ mod tests {
         };
         let msg = Message::ToolQueryResponse {
             tools: vec![result],
+            total_tokens: 150,
+            truncated: true,
         };
         let encoded = msg.encode().unwrap();
         let decoded = Message::decode(&encoded).unwrap();
         match decoded {
-            Message::ToolQueryResponse { tools } => {
+            Message::ToolQueryResponse {
+                tools,
+                total_tokens,
+                truncated,
+            } => {
                 assert_eq!(tools.len(), 1);
                 assert_eq!(tools[0].tool.name, "search_code");
                 assert!((tools[0].score - 0.95).abs() < f64::EPSILON);
                 assert_eq!(tools[0].peer_id, vec![1, 2, 3]);
+                assert_eq!(total_tokens, 150);
+                assert!(truncated);
             }
             _ => panic!("wrong message type"),
         }

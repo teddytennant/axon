@@ -7,4 +7,7 @@ pub mod schema;
 pub use bridge::{McpBridge, McpBridgeAgent};
 pub use client::{McpClient, McpClientError, McpServerConfig};
 pub use registry::ToolRegistry;
-pub use schema::{McpToolSchema, ToolFilter, ToolSearchResult};
+pub use schema::{
+    BudgetSearchResult, CompactToolSchema, McpToolSchema, SchemaDetail, SummaryToolSchema,
+    ToolFilter, ToolSearchResult,
+};
