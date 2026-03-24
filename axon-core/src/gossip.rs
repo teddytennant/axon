@@ -73,7 +73,7 @@ pub async fn run_gossip(
             1
         };
         let eviction_every = eviction_every.max(1);
-        if gossip_tick % eviction_every == 0 {
+        if gossip_tick.is_multiple_of(eviction_every) {
             let mut table = peer_table.write().await;
             table.touch_local();
             let evicted = table.evict_stale();

@@ -228,7 +228,7 @@ impl TaskQueue {
         self.tasks.insert(task_id.as_bytes(), value)?;
 
         let pkey = pending_key(self.next_seq(), task_id);
-        self.pending.insert(&pkey, task_id.as_bytes())?;
+        self.pending.insert(pkey, task_id.as_bytes())?;
 
         debug!(
             "Enqueued task {} ({})",
@@ -290,7 +290,7 @@ impl TaskQueue {
                 .insert(task_id.as_bytes(), bincode::serialize(&record)?)?;
 
             let pkey = pending_key(self.next_seq(), task_id);
-            self.pending.insert(&pkey, task_id.as_bytes())?;
+            self.pending.insert(pkey, task_id.as_bytes())?;
 
             info!(
                 "Task {} failed (attempt {}/{}), re-enqueued: {}",
@@ -330,7 +330,7 @@ impl TaskQueue {
                 .insert(task_id.as_bytes(), bincode::serialize(&record)?)?;
 
             let pkey = pending_key(self.next_seq(), task_id);
-            self.pending.insert(&pkey, task_id.as_bytes())?;
+            self.pending.insert(pkey, task_id.as_bytes())?;
 
             info!(
                 "Task {} timed out (attempt {}/{}), re-enqueued",
@@ -412,7 +412,7 @@ impl TaskQueue {
                 self.tasks.insert(&key, bincode::serialize(&record)?)?;
 
                 let pkey = pending_key(self.next_seq(), task_id);
-                self.pending.insert(&pkey, task_id.as_bytes())?;
+                self.pending.insert(pkey, task_id.as_bytes())?;
 
                 recovered += 1;
                 info!(
