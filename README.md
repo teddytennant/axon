@@ -26,10 +26,12 @@ Current AI agent frameworks are centralized — a single orchestrator dispatches
 
 - **Identity** — Ed25519 keypairs for node authentication and message signing
 - **Transport** — QUIC via `quinn` for multiplexed, encrypted peer communication
-- **Protocol** — Binary message format (bincode) with Ping/Pong, Announce, Discover, TaskRequest/TaskResponse, Gossip, StateSync
+- **Protocol** — Binary message format (bincode) with Ping/Pong, Announce, Discover, TaskRequest/TaskResponse, Gossip, StateSync, Negotiation (TaskOffer/TaskBid/BidAccept/BidReject), and MCP tool messages
 - **Discovery** — mDNS for LAN, gossip protocol for mesh-wide peer propagation
-- **Router** — Capability-based routing with BestMatch, RoundRobin, and Broadcast strategies
+- **Router** — Capability-based routing with BestMatch, RoundRobin, Broadcast, and Negotiate strategies
+- **Negotiation** — Agent-to-agent task bidding protocol with configurable scoring (latency, load, confidence), pluggable bidding strategies, and automatic bid collection with deadlines
 - **Runtime** — Async agent executor with pluggable Agent trait
+- **MCP Gateway** — `axon serve-mcp` exposes aggregated MCP tools on stdio; `--mesh` joins the mesh and serves remote tools via gossip discovery with budget-constrained tool selection
 - **CRDTs** — GCounter, LWWRegister, ORSet for eventually-consistent shared state
 
 ## Quick Start
@@ -110,7 +112,7 @@ impl Agent for MyAgent {
 # NixOS
 nix-shell -p gcc pkg-config openssl --run "cargo build --release"
 
-# Run tests (101 tests)
+# Run tests (360 tests)
 nix-shell -p gcc pkg-config openssl --run "cargo test"
 ```
 

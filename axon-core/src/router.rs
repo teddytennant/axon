@@ -10,6 +10,10 @@ pub enum Strategy {
     RoundRobin,
     /// Broadcast to all matching peers.
     Broadcast,
+    /// Negotiate: solicit bids from all capable peers, then pick the winner.
+    /// `route()` returns all capable peers (same as Broadcast); the caller
+    /// sends TaskOffer to each and uses [`Negotiator`] to select a winner.
+    Negotiate,
 }
 
 /// Tracks peer performance for routing decisions.
@@ -155,6 +159,7 @@ impl Router {
                 vec![chosen]
             }
             Strategy::Broadcast => capable,
+            Strategy::Negotiate => capable, // all peers get the TaskOffer
         }
     }
 
@@ -403,6 +408,19 @@ mod tests {
     fn router_get_stats_unknown_peer() {
         let r = Router::new(Strategy::BestMatch);
         assert!(r.get_stats(&[99]).is_none());
+    }
+
+    #[test]
+    fn router_route_negotiate_returns_all_capable() {
+        let mut r = Router::new(Strategy::Negotiate);
+        let cap = Capability::new("llm", "chat", 1);
+        r.update_peer(make_peer(1, vec![cap.clone()]));
+        r.update_peer(make_peer(2, vec![cap.clone()]));
+        r.update_peer(make_peer(3, vec![Capability::new("code", "review", 1)]));
+
+        let result = r.route(&cap);
+        // Should return both llm:chat peers (for sending TaskOffer to each)
+        assert_eq!(result.len(), 2);
     }
 
     #[test]

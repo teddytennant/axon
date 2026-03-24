@@ -103,6 +103,37 @@ pub enum Message {
         peer_id: Vec<u8>,
         tools: Vec<McpToolSchema>,
     },
+    /// Broadcast a task offer to solicit bids from capable peers.
+    /// Part of the negotiation protocol: Offer → Bid → Accept/Reject.
+    TaskOffer {
+        request_id: Uuid,
+        capability: Capability,
+        /// Hint about payload size (bytes) so peers can estimate cost.
+        payload_hint: u64,
+        /// Milliseconds peers have to submit bids.
+        bid_deadline_ms: u64,
+    },
+    /// A peer's bid in response to a TaskOffer.
+    TaskBid {
+        request_id: Uuid,
+        peer_id: Vec<u8>,
+        /// Estimated time to complete the task (ms).
+        estimated_latency_ms: u64,
+        /// Current load factor: 0.0 = idle, 1.0 = fully loaded.
+        load_factor: f64,
+        /// Confidence this peer can handle the task: 0.0–1.0.
+        confidence: f64,
+    },
+    /// Accept a bid — the winner should expect a TaskRequest to follow.
+    BidAccept {
+        request_id: Uuid,
+        winner_peer_id: Vec<u8>,
+    },
+    /// Reject a bid — the peer lost the auction.
+    BidReject {
+        request_id: Uuid,
+    },
+
     /// Query the mesh for MCP tools matching a search filter.
     ToolQuery {
         query: String,
@@ -452,6 +483,99 @@ mod tests {
         match decoded {
             Message::ToolCatalog { tools, .. } => {
                 assert!(tools.is_empty());
+            }
+            _ => panic!("wrong message type"),
+        }
+    }
+
+    #[test]
+    fn message_roundtrip_task_offer() {
+        let id = Uuid::new_v4();
+        let msg = Message::TaskOffer {
+            request_id: id,
+            capability: Capability::new("llm", "chat", 1),
+            payload_hint: 4096,
+            bid_deadline_ms: 500,
+        };
+        let encoded = msg.encode().unwrap();
+        let decoded = Message::decode(&encoded).unwrap();
+        match decoded {
+            Message::TaskOffer {
+                request_id,
+                capability,
+                payload_hint,
+                bid_deadline_ms,
+            } => {
+                assert_eq!(request_id, id);
+                assert_eq!(capability.namespace, "llm");
+                assert_eq!(capability.name, "chat");
+                assert_eq!(payload_hint, 4096);
+                assert_eq!(bid_deadline_ms, 500);
+            }
+            _ => panic!("wrong message type"),
+        }
+    }
+
+    #[test]
+    fn message_roundtrip_task_bid() {
+        let id = Uuid::new_v4();
+        let msg = Message::TaskBid {
+            request_id: id,
+            peer_id: vec![0xAA, 0xBB, 0xCC],
+            estimated_latency_ms: 250,
+            load_factor: 0.35,
+            confidence: 0.92,
+        };
+        let encoded = msg.encode().unwrap();
+        let decoded = Message::decode(&encoded).unwrap();
+        match decoded {
+            Message::TaskBid {
+                request_id,
+                peer_id,
+                estimated_latency_ms,
+                load_factor,
+                confidence,
+            } => {
+                assert_eq!(request_id, id);
+                assert_eq!(peer_id, vec![0xAA, 0xBB, 0xCC]);
+                assert_eq!(estimated_latency_ms, 250);
+                assert!((load_factor - 0.35).abs() < f64::EPSILON);
+                assert!((confidence - 0.92).abs() < f64::EPSILON);
+            }
+            _ => panic!("wrong message type"),
+        }
+    }
+
+    #[test]
+    fn message_roundtrip_bid_accept() {
+        let id = Uuid::new_v4();
+        let msg = Message::BidAccept {
+            request_id: id,
+            winner_peer_id: vec![1, 2, 3],
+        };
+        let encoded = msg.encode().unwrap();
+        let decoded = Message::decode(&encoded).unwrap();
+        match decoded {
+            Message::BidAccept {
+                request_id,
+                winner_peer_id,
+            } => {
+                assert_eq!(request_id, id);
+                assert_eq!(winner_peer_id, vec![1, 2, 3]);
+            }
+            _ => panic!("wrong message type"),
+        }
+    }
+
+    #[test]
+    fn message_roundtrip_bid_reject() {
+        let id = Uuid::new_v4();
+        let msg = Message::BidReject { request_id: id };
+        let encoded = msg.encode().unwrap();
+        let decoded = Message::decode(&encoded).unwrap();
+        match decoded {
+            Message::BidReject { request_id } => {
+                assert_eq!(request_id, id);
             }
             _ => panic!("wrong message type"),
         }
