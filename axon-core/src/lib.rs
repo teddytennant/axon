@@ -16,8 +16,8 @@ pub use gossip::{broadcast_tool_catalog, send_tool_catalog, GossipConfig, LocalT
 pub use identity::Identity;
 pub use mcp::{
     BudgetSearchResult, CompactToolSchema, McpBridge, McpBridgeAgent, McpClient, McpClientError,
-    McpServerConfig, McpToolSchema, SchemaDetail, SummaryToolSchema, ToolFilter, ToolRegistry,
-    ToolSearchResult,
+    McpServerConfig, McpStdioServer, McpToolSchema, SchemaDetail, SummaryToolSchema, ToolFilter,
+    ToolRegistry, ToolSearchResult,
 };
 pub use mdns::{DiscoveryEvent, MdnsDiscovery};
 pub use protocol::{
@@ -26,4 +26,4 @@ pub use protocol::{
 pub use router::{Router, Strategy};
 pub use runtime::{Agent, AgentError, Runtime};
 pub use taskqueue::{QueueError, QueueStats, TaskQueue, TaskQueueConfig, TaskRecord, TaskState};
-pub use transport::Transport;
+pub use transport::{extract_peer_cert_pubkey, Transport};

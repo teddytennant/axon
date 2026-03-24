@@ -7,6 +7,17 @@ use thiserror::Error;
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
+/// Extract the Ed25519 public key from a QUIC connection's peer certificate.
+///
+/// Works for both client-side (server cert) and server-side (client cert)
+/// verification after mutual TLS handshake.
+pub fn extract_peer_cert_pubkey(conn: &Connection) -> Option<[u8; 32]> {
+    let peer_identity = conn.peer_identity()?;
+    let certs = peer_identity.downcast_ref::<Vec<rustls::pki_types::CertificateDer<'static>>>()?;
+    let cert = certs.first()?;
+    extract_ed25519_pubkey_from_cert(cert.as_ref())
+}
+
 /// Size of an Ed25519 public key in bytes.
 const ED25519_PUBKEY_LEN: usize = 32;
 
@@ -85,14 +96,14 @@ pub enum TransportError {
 /// Maximum message size: 16 MB.
 const MAX_MESSAGE_SIZE: usize = 16 * 1024 * 1024;
 
-/// QUIC-based transport layer for the mesh.
+/// QUIC-based transport layer for the mesh with mutual TLS.
 ///
 /// TLS certificates are derived from the node's Ed25519 identity key, so the
-/// certificate's public key IS the peer ID.  TLS handshake signatures are
-/// cryptographically verified (via `MeshCertVerifier`), proving the remote
+/// certificate's public key IS the peer ID.  Both sides present certificates
+/// and TLS handshake signatures are cryptographically verified, proving each
 /// peer holds the private key for the advertised identity.  An additional
-/// application-level identity handshake exchanges raw Ed25519 public keys as
-/// a belt-and-suspenders check.
+/// application-level identity handshake exchanges raw Ed25519 public keys and
+/// cross-checks them against the TLS certificates for defense in depth.
 pub struct Transport {
     endpoint: Endpoint,
     connections: Arc<Mutex<std::collections::HashMap<SocketAddr, Connection>>>,
@@ -165,23 +176,14 @@ impl Transport {
 
         // TLS-level verification: extract the public key from the peer's
         // certificate and check it matches the expected identity.
-        if let Some(peer_identity) = conn.peer_identity() {
-            if let Some(certs) =
-                peer_identity.downcast_ref::<Vec<rustls::pki_types::CertificateDer<'static>>>()
-            {
-                if let Some(cert) = certs.first() {
-                    if let Some(cert_pubkey) = extract_ed25519_pubkey_from_cert(cert.as_ref()) {
-                        if cert_pubkey.as_slice() != expected_peer_id {
-                            conn.close(1u32.into(), b"TLS cert identity mismatch");
-                            return Err(TransportError::PeerVerificationFailed(
-                                "TLS certificate public key does not match expected peer ID"
-                                    .to_string(),
-                            ));
-                        }
-                        debug!("TLS certificate identity verified for peer at {}", addr);
-                    }
-                }
+        if let Some(cert_pubkey) = extract_peer_cert_pubkey(&conn) {
+            if cert_pubkey.as_slice() != expected_peer_id {
+                conn.close(1u32.into(), b"TLS cert identity mismatch");
+                return Err(TransportError::PeerVerificationFailed(
+                    "TLS certificate public key does not match expected peer ID".to_string(),
+                ));
             }
+            debug!("TLS certificate identity verified for peer at {}", addr);
         }
 
         // Application-level identity handshake: send ours, verify theirs.
@@ -203,9 +205,11 @@ impl Transport {
         Ok(conn)
     }
 
-    /// Accept an incoming connection. Performs the identity handshake: sends
-    /// our Ed25519 public key and reads the remote peer's key. The remote key
-    /// is logged but not verified (use `accept_verified` for strict checks).
+    /// Accept an incoming connection with mutual TLS. Performs the identity
+    /// handshake: sends our Ed25519 public key and reads the remote peer's key.
+    /// Cross-checks the client's TLS certificate public key against the identity
+    /// handshake key — rejects connections where the two don't match (indicates
+    /// the peer is lying about its identity).
     pub async fn accept(&self) -> Option<Connection> {
         let incoming = self.endpoint.accept().await?;
         match incoming.await {
@@ -217,18 +221,29 @@ impl Transport {
                     warn!("Failed to send identity to {}: {}", addr, e);
                     return None;
                 }
-                match Self::recv_identity(&conn).await {
-                    Ok(remote_key) => {
-                        debug!(
-                            "Peer at {} presented identity {:02x?}...",
-                            addr,
-                            &remote_key[..4.min(remote_key.len())]
-                        );
-                    }
+                let remote_key = match Self::recv_identity(&conn).await {
+                    Ok(key) => key,
                     Err(e) => {
                         warn!("Failed to receive identity from {}: {}", addr, e);
                         return None;
                     }
+                };
+
+                // Cross-check: client's TLS cert pubkey must match identity
+                // handshake key. With mutual TLS the client always presents a
+                // cert, so we can verify consistency between the two layers.
+                if let Some(cert_pubkey) = extract_peer_cert_pubkey(&conn) {
+                    if cert_pubkey.as_slice() != remote_key.as_slice() {
+                        warn!(
+                            "Client cert/identity mismatch for {}: cert={:02x?}... handshake={:02x?}...",
+                            addr,
+                            &cert_pubkey[..4],
+                            &remote_key[..4.min(remote_key.len())]
+                        );
+                        conn.close(1u32.into(), b"cert/identity mismatch");
+                        return None;
+                    }
+                    debug!("Client mutual TLS verified for peer at {}", addr);
                 }
 
                 let mut conns = self.connections.lock().await;
@@ -245,7 +260,9 @@ impl Transport {
 
     /// Accept an incoming connection and verify the remote peer's identity.
     /// Returns the connection and the remote peer's public key. If
-    /// `expected_peer_id` is `Some`, the remote key is checked against it.
+    /// `expected_peer_id` is `Some`, the remote key is checked against it
+    /// at both the TLS layer (client cert) and application layer (identity
+    /// handshake). The two layers are also cross-checked against each other.
     pub async fn accept_verified(
         &self,
         expected_peer_id: Option<&[u8]>,
@@ -258,9 +275,36 @@ impl Transport {
         let conn = incoming.await?;
         let addr = conn.remote_address();
 
+        // TLS-level verification: extract client cert public key.
+        if let Some(cert_pubkey) = extract_peer_cert_pubkey(&conn) {
+            if let Some(expected) = expected_peer_id {
+                if cert_pubkey.as_slice() != expected {
+                    conn.close(1u32.into(), b"TLS cert identity mismatch");
+                    return Err(TransportError::PeerVerificationFailed(
+                        "Client TLS certificate public key does not match expected peer ID"
+                            .to_string(),
+                    ));
+                }
+            }
+            debug!(
+                "Client TLS certificate identity verified for peer at {}",
+                addr
+            );
+        }
+
         // Identity handshake: send ours, verify theirs.
         Self::send_identity(&conn, &self.local_public_key).await?;
         let remote_key = Self::recv_identity(&conn).await?;
+
+        // Cross-check: cert pubkey must match identity handshake key.
+        if let Some(cert_pubkey) = extract_peer_cert_pubkey(&conn) {
+            if cert_pubkey.as_slice() != remote_key.as_slice() {
+                conn.close(1u32.into(), b"cert/identity mismatch");
+                return Err(TransportError::PeerVerificationFailed(
+                    "Client cert pubkey does not match identity handshake".to_string(),
+                ));
+            }
+        }
 
         if let Some(expected) = expected_peer_id {
             if remote_key != expected {
@@ -378,16 +422,26 @@ impl Transport {
         let key_der = rustls::pki_types::PrivateKeyDer::try_from(key_pair.serialize_der())
             .map_err(|e| TransportError::Rustls(rustls::Error::General(e.to_string())))?;
 
-        // Server config
-        let server_config =
-            ServerConfig::with_single_cert(vec![cert_der.clone()], key_der.clone_key())?;
+        // Server config — requires client certificates (mutual TLS).
+        // MeshClientCertVerifier accepts self-signed certs but cryptographically
+        // verifies TLS handshake signatures, proving the client holds the private
+        // key for the certificate it presents.
+        let server_crypto = rustls::ServerConfig::builder()
+            .with_client_cert_verifier(Arc::new(MeshClientCertVerifier::new()))
+            .with_single_cert(vec![cert_der.clone()], key_der.clone_key())?;
 
-        // Client config — self-signed certs are accepted, but TLS handshake
-        // signatures are cryptographically verified (not skipped).
+        let server_config = ServerConfig::with_crypto(Arc::new(
+            quinn::crypto::rustls::QuicServerConfig::try_from(server_crypto)
+                .map_err(|e| TransportError::Rustls(rustls::Error::General(e.to_string())))?,
+        ));
+
+        // Client config — presents our identity-derived certificate for mutual TLS.
+        // Self-signed server certs are accepted, but TLS handshake signatures are
+        // cryptographically verified (not skipped).
         let client_crypto = rustls::ClientConfig::builder()
             .dangerous()
             .with_custom_certificate_verifier(Arc::new(MeshCertVerifier::new()))
-            .with_no_client_auth();
+            .with_client_auth_cert(vec![cert_der], key_der)?;
 
         let client_config = ClientConfig::new(Arc::new(
             quinn::crypto::rustls::QuicClientConfig::try_from(client_crypto)
@@ -398,7 +452,7 @@ impl Transport {
     }
 }
 
-/// Certificate verifier for the axon mesh.
+/// Certificate verifier for the axon mesh (client-side, verifies server certs).
 ///
 /// Self-signed certificates are accepted (no CA chain verification), but TLS
 /// handshake signatures are cryptographically verified using the ring crypto
@@ -462,10 +516,86 @@ impl rustls::client::danger::ServerCertVerifier for MeshCertVerifier {
     }
 }
 
+/// Client certificate verifier for the axon mesh (server-side, verifies client certs).
+///
+/// Requires clients to present a certificate during TLS handshake (mutual TLS).
+/// Self-signed certificates are accepted (no CA chain verification), but TLS
+/// handshake signatures are cryptographically verified. This proves the connecting
+/// client holds the private key for the certificate it presents.
+///
+/// Combined with identity-derived certificates, this means both sides of every
+/// connection prove they hold their advertised identity keys at the TLS layer,
+/// before any application-level handshake occurs.
+#[derive(Debug)]
+struct MeshClientCertVerifier {
+    supported_algs: rustls::crypto::WebPkiSupportedAlgorithms,
+    subjects: Vec<rustls::DistinguishedName>,
+}
+
+impl MeshClientCertVerifier {
+    fn new() -> Self {
+        Self {
+            supported_algs: rustls::crypto::ring::default_provider()
+                .signature_verification_algorithms,
+            subjects: Vec::new(),
+        }
+    }
+}
+
+impl rustls::server::danger::ClientCertVerifier for MeshClientCertVerifier {
+    fn offer_client_auth(&self) -> bool {
+        true
+    }
+
+    fn client_auth_mandatory(&self) -> bool {
+        true
+    }
+
+    fn root_hint_subjects(&self) -> &[rustls::DistinguishedName] {
+        // No CA hints — mesh uses self-signed certificates.
+        &self.subjects
+    }
+
+    fn verify_client_cert(
+        &self,
+        _end_entity: &rustls::pki_types::CertificateDer<'_>,
+        _intermediates: &[rustls::pki_types::CertificateDer<'_>],
+        _now: rustls::pki_types::UnixTime,
+    ) -> Result<rustls::server::danger::ClientCertVerified, rustls::Error> {
+        // Accept self-signed certificates — there is no CA in the mesh.
+        // Identity verification happens post-handshake by cross-checking
+        // the cert's public key against the identity handshake.
+        Ok(rustls::server::danger::ClientCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &rustls::pki_types::CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        rustls::crypto::verify_tls12_signature(message, cert, dss, &self.supported_algs)
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &rustls::pki_types::CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        rustls::crypto::verify_tls13_signature(message, cert, dss, &self.supported_algs)
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+        self.supported_algs.supported_schemes()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use rustls::client::danger::ServerCertVerifier;
+    use rustls::server::danger::ClientCertVerifier;
 
     /// Helper: create an rcgen KeyPair from an Identity using PKCS#8 DER.
     fn keypair_from_identity(id: &Identity) -> rcgen::KeyPair {
@@ -713,5 +843,175 @@ mod tests {
             Message::Ping { nonce } => assert_eq!(nonce, 99),
             _ => panic!("expected ping"),
         }
+    }
+
+    // --- Mutual TLS tests ---
+
+    #[test]
+    fn mesh_client_cert_verifier_offers_client_auth() {
+        let v = MeshClientCertVerifier::new();
+        assert!(v.offer_client_auth());
+        assert!(v.client_auth_mandatory());
+    }
+
+    #[test]
+    fn mesh_client_cert_verifier_no_root_hints() {
+        let v = MeshClientCertVerifier::new();
+        assert!(v.root_hint_subjects().is_empty());
+    }
+
+    #[test]
+    fn mesh_client_cert_verifier_supported_schemes_not_empty() {
+        let v = MeshClientCertVerifier::new();
+        let schemes = v.supported_verify_schemes();
+        assert!(!schemes.is_empty());
+        assert!(schemes.contains(&rustls::SignatureScheme::ED25519));
+    }
+
+    #[test]
+    fn mesh_client_cert_verifier_accepts_self_signed() {
+        let v = MeshClientCertVerifier::new();
+        let identity = Identity::generate();
+        let kp = keypair_from_identity(&identity);
+        let params = rcgen::CertificateParams::new(vec!["axon".to_string()]).unwrap();
+        let cert = params.self_signed(&kp).unwrap();
+        let cert_der = rustls::pki_types::CertificateDer::from(cert.der().to_vec());
+
+        let result = v.verify_client_cert(&cert_der, &[], rustls::pki_types::UnixTime::now());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn mutual_tls_config_generation_succeeds() {
+        let identity = Identity::generate();
+        let result = Transport::make_tls_configs(&identity);
+        assert!(
+            result.is_ok(),
+            "Mutual TLS config generation should succeed: {:?}",
+            result.err()
+        );
+    }
+
+    #[tokio::test]
+    async fn mutual_tls_connect_and_exchange() {
+        // Both sides present certificates and verify each other.
+        let id1 = Identity::generate();
+        let id2 = Identity::generate();
+
+        let t1 = Transport::bind("127.0.0.1:0".parse().unwrap(), &id1)
+            .await
+            .unwrap();
+        let t2 = Transport::bind("127.0.0.1:0".parse().unwrap(), &id2)
+            .await
+            .unwrap();
+
+        let t2_addr = t2.local_addr().unwrap();
+
+        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+
+        let recv_handle = tokio::spawn(async move {
+            let conn = t2.accept().await.unwrap();
+            // With mutual TLS, we can extract the client's cert pubkey
+            let client_pubkey = extract_peer_cert_pubkey(&conn);
+            assert!(client_pubkey.is_some(), "should see client cert with mTLS");
+            assert_eq!(
+                client_pubkey.unwrap().as_slice(),
+                id1.public_key_bytes().as_slice(),
+                "client cert should contain client's identity"
+            );
+            let msg = Transport::recv(&conn).await.unwrap();
+            let _ = rx.await;
+            msg
+        });
+
+        let conn = t1.connect(t2_addr).await.unwrap();
+
+        // With mutual TLS, the server's cert is also available
+        let server_pubkey = extract_peer_cert_pubkey(&conn);
+        assert!(server_pubkey.is_some(), "should see server cert with mTLS");
+        assert_eq!(
+            server_pubkey.unwrap().as_slice(),
+            id2.public_key_bytes().as_slice(),
+            "server cert should contain server's identity"
+        );
+
+        Transport::send(&conn, &Message::Ping { nonce: 88 })
+            .await
+            .unwrap();
+
+        let _ = tx.send(());
+        let received = recv_handle.await.unwrap();
+        match received {
+            Message::Ping { nonce } => assert_eq!(nonce, 88),
+            _ => panic!("wrong message type"),
+        }
+    }
+
+    #[tokio::test]
+    async fn mutual_tls_verified_both_sides() {
+        // Full verification: both sides check expected peer IDs at TLS + app layer.
+        let id1 = Identity::generate();
+        let id2 = Identity::generate();
+        let id1_pubkey = id1.public_key_bytes();
+        let id2_pubkey = id2.public_key_bytes();
+
+        let t1 = Transport::bind("127.0.0.1:0".parse().unwrap(), &id1)
+            .await
+            .unwrap();
+        let t2 = Transport::bind("127.0.0.1:0".parse().unwrap(), &id2)
+            .await
+            .unwrap();
+
+        let t2_addr = t2.local_addr().unwrap();
+
+        let (done_tx, done_rx) = tokio::sync::oneshot::channel::<()>();
+
+        let accept_handle = tokio::spawn(async move {
+            // Server verifies client's identity at both layers
+            let (conn, remote_key) = t2.accept_verified(Some(&id1_pubkey)).await.unwrap();
+            assert_eq!(remote_key, id1_pubkey);
+            let _ = done_rx.await;
+            conn
+        });
+
+        // Client verifies server's identity at both layers
+        let conn = t1.connect_verified(t2_addr, &id2_pubkey).await.unwrap();
+        Transport::send(&conn, &Message::Ping { nonce: 42 })
+            .await
+            .unwrap();
+
+        let _ = done_tx.send(());
+        let _ = accept_handle.await;
+    }
+
+    #[tokio::test]
+    async fn mutual_tls_accept_verified_rejects_wrong_peer() {
+        let id1 = Identity::generate();
+        let id2 = Identity::generate();
+        let id3 = Identity::generate(); // wrong expected identity
+
+        let t1 = Transport::bind("127.0.0.1:0".parse().unwrap(), &id1)
+            .await
+            .unwrap();
+        let t2 = Transport::bind("127.0.0.1:0".parse().unwrap(), &id2)
+            .await
+            .unwrap();
+
+        let t2_addr = t2.local_addr().unwrap();
+
+        let accept_handle = tokio::spawn(async move {
+            // Server expects id3 but client is id1 — should fail at TLS layer
+            let result = t2.accept_verified(Some(&id3.public_key_bytes())).await;
+            assert!(result.is_err());
+            match result.unwrap_err() {
+                TransportError::PeerVerificationFailed(_) => {} // expected
+                e => panic!("unexpected error: {:?}", e),
+            }
+        });
+
+        // Client connects (this may fail or succeed depending on timing)
+        let _ = t1.connect(t2_addr).await;
+
+        let _ = accept_handle.await;
     }
 }

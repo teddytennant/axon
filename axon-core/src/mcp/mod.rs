@@ -3,6 +3,7 @@ pub mod client;
 pub mod jsonrpc;
 pub mod registry;
 pub mod schema;
+pub mod server;
 
 pub use bridge::{McpBridge, McpBridgeAgent};
 pub use client::{McpClient, McpClientError, McpServerConfig};
@@ -11,3 +12,4 @@ pub use schema::{
     BudgetSearchResult, CompactToolSchema, McpToolSchema, SchemaDetail, SummaryToolSchema,
     ToolFilter, ToolSearchResult,
 };
+pub use server::McpStdioServer;
