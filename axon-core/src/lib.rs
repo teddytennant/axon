@@ -16,8 +16,8 @@ pub use gossip::{broadcast_tool_catalog, send_tool_catalog, GossipConfig, LocalT
 pub use identity::Identity;
 pub use mcp::{
     BudgetSearchResult, CompactToolSchema, McpBridge, McpBridgeAgent, McpClient, McpClientError,
-    McpServerConfig, McpStdioServer, McpToolSchema, SchemaDetail, SummaryToolSchema, ToolFilter,
-    ToolRegistry, ToolSearchResult,
+    McpServerConfig, McpStdioServer, McpToolSchema, MeshContext, SchemaDetail, SummaryToolSchema,
+    ToolFilter, ToolRegistry, ToolSearchResult,
 };
 pub use mdns::{DiscoveryEvent, MdnsDiscovery};
 pub use protocol::{

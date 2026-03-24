@@ -12,4 +12,4 @@ pub use schema::{
     BudgetSearchResult, CompactToolSchema, McpToolSchema, SchemaDetail, SummaryToolSchema,
     ToolFilter, ToolSearchResult,
 };
-pub use server::McpStdioServer;
+pub use server::{McpStdioServer, MeshContext};
