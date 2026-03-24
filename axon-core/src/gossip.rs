@@ -1,4 +1,5 @@
 use crate::discovery::PeerTable;
+use crate::mcp::McpToolSchema;
 use crate::protocol::Message;
 use crate::transport::Transport;
 use quinn::Connection;
@@ -14,6 +15,8 @@ pub struct GossipConfig {
     pub max_peers_per_gossip: usize,
     /// How often to evict stale peers (in seconds).
     pub eviction_interval_secs: u64,
+    /// How often to broadcast ToolCatalog (in gossip ticks). Default: 3 (~30s).
+    pub tool_catalog_interval_ticks: u64,
 }
 
 impl Default for GossipConfig {
@@ -22,16 +25,72 @@ impl Default for GossipConfig {
             interval_secs: 10,
             max_peers_per_gossip: 20,
             eviction_interval_secs: 30,
+            tool_catalog_interval_ticks: 3,
         }
     }
 }
 
-/// Runs the gossip protocol, periodically sharing peer lists with connected peers.
+/// Local MCP tool catalog for gossip propagation.
+/// When present, the gossip loop periodically broadcasts these tools to all peers.
+pub struct LocalToolCatalog {
+    pub peer_id: Vec<u8>,
+    pub tools: Vec<McpToolSchema>,
+}
+
+/// Send a ToolCatalog message to a single connection.
+pub async fn send_tool_catalog(
+    conn: &Connection,
+    peer_id: &[u8],
+    tools: &[McpToolSchema],
+) {
+    if tools.is_empty() {
+        return;
+    }
+    let msg = Message::ToolCatalog {
+        peer_id: peer_id.to_vec(),
+        tools: tools.to_vec(),
+    };
+    if let Err(e) = Transport::send(conn, &msg).await {
+        debug!(
+            "ToolCatalog send to {} failed: {}",
+            conn.remote_address(),
+            e
+        );
+    }
+}
+
+/// Broadcast a ToolCatalog message to all active connections.
+pub async fn broadcast_tool_catalog(
+    connections: &RwLock<Vec<(String, Connection)>>,
+    peer_id: &[u8],
+    tools: &[McpToolSchema],
+) {
+    if tools.is_empty() {
+        return;
+    }
+    let msg = Message::ToolCatalog {
+        peer_id: peer_id.to_vec(),
+        tools: tools.to_vec(),
+    };
+    let conns = connections.read().await;
+    for (addr, conn) in conns.iter() {
+        if conn.close_reason().is_some() {
+            continue;
+        }
+        if let Err(e) = Transport::send(conn, &msg).await {
+            debug!("ToolCatalog broadcast to {} failed: {}", addr, e);
+        }
+    }
+}
+
+/// Runs the gossip protocol, periodically sharing peer lists and tool catalogs
+/// with connected peers.
 pub async fn run_gossip(
     peer_table: Arc<RwLock<PeerTable>>,
     _transport: Arc<Transport>,
     connections: Arc<RwLock<Vec<(String, Connection)>>>,
     config: GossipConfig,
+    local_catalog: Option<LocalToolCatalog>,
 ) {
     let mut gossip_tick = 0u64;
 
@@ -65,6 +124,14 @@ pub async fn run_gossip(
             }
         }
         drop(conns);
+
+        // Periodically broadcast ToolCatalog to all peers
+        let catalog_interval = config.tool_catalog_interval_ticks.max(1);
+        if gossip_tick.is_multiple_of(catalog_interval) {
+            if let Some(ref catalog) = local_catalog {
+                broadcast_tool_catalog(&connections, &catalog.peer_id, &catalog.tools).await;
+            }
+        }
 
         // Periodic stale peer eviction
         let eviction_every = if config.interval_secs > 0 {
@@ -107,5 +174,30 @@ mod tests {
         assert_eq!(config.interval_secs, 10);
         assert_eq!(config.max_peers_per_gossip, 20);
         assert_eq!(config.eviction_interval_secs, 30);
+        assert_eq!(config.tool_catalog_interval_ticks, 3);
+    }
+
+    #[test]
+    fn local_tool_catalog_construction() {
+        let catalog = LocalToolCatalog {
+            peer_id: vec![1, 2, 3],
+            tools: vec![McpToolSchema {
+                name: "test-tool".to_string(),
+                description: "A test tool".to_string(),
+                input_schema: "{}".to_string(),
+                server_name: "test-server".to_string(),
+            }],
+        };
+        assert_eq!(catalog.tools.len(), 1);
+        assert_eq!(catalog.peer_id, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn local_tool_catalog_empty() {
+        let catalog = LocalToolCatalog {
+            peer_id: vec![1],
+            tools: vec![],
+        };
+        assert!(catalog.tools.is_empty());
     }
 }
