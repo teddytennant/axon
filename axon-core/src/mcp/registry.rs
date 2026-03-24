@@ -1,4 +1,4 @@
-use crate::mcp::schema::{McpToolSchema, ToolFilter, ToolSearchResult};
+use crate::mcp::schema::{BudgetSearchResult, McpToolSchema, ToolFilter, ToolSearchResult};
 use std::collections::HashMap;
 use tracing::info;
 
@@ -161,6 +161,65 @@ impl ToolRegistry {
         }
 
         results
+    }
+
+    /// Search with a token budget constraint.
+    ///
+    /// Returns the highest-relevance tools whose combined token cost
+    /// (at the filter's detail level) fits within the budget. Tools are
+    /// added greedily in descending relevance order.
+    ///
+    /// If no `max_tokens` is set on the filter, behaves like `search()`
+    /// but wraps the result in a `BudgetSearchResult`.
+    pub fn search_within_budget(&self, filter: &ToolFilter) -> BudgetSearchResult {
+        // First, get all matching results sorted by relevance (ignore limit for now)
+        let unlimited_filter = ToolFilter {
+            query: filter.query.clone(),
+            server_filter: filter.server_filter.clone(),
+            limit: 0, // no limit — we'll apply budget + limit ourselves
+            max_tokens: filter.max_tokens,
+            detail: filter.detail,
+        };
+        let all_results = self.search(&unlimited_filter);
+        let total_matches = all_results.len();
+
+        let mut selected = Vec::new();
+        let mut total_tokens = 0usize;
+        let mut truncated = false;
+
+        for result in all_results {
+            // Check count limit
+            if filter.limit > 0 && selected.len() >= filter.limit {
+                truncated = true;
+                break;
+            }
+
+            let tool_tokens = result.tool.tokens_at_detail(filter.detail);
+
+            // Check token budget
+            if let Some(budget) = filter.max_tokens {
+                if total_tokens + tool_tokens > budget {
+                    truncated = true;
+                    break;
+                }
+            }
+
+            total_tokens += tool_tokens;
+            selected.push(result);
+        }
+
+        let budget_remaining = filter
+            .max_tokens
+            .map(|b| b.saturating_sub(total_tokens))
+            .unwrap_or(0);
+
+        BudgetSearchResult {
+            tools: selected,
+            total_tokens,
+            budget_remaining,
+            truncated,
+            total_matches,
+        }
     }
 
     /// Get all tools from a specific peer.
@@ -621,5 +680,160 @@ mod tests {
         let results = reg.search(&ToolFilter::new().with_limit(1));
         assert!(!results.is_empty());
         assert_eq!(results[0].peer_id_hex, "aabbcc01");
+    }
+
+    // --- Budget-constrained search tests ---
+
+    #[test]
+    fn budget_search_no_budget_returns_all() {
+        let mut reg = ToolRegistry::new();
+        reg.register_peer_tools(&peer_a(), fs_tools());
+
+        let result = reg.search_within_budget(&ToolFilter::new().with_limit(100));
+        assert_eq!(result.tools.len(), 3);
+        assert!(!result.truncated);
+        assert_eq!(result.total_matches, 3);
+        assert!(result.total_tokens > 0);
+    }
+
+    #[test]
+    fn budget_search_with_tight_budget() {
+        let mut reg = ToolRegistry::new();
+        reg.register_peer_tools(&peer_a(), fs_tools());
+        reg.register_peer_tools(&peer_b(), gh_tools());
+
+        // Use max single-tool token cost as budget. Any single tool fits,
+        // but no pair does (since 2 × min_tokens > max_tokens for our tools).
+        let all_tools: Vec<McpToolSchema> = [fs_tools(), gh_tools()].concat();
+        let max_tokens = all_tools.iter().map(|t| t.estimated_tokens()).max().unwrap();
+
+        let result = reg.search_within_budget(
+            &ToolFilter::new()
+                .with_limit(100)
+                .with_max_tokens(max_tokens),
+        );
+        assert_eq!(result.tools.len(), 1);
+        assert!(result.truncated);
+        assert_eq!(result.total_matches, 5);
+    }
+
+    #[test]
+    fn budget_search_zero_budget() {
+        let mut reg = ToolRegistry::new();
+        reg.register_peer_tools(&peer_a(), fs_tools());
+
+        // Zero token budget — can't fit any tool
+        let result =
+            reg.search_within_budget(&ToolFilter::new().with_limit(100).with_max_tokens(0));
+        assert!(result.tools.is_empty());
+        assert!(result.truncated);
+        assert_eq!(result.budget_remaining, 0);
+    }
+
+    #[test]
+    fn budget_search_huge_budget() {
+        let mut reg = ToolRegistry::new();
+        reg.register_peer_tools(&peer_a(), fs_tools());
+
+        let result =
+            reg.search_within_budget(&ToolFilter::new().with_limit(100).with_max_tokens(1_000_000));
+        assert_eq!(result.tools.len(), 3);
+        assert!(!result.truncated);
+        assert!(result.budget_remaining > 0);
+    }
+
+    #[test]
+    fn budget_search_compact_fits_more() {
+        use crate::mcp::schema::SchemaDetail;
+
+        let mut reg = ToolRegistry::new();
+        reg.register_peer_tools(&peer_a(), fs_tools());
+        reg.register_peer_tools(&peer_b(), gh_tools());
+
+        // Get total tokens at full detail
+        let full_result = reg.search_within_budget(
+            &ToolFilter::new()
+                .with_limit(100)
+                .with_detail(SchemaDetail::Full),
+        );
+        let full_tokens = full_result.total_tokens;
+
+        // Same tools at compact detail should cost fewer tokens
+        let compact_result = reg.search_within_budget(
+            &ToolFilter::new()
+                .with_limit(100)
+                .with_detail(SchemaDetail::Compact),
+        );
+        let compact_tokens = compact_result.total_tokens;
+
+        assert!(
+            compact_tokens < full_tokens,
+            "compact ({}) should cost fewer tokens than full ({})",
+            compact_tokens,
+            full_tokens
+        );
+    }
+
+    #[test]
+    fn budget_search_with_query_and_budget() {
+        let mut reg = ToolRegistry::new();
+        reg.register_peer_tools(&peer_a(), fs_tools());
+        reg.register_peer_tools(&peer_b(), gh_tools());
+
+        // Search for "file" with a budget that fits ~2 tools
+        let one_tool = fs_tools()[0].estimated_tokens();
+        let result = reg.search_within_budget(
+            &ToolFilter::new()
+                .with_query("file")
+                .with_limit(100)
+                .with_max_tokens(one_tool * 2 + 10),
+        );
+
+        // Should return the most relevant "file" tools within budget
+        assert!(result.tools.len() <= 2);
+        // First result should be the most file-relevant
+        if !result.tools.is_empty() {
+            assert!(result.tools[0].score > 0.0);
+        }
+    }
+
+    #[test]
+    fn budget_search_limit_takes_precedence_over_budget() {
+        let mut reg = ToolRegistry::new();
+        reg.register_peer_tools(&peer_a(), fs_tools());
+
+        // Huge budget but limit=1
+        let result =
+            reg.search_within_budget(&ToolFilter::new().with_limit(1).with_max_tokens(1_000_000));
+        assert_eq!(result.tools.len(), 1);
+        assert!(result.truncated); // truncated by limit
+    }
+
+    #[test]
+    fn budget_search_empty_registry() {
+        let reg = ToolRegistry::new();
+
+        let result =
+            reg.search_within_budget(&ToolFilter::new().with_limit(100).with_max_tokens(5000));
+        assert!(result.tools.is_empty());
+        assert!(!result.truncated);
+        assert_eq!(result.total_tokens, 0);
+        assert_eq!(result.total_matches, 0);
+    }
+
+    #[test]
+    fn budget_search_budget_remaining_accurate() {
+        let mut reg = ToolRegistry::new();
+        reg.register_peer_tools(&peer_a(), fs_tools());
+
+        let budget = 10000usize;
+        let result =
+            reg.search_within_budget(&ToolFilter::new().with_limit(100).with_max_tokens(budget));
+
+        assert_eq!(
+            result.total_tokens + result.budget_remaining,
+            budget,
+            "total_tokens + budget_remaining should equal original budget"
+        );
     }
 }

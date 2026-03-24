@@ -141,6 +141,14 @@ enum Commands {
         #[arg(short, long, default_value = "20")]
         limit: u32,
 
+        /// Maximum token budget for results (0 = unlimited)
+        #[arg(short = 'b', long, default_value = "0")]
+        budget: u32,
+
+        /// Schema detail level: full, summary, or compact
+        #[arg(short, long, default_value = "full")]
+        detail: String,
+
         /// Output as JSON
         #[arg(long)]
         json: bool,
@@ -331,10 +339,17 @@ async fn main() -> anyhow::Result<()> {
             query,
             server,
             limit,
+            budget,
+            detail,
             json,
         } => {
             tracing_subscriber::fmt::init();
-            query_tools(node, query, server, limit, json).await?;
+            let detail_byte = match detail.as_str() {
+                "summary" | "s" => 1u8,
+                "compact" | "c" => 2u8,
+                _ => 0u8, // "full" or anything else
+            };
+            query_tools(node, query, server, limit, budget, detail_byte, json).await?;
         }
     }
 
@@ -1150,24 +1165,30 @@ async fn handle_message(
             query,
             server_filter,
             limit,
+            max_tokens,
+            detail,
         } => {
-            let filter = axon_core::ToolFilter::new().with_limit(limit as usize);
-            let filter = if query.is_empty() {
-                filter
-            } else {
-                filter.with_query(&query)
-            };
-            let filter = match server_filter {
-                Some(s) => filter.with_server(s),
-                None => filter,
-            };
+            let detail_level = axon_core::SchemaDetail::from_u8(detail);
+            let mut filter = axon_core::ToolFilter::new()
+                .with_limit(limit as usize)
+                .with_detail(detail_level);
+            if !query.is_empty() {
+                filter = filter.with_query(&query);
+            }
+            if let Some(s) = server_filter {
+                filter = filter.with_server(s);
+            }
+            if max_tokens > 0 {
+                filter = filter.with_max_tokens(max_tokens as usize);
+            }
 
-            let results = {
+            let budget_result = {
                 let reg = tool_registry.read().await;
-                reg.search(&filter)
+                reg.search_within_budget(&filter)
             };
 
-            let response_tools: Vec<axon_core::ToolQueryResult> = results
+            let response_tools: Vec<axon_core::ToolQueryResult> = budget_result
+                .tools
                 .into_iter()
                 .map(|r| axon_core::ToolQueryResult {
                     tool: r.tool,
@@ -1178,6 +1199,8 @@ async fn handle_message(
 
             let resp = Message::ToolQueryResponse {
                 tools: response_tools,
+                total_tokens: budget_result.total_tokens as u32,
+                truncated: budget_result.truncated,
             };
             let _ = Transport::send(conn, &resp).await;
             metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
@@ -1335,6 +1358,8 @@ async fn query_tools(
     query: Option<String>,
     server: Option<String>,
     limit: u32,
+    budget: u32,
+    detail: u8,
     json_output: bool,
 ) -> anyhow::Result<()> {
     let identity = Identity::load_or_generate(&Identity::default_path())?;
@@ -1347,20 +1372,36 @@ async fn query_tools(
         query: query.clone().unwrap_or_default(),
         server_filter: server.clone(),
         limit,
+        max_tokens: budget,
+        detail,
     };
     Transport::send(&conn, &msg).await?;
 
     let resp = Transport::recv(&conn).await?;
     match resp {
-        Message::ToolQueryResponse { tools } => {
+        Message::ToolQueryResponse {
+            tools,
+            total_tokens,
+            truncated,
+        } => {
             if json_output {
-                println!("{}", serde_json::to_string_pretty(&tools)?);
+                let output = serde_json::json!({
+                    "tools": tools,
+                    "total_tokens": total_tokens,
+                    "truncated": truncated,
+                });
+                println!("{}", serde_json::to_string_pretty(&output)?);
             } else if tools.is_empty() {
                 println!("No tools found.");
                 if let Some(q) = &query {
                     println!("Try a broader query than \"{}\".", q);
                 }
             } else {
+                let detail_label = match detail {
+                    1 => "summary",
+                    2 => "compact",
+                    _ => "full",
+                };
                 println!(
                     "{:<24} {:<16} {:<8} {:<40}",
                     "TOOL", "SERVER", "SCORE", "DESCRIPTION"
@@ -1378,12 +1419,15 @@ async fn query_tools(
                     );
                 }
                 println!(
-                    "\n{} tool(s) found. ~{} tokens if loaded into context.",
+                    "\n{} tool(s) returned. ~{} tokens ({} detail).{}",
                     tools.len(),
-                    tools
-                        .iter()
-                        .map(|t| t.tool.estimated_tokens())
-                        .sum::<usize>()
+                    total_tokens,
+                    detail_label,
+                    if truncated {
+                        " [truncated by budget]"
+                    } else {
+                        ""
+                    }
                 );
             }
         }
