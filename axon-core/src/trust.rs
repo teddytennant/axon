@@ -37,7 +37,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 // ---------------------------------------------------------------------------
 
 /// Outcome of a task interaction with a peer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TaskOutcome {
     /// Task completed successfully.
     Success,
@@ -50,7 +50,7 @@ pub enum TaskOutcome {
 }
 
 /// A single trust observation recorded after interacting with a peer.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TrustObservation {
     /// When this observation was recorded (seconds since UNIX epoch).
     pub timestamp: u64,
@@ -107,7 +107,7 @@ impl TrustObservation {
 // ---------------------------------------------------------------------------
 
 /// Trust record for a single peer, maintained by the local node.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TrustRecord {
     /// The peer's identity (public key bytes).
     pub peer_id: Vec<u8>,
@@ -687,6 +687,171 @@ impl TrustGossipProcessor {
 impl Default for TrustGossipProcessor {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PersistentTrustStore — sled-backed durable trust storage
+// ---------------------------------------------------------------------------
+
+/// Errors from persistent trust operations.
+#[derive(Debug, thiserror::Error)]
+pub enum TrustStoreError {
+    #[error("storage error: {0}")]
+    Storage(#[from] sled::Error),
+    #[error("serialization error: {0}")]
+    Serialization(#[from] bincode::Error),
+}
+
+/// A trust store backed by sled for durability across restarts.
+///
+/// Wraps the in-memory [`TrustStore`] with a sled database. Observations are
+/// written to both memory and disk on every `record_observation()` call.
+/// On startup, `open()` loads all persisted records into memory.
+///
+/// Storage layout: single sled tree `trust_records` mapping
+/// peer_id bytes → bincode(TrustRecord).
+pub struct PersistentTrustStore {
+    store: TrustStore,
+    tree: sled::Tree,
+    _db: sled::Db,
+}
+
+impl PersistentTrustStore {
+    /// Open (or create) a persistent trust store at `path`.
+    ///
+    /// Loads all existing records into memory on startup.
+    pub fn open(
+        path: impl AsRef<std::path::Path>,
+        scorer: TrustScorer,
+    ) -> Result<Self, TrustStoreError> {
+        let db = sled::open(path)?;
+        let tree = db.open_tree("trust_records")?;
+        let mut store = TrustStore::new(scorer);
+
+        // Load all persisted records into memory
+        let mut loaded = 0usize;
+        for entry in tree.iter() {
+            let (key, value) = entry?;
+            let record: TrustRecord = bincode::deserialize(&value)?;
+            store.records.insert(key.to_vec(), record);
+            loaded += 1;
+        }
+
+        tracing::info!("Trust store opened: {} peer records loaded", loaded);
+
+        Ok(Self {
+            store,
+            tree,
+            _db: db,
+        })
+    }
+
+    /// Open a temporary in-memory trust store (for testing).
+    pub fn open_temporary(scorer: TrustScorer) -> Result<Self, TrustStoreError> {
+        let db = sled::Config::new().temporary(true).open()?;
+        let tree = db.open_tree("trust_records")?;
+        Ok(Self {
+            store: TrustStore::new(scorer),
+            tree,
+            _db: db,
+        })
+    }
+
+    /// Record an observation for a peer. Writes to both memory and disk.
+    pub fn record_observation(
+        &mut self,
+        peer_id: &[u8],
+        observation: TrustObservation,
+    ) -> Result<(), TrustStoreError> {
+        self.store.record_observation(peer_id, observation);
+
+        // Persist the updated record to sled
+        if let Some(record) = self.store.records.get(peer_id) {
+            let encoded = bincode::serialize(record)?;
+            self.tree.insert(peer_id, encoded)?;
+        }
+
+        Ok(())
+    }
+
+    /// Remove a peer's trust record from both memory and disk.
+    pub fn forget_peer(&mut self, peer_id: &[u8]) -> Result<bool, TrustStoreError> {
+        let removed = self.store.forget_peer(peer_id);
+        if removed {
+            self.tree.remove(peer_id)?;
+        }
+        Ok(removed)
+    }
+
+    /// Flush all in-memory records to disk.
+    ///
+    /// Useful after bulk operations or before shutdown.
+    pub fn flush(&self) -> Result<(), TrustStoreError> {
+        for (peer_id, record) in &self.store.records {
+            let encoded = bincode::serialize(record)?;
+            self.tree.insert(peer_id.as_slice(), encoded)?;
+        }
+        self.tree.flush()?;
+        Ok(())
+    }
+
+    /// Force sled to sync to disk.
+    pub fn sync(&self) -> Result<(), TrustStoreError> {
+        self.tree.flush()?;
+        Ok(())
+    }
+
+    /// Number of persisted peer records on disk.
+    pub fn persisted_count(&self) -> usize {
+        self.tree.len()
+    }
+
+    // -- Delegated methods from TrustStore --
+
+    /// Get the trust score for a peer.
+    pub fn score(&self, peer_id: &[u8]) -> TrustScore {
+        self.store.score(peer_id)
+    }
+
+    /// Get the trust score at a specific timestamp.
+    pub fn score_at(&self, peer_id: &[u8], now: u64) -> TrustScore {
+        self.store.score_at(peer_id, now)
+    }
+
+    /// Get the trust record for a peer.
+    pub fn get_record(&self, peer_id: &[u8]) -> Option<&TrustRecord> {
+        self.store.get_record(peer_id)
+    }
+
+    /// Get all known peer IDs.
+    pub fn known_peers(&self) -> Vec<Vec<u8>> {
+        self.store.known_peers()
+    }
+
+    /// Number of tracked peers in memory.
+    pub fn peer_count(&self) -> usize {
+        self.store.peer_count()
+    }
+
+    /// All peers ranked by trust score.
+    pub fn ranked_peers(&self) -> Vec<(Vec<u8>, TrustScore)> {
+        self.store.ranked_peers()
+    }
+
+    /// All peers ranked at a specific timestamp.
+    pub fn ranked_peers_at(&self, now: u64) -> Vec<(Vec<u8>, TrustScore)> {
+        self.store.ranked_peers_at(now)
+    }
+
+    /// Get the scorer.
+    pub fn scorer(&self) -> &TrustScorer {
+        self.store.scorer()
+    }
+
+    /// Get a reference to the underlying in-memory store.
+    pub fn inner(&self) -> &TrustStore {
+        &self.store
     }
 }
 
@@ -1374,5 +1539,228 @@ mod tests {
             weighted1,
             weighted2
         );
+    }
+
+    // ---- PersistentTrustStore tests ----
+
+    #[test]
+    fn persistent_open_and_record() {
+        let store = PersistentTrustStore::open_temporary(TrustScorer::default()).unwrap();
+        assert_eq!(store.peer_count(), 0);
+        assert_eq!(store.persisted_count(), 0);
+    }
+
+    #[test]
+    fn persistent_record_and_score() {
+        let mut store = PersistentTrustStore::open_temporary(TrustScorer::default()).unwrap();
+        let peer = b"peer-a".to_vec();
+
+        store
+            .record_observation(&peer, TrustObservation::new(TaskOutcome::Success, 100, 105))
+            .unwrap();
+
+        assert_eq!(store.peer_count(), 1);
+        assert_eq!(store.persisted_count(), 1);
+
+        let score = store.score(&peer);
+        assert!(score.reliability > 0.5);
+        assert!(score.observation_count == 1);
+    }
+
+    #[test]
+    fn persistent_survives_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("trust_db");
+        let peer = b"peer-persistent".to_vec();
+
+        // First session: record observations
+        {
+            let mut store = PersistentTrustStore::open(&path, TrustScorer::default()).unwrap();
+            for i in 0..5 {
+                store
+                    .record_observation(
+                        &peer,
+                        TrustObservation::new(TaskOutcome::Success, 100, 110)
+                            .with_timestamp(1000 + i),
+                    )
+                    .unwrap();
+            }
+            assert_eq!(store.peer_count(), 1);
+            store.sync().unwrap();
+        }
+        // store dropped, sled closed
+
+        // Second session: data should be loaded from disk
+        {
+            let store = PersistentTrustStore::open(&path, TrustScorer::default()).unwrap();
+            assert_eq!(store.peer_count(), 1);
+            assert_eq!(store.persisted_count(), 1);
+
+            let record = store.get_record(&peer).unwrap();
+            assert_eq!(record.observation_count(), 5);
+
+            // Use score_at with a timestamp near the observations to avoid decay
+            let score = store.score_at(&peer, 1005);
+            assert!(
+                score.reliability > 0.5,
+                "reliability should be high: {}",
+                score.reliability
+            );
+            assert_eq!(score.observation_count, 5);
+        }
+    }
+
+    #[test]
+    fn persistent_multiple_peers() {
+        let mut store = PersistentTrustStore::open_temporary(TrustScorer::default()).unwrap();
+
+        let peer_a = b"alpha".to_vec();
+        let peer_b = b"beta".to_vec();
+        let peer_c = b"gamma".to_vec();
+
+        store
+            .record_observation(&peer_a, TrustObservation::new(TaskOutcome::Success, 50, 55))
+            .unwrap();
+        store
+            .record_observation(
+                &peer_b,
+                TrustObservation::new(TaskOutcome::Failure, 50, 200),
+            )
+            .unwrap();
+        store
+            .record_observation(&peer_c, TrustObservation::new(TaskOutcome::Success, 50, 52))
+            .unwrap();
+
+        assert_eq!(store.peer_count(), 3);
+        assert_eq!(store.persisted_count(), 3);
+
+        let ranked = store.ranked_peers();
+        assert_eq!(ranked.len(), 3);
+        // peer_b (failure) should rank lowest
+        assert_eq!(ranked[2].0, peer_b);
+    }
+
+    #[test]
+    fn persistent_forget_peer() {
+        let mut store = PersistentTrustStore::open_temporary(TrustScorer::default()).unwrap();
+        let peer = b"ephemeral".to_vec();
+
+        store
+            .record_observation(&peer, TrustObservation::new(TaskOutcome::Success, 50, 55))
+            .unwrap();
+        assert_eq!(store.peer_count(), 1);
+        assert_eq!(store.persisted_count(), 1);
+
+        let removed = store.forget_peer(&peer).unwrap();
+        assert!(removed);
+        assert_eq!(store.peer_count(), 0);
+        assert_eq!(store.persisted_count(), 0);
+    }
+
+    #[test]
+    fn persistent_forget_survives_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("forget_db");
+        let peer = b"to-forget".to_vec();
+
+        {
+            let mut store = PersistentTrustStore::open(&path, TrustScorer::default()).unwrap();
+            store
+                .record_observation(&peer, TrustObservation::new(TaskOutcome::Success, 50, 55))
+                .unwrap();
+            store.forget_peer(&peer).unwrap();
+            store.sync().unwrap();
+        }
+
+        {
+            let store = PersistentTrustStore::open(&path, TrustScorer::default()).unwrap();
+            assert_eq!(store.peer_count(), 0);
+            assert_eq!(store.persisted_count(), 0);
+        }
+    }
+
+    #[test]
+    fn persistent_flush_writes_all() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("flush_db");
+
+        {
+            let mut store = PersistentTrustStore::open(&path, TrustScorer::default()).unwrap();
+            // Record multiple peers
+            for i in 0..10u8 {
+                store
+                    .record_observation(
+                        &[i],
+                        TrustObservation::new(TaskOutcome::Success, 100, 100 + i as u64),
+                    )
+                    .unwrap();
+            }
+            store.flush().unwrap();
+        }
+
+        {
+            let store = PersistentTrustStore::open(&path, TrustScorer::default()).unwrap();
+            assert_eq!(store.peer_count(), 10);
+        }
+    }
+
+    #[test]
+    fn persistent_score_unknown_peer_is_neutral() {
+        let store = PersistentTrustStore::open_temporary(TrustScorer::default()).unwrap();
+        let score = store.score(b"unknown");
+        let neutral = TrustScore::neutral();
+        assert!((score.overall - neutral.overall).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn persistent_accumulates_across_reopens() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("accumulate_db");
+        let peer = b"accumulator".to_vec();
+
+        // Session 1: 3 observations
+        {
+            let mut store = PersistentTrustStore::open(&path, TrustScorer::default()).unwrap();
+            for i in 0..3 {
+                store
+                    .record_observation(
+                        &peer,
+                        TrustObservation::new(TaskOutcome::Success, 50, 55)
+                            .with_timestamp(1000 + i),
+                    )
+                    .unwrap();
+            }
+            store.sync().unwrap();
+        }
+
+        // Session 2: 2 more observations
+        {
+            let mut store = PersistentTrustStore::open(&path, TrustScorer::default()).unwrap();
+            assert_eq!(store.get_record(&peer).unwrap().observation_count(), 3);
+
+            for i in 0..2 {
+                store
+                    .record_observation(
+                        &peer,
+                        TrustObservation::new(TaskOutcome::Success, 50, 55)
+                            .with_timestamp(2000 + i),
+                    )
+                    .unwrap();
+            }
+            store.sync().unwrap();
+        }
+
+        // Session 3: verify accumulated
+        {
+            let store = PersistentTrustStore::open(&path, TrustScorer::default()).unwrap();
+            assert_eq!(store.get_record(&peer).unwrap().observation_count(), 5);
+        }
+    }
+
+    #[test]
+    fn persistent_inner_access() {
+        let store = PersistentTrustStore::open_temporary(TrustScorer::default()).unwrap();
+        let inner = store.inner();
+        assert_eq!(inner.peer_count(), 0);
     }
 }

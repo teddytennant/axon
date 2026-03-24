@@ -35,6 +35,7 @@ pub use runtime::{Agent, AgentError, Runtime};
 pub use taskqueue::{QueueError, QueueStats, TaskQueue, TaskQueueConfig, TaskRecord, TaskState};
 pub use transport::{extract_peer_cert_pubkey, Transport};
 pub use trust::{
-    SharedTrustObservation, TaskOutcome, TrustGossipProcessor, TrustObservation, TrustRecord,
-    TrustScore, TrustScorer, TrustStore, TrustWeightedScoring,
+    PersistentTrustStore, SharedTrustObservation, TaskOutcome, TrustGossipProcessor,
+    TrustObservation, TrustRecord, TrustScore, TrustScorer, TrustStore, TrustStoreError,
+    TrustWeightedScoring,
 };
