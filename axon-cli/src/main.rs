@@ -123,6 +123,16 @@ enum Commands {
     /// Generate example config file at ~/.config/axon/config.toml
     Init,
 
+    /// Serve aggregated MCP tools on stdio (for AI agent integration)
+    ///
+    /// Connects to configured MCP servers, aggregates their tools, and exposes
+    /// them via the MCP protocol on stdio. Configure this as an MCP server in
+    /// Claude Code, Cursor, or any MCP-capable AI tool.
+    ///
+    /// Example Claude Code config:
+    ///   { "mcpServers": { "axon": { "command": "axon", "args": ["serve-mcp"] } } }
+    ServeMcp,
+
     /// Query MCP tools available on a mesh node
     Tools {
         /// Address of a running node to query
@@ -333,6 +343,46 @@ async fn main() -> anyhow::Result<()> {
             let path = config::generate_example_config()?;
             println!("Config file created at: {}", path.display());
             println!("Edit it to configure your node, then run `axon start`.");
+        }
+        Commands::ServeMcp => {
+            // Log to stderr (stdout is the MCP protocol channel)
+            tracing_subscriber::fmt()
+                .with_writer(std::io::stderr)
+                .init();
+
+            // Load MCP server configs from config.toml
+            let file_config = config::load_config();
+            let mcp_configs: Vec<axon_core::McpServerConfig> = file_config
+                .mcp
+                .servers
+                .iter()
+                .map(|s| s.to_server_config())
+                .collect();
+
+            if mcp_configs.is_empty() {
+                eprintln!("No MCP servers configured.");
+                eprintln!(
+                    "Add [[mcp.servers]] entries to ~/.config/axon/config.toml or run `axon init`."
+                );
+                std::process::exit(1);
+            }
+
+            // Connect to all configured MCP servers
+            let bridge = Arc::new(McpBridge::new());
+            let tools = bridge.connect_all(mcp_configs).await;
+            eprintln!(
+                "axon-mcp-gateway: {} tools from {} servers ready",
+                tools.len(),
+                bridge.server_count().await
+            );
+
+            // Build and run the stdio MCP server
+            let server = axon_core::McpStdioServer::new(bridge.clone()).await;
+            if let Err(e) = server.run().await {
+                error!("MCP server error: {}", e);
+            }
+
+            bridge.shutdown().await;
         }
         Commands::Tools {
             node,

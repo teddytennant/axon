@@ -705,7 +705,11 @@ mod tests {
         // Use max single-tool token cost as budget. Any single tool fits,
         // but no pair does (since 2 × min_tokens > max_tokens for our tools).
         let all_tools: Vec<McpToolSchema> = [fs_tools(), gh_tools()].concat();
-        let max_tokens = all_tools.iter().map(|t| t.estimated_tokens()).max().unwrap();
+        let max_tokens = all_tools
+            .iter()
+            .map(|t| t.estimated_tokens())
+            .max()
+            .unwrap();
 
         let result = reg.search_within_budget(
             &ToolFilter::new()
