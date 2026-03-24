@@ -14,7 +14,10 @@ pub use crdt::{GCounter, LWWRegister, ORSet};
 pub use discovery::PeerTable;
 pub use gossip::GossipConfig;
 pub use identity::Identity;
-pub use mcp::{McpToolSchema, ToolFilter, ToolRegistry, ToolSearchResult};
+pub use mcp::{
+    McpBridge, McpBridgeAgent, McpClient, McpClientError, McpServerConfig, McpToolSchema,
+    ToolFilter, ToolRegistry, ToolSearchResult,
+};
 pub use mdns::{DiscoveryEvent, MdnsDiscovery};
 pub use protocol::{
     Capability, Message, PeerInfo, TaskRequest, TaskResponse, TaskStatus, ToolQueryResult,

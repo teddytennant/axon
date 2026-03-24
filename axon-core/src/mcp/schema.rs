@@ -64,11 +64,7 @@ impl McpToolSchema {
 
     /// Convert to an axon Capability for routing.
     pub fn to_capability(&self) -> crate::protocol::Capability {
-        crate::protocol::Capability::new(
-            format!("mcp.{}", self.server_name),
-            &self.name,
-            1,
-        )
+        crate::protocol::Capability::new(format!("mcp.{}", self.server_name), &self.name, 1)
     }
 
     /// Estimated token cost of including this tool's schema in a context window.
