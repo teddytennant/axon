@@ -129,9 +129,17 @@ enum Commands {
     /// them via the MCP protocol on stdio. Configure this as an MCP server in
     /// Claude Code, Cursor, or any MCP-capable AI tool.
     ///
+    /// With --mesh, joins the axon mesh and also serves tools from remote peers.
+    /// Remote tool calls are forwarded via QUIC to the owning peer.
+    ///
     /// Example Claude Code config:
-    ///   { "mcpServers": { "axon": { "command": "axon", "args": ["serve-mcp"] } } }
-    ServeMcp,
+    ///   { "mcpServers": { "axon": { "command": "axon", "args": ["serve-mcp", "--mesh"] } } }
+    ServeMcp {
+        /// Join the mesh and serve remote tools alongside local ones.
+        /// Reads [node] config for listen address and bootstrap peers.
+        #[arg(long)]
+        mesh: bool,
+    },
 
     /// Query MCP tools available on a mesh node
     Tools {
@@ -344,13 +352,13 @@ async fn main() -> anyhow::Result<()> {
             println!("Config file created at: {}", path.display());
             println!("Edit it to configure your node, then run `axon start`.");
         }
-        Commands::ServeMcp => {
+        Commands::ServeMcp { mesh } => {
             // Log to stderr (stdout is the MCP protocol channel)
             tracing_subscriber::fmt()
                 .with_writer(std::io::stderr)
                 .init();
 
-            // Load MCP server configs from config.toml
+            // Load config
             let file_config = config::load_config();
             let mcp_configs: Vec<axon_core::McpServerConfig> = file_config
                 .mcp
@@ -359,27 +367,181 @@ async fn main() -> anyhow::Result<()> {
                 .map(|s| s.to_server_config())
                 .collect();
 
-            if mcp_configs.is_empty() {
+            if mcp_configs.is_empty() && !mesh {
                 eprintln!("No MCP servers configured.");
                 eprintln!(
                     "Add [[mcp.servers]] entries to ~/.config/axon/config.toml or run `axon init`."
                 );
+                eprintln!("Or use --mesh to serve tools from remote mesh peers.");
                 std::process::exit(1);
             }
 
-            // Connect to all configured MCP servers
+            // Connect to all configured local MCP servers
             let bridge = Arc::new(McpBridge::new());
             let tools = bridge.connect_all(mcp_configs).await;
             eprintln!(
-                "axon-mcp-gateway: {} tools from {} servers ready",
+                "axon-mcp-gateway: {} local tools from {} servers",
                 tools.len(),
                 bridge.server_count().await
             );
 
-            // Build and run the stdio MCP server
-            let server = axon_core::McpStdioServer::new(bridge.clone()).await;
-            if let Err(e) = server.run().await {
-                error!("MCP server error: {}", e);
+            if mesh {
+                // --- Mesh mode: join the mesh and aggregate remote tools ---
+                let identity =
+                    axon_core::Identity::load_or_generate(&axon_core::Identity::default_path())?;
+                let local_peer_id = identity.public_key_bytes();
+                eprintln!(
+                    "axon-mcp-mesh-gateway: peer ID {}",
+                    identity.peer_id_short()
+                );
+
+                let listen_addr = file_config.node.listen;
+                let transport = axon_core::Transport::bind(listen_addr, &identity).await?;
+                let local_addr = transport.local_addr()?;
+                eprintln!("axon-mcp-mesh-gateway: listening on {}", local_addr);
+
+                let transport = Arc::new(transport);
+                let local_peer = axon_core::PeerInfo {
+                    peer_id: local_peer_id.clone(),
+                    addr: local_addr.to_string(),
+                    capabilities: bridge.capabilities().await,
+                    last_seen: now_secs(),
+                };
+                let peer_table = Arc::new(RwLock::new(axon_core::PeerTable::new(local_peer)));
+                let tool_registry = Arc::new(RwLock::new(axon_core::ToolRegistry::new()));
+
+                // Register local tools in the registry
+                {
+                    let mcp_tools = bridge.all_tools().await;
+                    if !mcp_tools.is_empty() {
+                        let mut reg = tool_registry.write().await;
+                        reg.register_peer_tools(&local_peer_id, mcp_tools);
+                    }
+                }
+
+                let active_connections: Arc<RwLock<Vec<(String, quinn::Connection)>>> =
+                    Arc::new(RwLock::new(Vec::new()));
+
+                // Spawn connection acceptor
+                let accept_transport = transport.clone();
+                let accept_peer_table = peer_table.clone();
+                let accept_tool_registry = tool_registry.clone();
+                tokio::spawn(async move {
+                    loop {
+                        let conn = match accept_transport.accept().await {
+                            Some(c) => c,
+                            None => continue,
+                        };
+                        let pt = accept_peer_table.clone();
+                        let tr = accept_tool_registry.clone();
+                        let remote = conn.remote_address();
+
+                        tokio::spawn(async move {
+                            while let Ok(msg) = Transport::recv(&conn).await {
+                                handle_mesh_message(msg, &conn, &pt, &tr, remote).await;
+                            }
+                        });
+                    }
+                });
+
+                // Connect to bootstrap peers
+                let bootstrap_tools = bridge.all_tools().await;
+                for peer_addr in &file_config.node.peers {
+                    let t = transport.clone();
+                    let addr = *peer_addr;
+                    let id = local_peer_id.clone();
+                    let caps = bridge.capabilities().await;
+                    let la = local_addr.to_string();
+                    let tools_clone = bootstrap_tools.clone();
+                    let conns = active_connections.clone();
+
+                    tokio::spawn(async move {
+                        match t.connect(addr).await {
+                            Ok(conn) => {
+                                // Announce ourselves
+                                let announce = Message::Announce(axon_core::PeerInfo {
+                                    peer_id: id.clone(),
+                                    addr: la,
+                                    capabilities: caps,
+                                    last_seen: now_secs(),
+                                });
+                                let _ = Transport::send(&conn, &announce).await;
+                                // Send our tool catalog
+                                axon_core::gossip::send_tool_catalog(&conn, &id, &tools_clone)
+                                    .await;
+                                eprintln!("axon-mcp-mesh-gateway: connected to peer at {}", addr);
+                                {
+                                    let mut c = conns.write().await;
+                                    c.push((addr.to_string(), conn));
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!(
+                                    "axon-mcp-mesh-gateway: failed to connect to {}: {}",
+                                    addr, e
+                                );
+                            }
+                        }
+                    });
+                }
+
+                // Start gossip loop
+                let local_mcp_tools = bridge.all_tools().await;
+                let local_catalog = if local_mcp_tools.is_empty() {
+                    None
+                } else {
+                    Some(axon_core::LocalToolCatalog {
+                        peer_id: local_peer_id.clone(),
+                        tools: local_mcp_tools,
+                    })
+                };
+                let gossip_pt = peer_table.clone();
+                let gossip_transport = transport.clone();
+                let gossip_conns = active_connections.clone();
+                tokio::spawn(async move {
+                    axon_core::gossip::run_gossip(
+                        gossip_pt,
+                        gossip_transport,
+                        gossip_conns,
+                        axon_core::GossipConfig::default(),
+                        local_catalog,
+                    )
+                    .await;
+                });
+
+                // Brief wait for initial tool catalogs to arrive via gossip
+                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                {
+                    let reg = tool_registry.read().await;
+                    let remote_count = reg.remote_unique_tools(&local_peer_id).len();
+                    eprintln!(
+                        "axon-mcp-mesh-gateway: {} remote tools discovered from mesh",
+                        remote_count,
+                    );
+                }
+
+                // Build mesh-connected MCP server
+                let mesh_context = axon_core::MeshContext {
+                    transport: transport.clone(),
+                    tool_registry,
+                    peer_table,
+                    local_peer_id,
+                };
+                let server =
+                    axon_core::McpStdioServer::new_with_mesh(bridge.clone(), mesh_context).await;
+                eprintln!("axon-mcp-mesh-gateway: ready (tools update dynamically via gossip)");
+
+                if let Err(e) = server.run().await {
+                    error!("MCP mesh server error: {}", e);
+                }
+
+                transport.shutdown().await;
+            } else {
+                // --- Local-only mode (existing behavior) ---
+                let server = axon_core::McpStdioServer::new(bridge.clone()).await;
+                if let Err(e) = server.run().await {
+                    error!("MCP server error: {}", e);
+                }
             }
 
             bridge.shutdown().await;
@@ -1499,6 +1661,50 @@ fn hex_to_bytes(hex: &str) -> Vec<u8> {
         .step_by(2)
         .filter_map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok())
         .collect()
+}
+
+/// Lightweight message handler for the MCP mesh gateway.
+/// Only handles gossip, announcements, and tool catalogs — no task dispatch.
+async fn handle_mesh_message(
+    msg: Message,
+    conn: &quinn::Connection,
+    peer_table: &Arc<RwLock<axon_core::PeerTable>>,
+    tool_registry: &Arc<RwLock<axon_core::ToolRegistry>>,
+    remote: SocketAddr,
+) {
+    match msg {
+        Message::Ping { nonce } => {
+            let _ = Transport::send(conn, &Message::Pong { nonce }).await;
+        }
+        Message::Pong { .. } => {}
+        Message::Announce(info) => {
+            let mut pt = peer_table.write().await;
+            pt.upsert(info);
+        }
+        Message::Gossip { peers } => {
+            let mut pt = peer_table.write().await;
+            pt.merge_gossip(peers);
+        }
+        Message::ToolCatalog { peer_id, tools } => {
+            let tool_count = tools.len();
+            let mut reg = tool_registry.write().await;
+            reg.register_peer_tools(&peer_id, tools);
+            eprintln!(
+                "axon-mcp-mesh-gateway: received {} tools from peer {}",
+                tool_count,
+                short_id(&peer_id),
+            );
+        }
+        Message::Discover { .. } => {
+            // Respond with our known peers
+            let pt = peer_table.read().await;
+            let peers = pt.all_peers_owned();
+            let _ = Transport::send(conn, &Message::DiscoverResponse { peers }).await;
+        }
+        _ => {
+            tracing::debug!("MCP gateway ignoring message type from {}", remote);
+        }
+    }
 }
 
 fn now_secs() -> u64 {

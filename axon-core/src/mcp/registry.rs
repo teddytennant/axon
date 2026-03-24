@@ -293,6 +293,42 @@ impl ToolRegistry {
             .map(|e| &e.schema)
             .collect()
     }
+
+    /// Get unique remote tools (not from the local peer), with a representative peer ID.
+    /// When multiple peers offer the same tool, returns only the first one found.
+    /// Used by the MCP gateway to discover tools available on the mesh.
+    pub fn remote_unique_tools(&self, local_peer_id: &[u8]) -> Vec<(McpToolSchema, Vec<u8>)> {
+        let local_hex = hex_id(local_peer_id);
+        let mut seen = std::collections::HashSet::new();
+        self.tools
+            .values()
+            .filter(|e| hex_id(&e.peer_id) != local_hex)
+            .filter(|e| {
+                let key = format!("{}:{}", e.schema.server_name, e.schema.name);
+                seen.insert(key)
+            })
+            .map(|e| (e.schema.clone(), e.peer_id.clone()))
+            .collect()
+    }
+
+    /// Find which peer owns a specific tool (by server name + tool name).
+    /// Returns the first matching remote peer's ID, excluding the local peer.
+    pub fn find_tool_owner(
+        &self,
+        server_name: &str,
+        tool_name: &str,
+        local_peer_id: &[u8],
+    ) -> Option<Vec<u8>> {
+        let local_hex = hex_id(local_peer_id);
+        self.tools
+            .values()
+            .find(|e| {
+                e.schema.server_name == server_name
+                    && e.schema.name == tool_name
+                    && hex_id(&e.peer_id) != local_hex
+            })
+            .map(|e| e.peer_id.clone())
+    }
 }
 
 impl Default for ToolRegistry {
@@ -839,5 +875,73 @@ mod tests {
             budget,
             "total_tokens + budget_remaining should equal original budget"
         );
+    }
+
+    #[test]
+    fn remote_unique_tools_excludes_local() {
+        let mut reg = ToolRegistry::new();
+        reg.register_peer_tools(&peer_a(), fs_tools());
+        reg.register_peer_tools(&peer_b(), gh_tools());
+
+        // peer_a is local — should only see peer_b's tools
+        let remote = reg.remote_unique_tools(&peer_a());
+        assert_eq!(remote.len(), 2);
+        for (tool, pid) in &remote {
+            assert_eq!(pid, &peer_b());
+            assert_eq!(tool.server_name, "github");
+        }
+    }
+
+    #[test]
+    fn remote_unique_tools_deduplicates() {
+        let mut reg = ToolRegistry::new();
+        let peer_c = vec![0xCC, 0xCC, 0xCC, 0xCC];
+
+        // peer_b and peer_c both have the same github tools
+        reg.register_peer_tools(&peer_b(), gh_tools());
+        reg.register_peer_tools(&peer_c, gh_tools());
+
+        let remote = reg.remote_unique_tools(&peer_a());
+        // Should be deduplicated: 2 unique tools, not 4
+        assert_eq!(remote.len(), 2);
+    }
+
+    #[test]
+    fn remote_unique_tools_empty_when_only_local() {
+        let mut reg = ToolRegistry::new();
+        reg.register_peer_tools(&peer_a(), fs_tools());
+
+        let remote = reg.remote_unique_tools(&peer_a());
+        assert!(remote.is_empty());
+    }
+
+    #[test]
+    fn find_tool_owner_returns_remote_peer() {
+        let mut reg = ToolRegistry::new();
+        reg.register_peer_tools(&peer_a(), fs_tools());
+        reg.register_peer_tools(&peer_b(), gh_tools());
+
+        // Find a github tool — should return peer_b
+        let owner = reg.find_tool_owner("github", "search_code", &peer_a());
+        assert_eq!(owner, Some(peer_b()));
+    }
+
+    #[test]
+    fn find_tool_owner_excludes_local() {
+        let mut reg = ToolRegistry::new();
+        reg.register_peer_tools(&peer_a(), fs_tools());
+
+        // peer_a owns read_file, but it's local — should return None
+        let owner = reg.find_tool_owner("filesystem", "read_file", &peer_a());
+        assert!(owner.is_none());
+    }
+
+    #[test]
+    fn find_tool_owner_none_for_nonexistent() {
+        let mut reg = ToolRegistry::new();
+        reg.register_peer_tools(&peer_a(), fs_tools());
+
+        let owner = reg.find_tool_owner("nonexistent", "tool", &peer_b());
+        assert!(owner.is_none());
     }
 }
