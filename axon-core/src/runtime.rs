@@ -49,7 +49,11 @@ impl Runtime {
         let mut agents = self.agents.write().await;
         let idx = agents.len();
         let caps = agent.capabilities();
-        info!("Registering agent '{}' with {} capabilities", agent.name(), caps.len());
+        info!(
+            "Registering agent '{}' with {} capabilities",
+            agent.name(),
+            caps.len()
+        );
 
         let mut index = self.capability_index.write().await;
         for cap in &caps {
@@ -88,13 +92,26 @@ impl Runtime {
         let agents = self.agents.read().await;
 
         // Use the request timeout, falling back to 30s when unset (0).
-        let timeout_ms = if request.timeout_ms == 0 { 30_000 } else { request.timeout_ms };
+        let timeout_ms = if request.timeout_ms == 0 {
+            30_000
+        } else {
+            request.timeout_ms
+        };
         let deadline = Duration::from_millis(timeout_ms);
 
         // Find an agent that can handle the requested capability
         for agent in agents.iter() {
-            if agent.capabilities().iter().any(|c| c.matches(&request.capability)) {
-                debug!("Dispatching task {} to agent '{}' (timeout {}ms)", request.id, agent.name(), timeout_ms);
+            if agent
+                .capabilities()
+                .iter()
+                .any(|c| c.matches(&request.capability))
+            {
+                debug!(
+                    "Dispatching task {} to agent '{}' (timeout {}ms)",
+                    request.id,
+                    agent.name(),
+                    timeout_ms
+                );
                 match tokio::time::timeout(deadline, agent.handle(request.clone())).await {
                     Ok(Ok(mut response)) => {
                         response.duration_ms = start.elapsed().as_millis() as u64;
@@ -110,7 +127,12 @@ impl Runtime {
                         };
                     }
                     Err(_) => {
-                        warn!("Agent '{}' timed out after {}ms for task {}", agent.name(), timeout_ms, request.id);
+                        warn!(
+                            "Agent '{}' timed out after {}ms for task {}",
+                            agent.name(),
+                            timeout_ms,
+                            request.id
+                        );
                         return TaskResponse {
                             request_id: request.id,
                             status: TaskStatus::Timeout,

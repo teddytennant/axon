@@ -74,7 +74,10 @@ impl std::str::FromStr for ProviderKind {
             "xai" | "grok" => Ok(ProviderKind::Xai),
             "openrouter" => Ok(ProviderKind::OpenRouter),
             "custom" => Ok(ProviderKind::Custom),
-            _ => Err(format!("Unknown provider: {}. Options: ollama, openai, xai, openrouter, custom", s)),
+            _ => Err(format!(
+                "Unknown provider: {}. Options: ollama, openai, xai, openrouter, custom",
+                s
+            )),
         }
     }
 }
@@ -110,7 +113,8 @@ impl LlmProvider for OllamaProvider {
             "stream": false,
         });
 
-        let resp = self.client
+        let resp = self
+            .client
             .post(format!("{}/api/generate", self.endpoint))
             .json(&body)
             .send()
@@ -175,13 +179,8 @@ impl OpenAiCompatibleProvider {
     }
 
     pub fn openrouter(api_key: String, model: String) -> Self {
-        Self::new(
-            "openrouter",
-            "https://openrouter.ai/api/v1",
-            api_key,
-            model,
-        )
-        .with_header("X-Title", "axon-mesh")
+        Self::new("openrouter", "https://openrouter.ai/api/v1", api_key, model)
+            .with_header("X-Title", "axon-mesh")
     }
 }
 
@@ -209,7 +208,8 @@ impl LlmProvider for OpenAiCompatibleProvider {
             body["temperature"] = serde_json::json!(temp);
         }
 
-        let mut request = self.client
+        let mut request = self
+            .client
             .post(format!("{}/chat/completions", self.endpoint))
             .bearer_auth(&self.api_key)
             .json(&body);
@@ -223,7 +223,10 @@ impl LlmProvider for OpenAiCompatibleProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Api(format!("{} {} : {}", self.label, status, text)));
+            return Err(ProviderError::Api(format!(
+                "{} {} : {}",
+                self.label, status, text
+            )));
         }
 
         let json: serde_json::Value = resp.json().await?;
@@ -254,33 +257,53 @@ pub fn build_provider(
     model: &str,
 ) -> Result<Box<dyn LlmProvider>, ProviderError> {
     match kind {
-        ProviderKind::Ollama => {
-            Ok(Box::new(OllamaProvider::new(endpoint.to_string(), model.to_string())))
-        }
+        ProviderKind::Ollama => Ok(Box::new(OllamaProvider::new(
+            endpoint.to_string(),
+            model.to_string(),
+        ))),
         ProviderKind::OpenAi => {
             if api_key.is_empty() {
-                return Err(ProviderError::Config("OpenAI requires --api-key or OPENAI_API_KEY".into()));
+                return Err(ProviderError::Config(
+                    "OpenAI requires --api-key or OPENAI_API_KEY".into(),
+                ));
             }
-            Ok(Box::new(OpenAiCompatibleProvider::openai(api_key.to_string(), model.to_string())))
+            Ok(Box::new(OpenAiCompatibleProvider::openai(
+                api_key.to_string(),
+                model.to_string(),
+            )))
         }
         ProviderKind::Xai => {
             if api_key.is_empty() {
-                return Err(ProviderError::Config("XAI requires --api-key or XAI_API_KEY".into()));
+                return Err(ProviderError::Config(
+                    "XAI requires --api-key or XAI_API_KEY".into(),
+                ));
             }
-            Ok(Box::new(OpenAiCompatibleProvider::xai(api_key.to_string(), model.to_string())))
+            Ok(Box::new(OpenAiCompatibleProvider::xai(
+                api_key.to_string(),
+                model.to_string(),
+            )))
         }
         ProviderKind::OpenRouter => {
             if api_key.is_empty() {
-                return Err(ProviderError::Config("OpenRouter requires --api-key or OPENROUTER_API_KEY".into()));
+                return Err(ProviderError::Config(
+                    "OpenRouter requires --api-key or OPENROUTER_API_KEY".into(),
+                ));
             }
-            Ok(Box::new(OpenAiCompatibleProvider::openrouter(api_key.to_string(), model.to_string())))
+            Ok(Box::new(OpenAiCompatibleProvider::openrouter(
+                api_key.to_string(),
+                model.to_string(),
+            )))
         }
         ProviderKind::Custom => {
             if api_key.is_empty() {
-                return Err(ProviderError::Config("Custom provider requires --api-key".into()));
+                return Err(ProviderError::Config(
+                    "Custom provider requires --api-key".into(),
+                ));
             }
             if endpoint.is_empty() {
-                return Err(ProviderError::Config("Custom provider requires --llm-endpoint".into()));
+                return Err(ProviderError::Config(
+                    "Custom provider requires --llm-endpoint".into(),
+                ));
             }
             Ok(Box::new(OpenAiCompatibleProvider::new(
                 "custom",
@@ -335,12 +358,24 @@ mod tests {
 
     #[test]
     fn provider_kind_from_str() {
-        assert_eq!("ollama".parse::<ProviderKind>().unwrap(), ProviderKind::Ollama);
-        assert_eq!("openai".parse::<ProviderKind>().unwrap(), ProviderKind::OpenAi);
+        assert_eq!(
+            "ollama".parse::<ProviderKind>().unwrap(),
+            ProviderKind::Ollama
+        );
+        assert_eq!(
+            "openai".parse::<ProviderKind>().unwrap(),
+            ProviderKind::OpenAi
+        );
         assert_eq!("xai".parse::<ProviderKind>().unwrap(), ProviderKind::Xai);
         assert_eq!("grok".parse::<ProviderKind>().unwrap(), ProviderKind::Xai);
-        assert_eq!("openrouter".parse::<ProviderKind>().unwrap(), ProviderKind::OpenRouter);
-        assert_eq!("custom".parse::<ProviderKind>().unwrap(), ProviderKind::Custom);
+        assert_eq!(
+            "openrouter".parse::<ProviderKind>().unwrap(),
+            ProviderKind::OpenRouter
+        );
+        assert_eq!(
+            "custom".parse::<ProviderKind>().unwrap(),
+            ProviderKind::Custom
+        );
         assert!("invalid".parse::<ProviderKind>().is_err());
     }
 
@@ -377,7 +412,12 @@ mod tests {
 
     #[test]
     fn build_ollama_no_key_needed() {
-        let p = build_provider(&ProviderKind::Ollama, "http://localhost:11434", "", "llama3.2");
+        let p = build_provider(
+            &ProviderKind::Ollama,
+            "http://localhost:11434",
+            "",
+            "llama3.2",
+        );
         assert!(p.is_ok());
     }
 
@@ -395,7 +435,12 @@ mod tests {
 
     #[test]
     fn build_openrouter_requires_key() {
-        let p = build_provider(&ProviderKind::OpenRouter, "", "", "meta-llama/llama-3.1-8b-instruct");
+        let p = build_provider(
+            &ProviderKind::OpenRouter,
+            "",
+            "",
+            "meta-llama/llama-3.1-8b-instruct",
+        );
         assert!(p.is_err());
     }
 
@@ -405,7 +450,12 @@ mod tests {
         assert!(p.is_ok());
         let p = build_provider(&ProviderKind::Xai, "", "xai-test", "grok-3-mini");
         assert!(p.is_ok());
-        let p = build_provider(&ProviderKind::OpenRouter, "", "or-test", "meta-llama/llama-3.1-8b-instruct");
+        let p = build_provider(
+            &ProviderKind::OpenRouter,
+            "",
+            "or-test",
+            "meta-llama/llama-3.1-8b-instruct",
+        );
         assert!(p.is_ok());
     }
 }

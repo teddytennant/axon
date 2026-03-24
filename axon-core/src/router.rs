@@ -140,11 +140,7 @@ impl Router {
                 let mut scored: Vec<(Vec<u8>, f64)> = capable
                     .into_iter()
                     .map(|id| {
-                        let score = self
-                            .stats
-                            .get(&id)
-                            .map(|s| s.score())
-                            .unwrap_or(0.5);
+                        let score = self.stats.get(&id).map(|s| s.score()).unwrap_or(0.5);
                         (id, score)
                     })
                     .collect();
@@ -374,7 +370,7 @@ mod tests {
         s.record_success(100);
         s.record_success(300);
         s.record_failure(); // should not affect avg latency
-        // avg = (100+300)/2 = 200, not (100+300)/3 = 133
+                            // avg = (100+300)/2 = 200, not (100+300)/3 = 133
         assert_eq!(s.avg_latency_ms(), 200);
     }
 

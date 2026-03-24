@@ -188,7 +188,7 @@ impl Dashboard {
             .constraints([
                 Constraint::Length(3), // Header
                 Constraint::Length(3), // Tabs
-                Constraint::Min(0),   // Content
+                Constraint::Min(0),    // Content
                 Constraint::Length(1), // Status bar
             ])
             .split(frame.area());
@@ -255,7 +255,11 @@ impl Dashboard {
             .iter()
             .map(|p| {
                 let id_short = if p.peer_id.len() >= 4 {
-                    p.peer_id.iter().take(4).map(|b| format!("{:02x}", b)).collect::<String>()
+                    p.peer_id
+                        .iter()
+                        .take(4)
+                        .map(|b| format!("{:02x}", b))
+                        .collect::<String>()
                 } else {
                     "????".to_string()
                 };
@@ -303,8 +307,7 @@ impl Dashboard {
             .capabilities
             .iter()
             .map(|c| {
-                ListItem::new(format!("  {} ", c.tag()))
-                    .style(Style::default().fg(Color::Cyan))
+                ListItem::new(format!("  {} ", c.tag())).style(Style::default().fg(Color::Cyan))
             })
             .collect();
 
@@ -313,12 +316,18 @@ impl Dashboard {
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
             .split(area);
 
-        let agents_list = List::new(items)
-            .block(Block::default().borders(Borders::ALL).title(" Registered Agents "));
+        let agents_list = List::new(items).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Registered Agents "),
+        );
         frame.render_widget(agents_list, inner[0]);
 
-        let caps_list = List::new(caps_text)
-            .block(Block::default().borders(Borders::ALL).title(" Capabilities "));
+        let caps_list = List::new(caps_text).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Capabilities "),
+        );
         frame.render_widget(caps_list, inner[1]);
     }
 
@@ -373,9 +382,14 @@ impl Dashboard {
     }
 
     fn render_state(frame: &mut Frame, _state: &DashboardState, area: Rect) {
-        let msg = Paragraph::new("CRDT shared state viewer\n\nState will appear here as peers sync.")
-            .block(Block::default().borders(Borders::ALL).title(" Shared State "))
-            .wrap(Wrap { trim: false });
+        let msg =
+            Paragraph::new("CRDT shared state viewer\n\nState will appear here as peers sync.")
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title(" Shared State "),
+                )
+                .wrap(Wrap { trim: false });
         frame.render_widget(msg, area);
     }
 
@@ -389,8 +403,7 @@ impl Dashboard {
             .map(|l| ListItem::new(l.as_str()))
             .collect();
 
-        let list = List::new(items)
-            .block(Block::default().borders(Borders::ALL).title(" Logs "));
+        let list = List::new(items).block(Block::default().borders(Borders::ALL).title(" Logs "));
         frame.render_widget(list, area);
     }
 }

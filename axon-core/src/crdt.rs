@@ -28,7 +28,9 @@ impl GCounter {
 
     /// Get the total count across all nodes.
     pub fn value(&self) -> u64 {
-        self.counts.values().fold(0u64, |acc, &v| acc.saturating_add(v))
+        self.counts
+            .values()
+            .fold(0u64, |acc, &v| acc.saturating_add(v))
     }
 
     /// Get the count for a specific node.
@@ -125,10 +127,7 @@ impl<T: Clone + Eq + std::hash::Hash> ORSet<T> {
         *counter = counter.saturating_add(1);
         let tag = (node_id.to_string(), *counter);
 
-        self.elements
-            .entry(element)
-            .or_default()
-            .insert(tag);
+        self.elements.entry(element).or_default().insert(tag);
     }
 
     /// Remove an element by tombstoning all its current tags.
