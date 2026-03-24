@@ -2,6 +2,7 @@ pub mod crdt;
 pub mod discovery;
 pub mod gossip;
 pub mod identity;
+pub mod mcp;
 pub mod mdns;
 pub mod protocol;
 pub mod router;
@@ -13,8 +14,11 @@ pub use crdt::{GCounter, LWWRegister, ORSet};
 pub use discovery::PeerTable;
 pub use gossip::GossipConfig;
 pub use identity::Identity;
+pub use mcp::{McpToolSchema, ToolFilter, ToolRegistry, ToolSearchResult};
 pub use mdns::{DiscoveryEvent, MdnsDiscovery};
-pub use protocol::{Capability, Message, PeerInfo, TaskRequest, TaskResponse, TaskStatus};
+pub use protocol::{
+    Capability, Message, PeerInfo, TaskRequest, TaskResponse, TaskStatus, ToolQueryResult,
+};
 pub use router::{Router, Strategy};
 pub use runtime::{Agent, AgentError, Runtime};
 pub use taskqueue::{QueueError, QueueStats, TaskQueue, TaskQueueConfig, TaskRecord, TaskState};

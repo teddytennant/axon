@@ -1,3 +1,4 @@
+use crate::mcp::McpToolSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -96,6 +97,30 @@ pub enum Message {
     /// Receiving nodes process this like TaskRequest but never forward again,
     /// preventing routing loops. Max one hop.
     ForwardedTask(TaskRequest),
+    /// Advertise MCP tool schemas available on this node.
+    /// Sent periodically via gossip and on initial peer connection.
+    ToolCatalog {
+        peer_id: Vec<u8>,
+        tools: Vec<McpToolSchema>,
+    },
+    /// Query the mesh for MCP tools matching a search filter.
+    ToolQuery {
+        query: String,
+        server_filter: Option<String>,
+        limit: u32,
+    },
+    /// Response to a ToolQuery with matching tools and relevance scores.
+    ToolQueryResponse {
+        tools: Vec<ToolQueryResult>,
+    },
+}
+
+/// A single result from a ToolQuery, returned in ToolQueryResponse.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolQueryResult {
+    pub tool: McpToolSchema,
+    pub score: f64,
+    pub peer_id: Vec<u8>,
 }
 
 impl Message {
@@ -287,5 +312,133 @@ mod tests {
             TaskStatus::Error(msg) => assert_eq!(msg, "something broke"),
             _ => panic!("wrong status"),
         }
+    }
+
+    #[test]
+    fn message_roundtrip_tool_catalog() {
+        let tool = McpToolSchema::new(
+            "read_file",
+            "Read a file",
+            serde_json::json!({"type": "object"}),
+            "filesystem",
+        );
+        let msg = Message::ToolCatalog {
+            peer_id: vec![0xAA, 0xBB],
+            tools: vec![tool],
+        };
+        let encoded = msg.encode().unwrap();
+        let decoded = Message::decode(&encoded).unwrap();
+        match decoded {
+            Message::ToolCatalog { peer_id, tools } => {
+                assert_eq!(peer_id, vec![0xAA, 0xBB]);
+                assert_eq!(tools.len(), 1);
+                assert_eq!(tools[0].name, "read_file");
+                assert_eq!(tools[0].server_name, "filesystem");
+            }
+            _ => panic!("wrong message type"),
+        }
+    }
+
+    #[test]
+    fn message_roundtrip_tool_query() {
+        let msg = Message::ToolQuery {
+            query: "read file".to_string(),
+            server_filter: Some("filesystem".to_string()),
+            limit: 5,
+        };
+        let encoded = msg.encode().unwrap();
+        let decoded = Message::decode(&encoded).unwrap();
+        match decoded {
+            Message::ToolQuery {
+                query,
+                server_filter,
+                limit,
+            } => {
+                assert_eq!(query, "read file");
+                assert_eq!(server_filter, Some("filesystem".to_string()));
+                assert_eq!(limit, 5);
+            }
+            _ => panic!("wrong message type"),
+        }
+    }
+
+    #[test]
+    fn message_roundtrip_tool_query_no_filter() {
+        let msg = Message::ToolQuery {
+            query: "anything".to_string(),
+            server_filter: None,
+            limit: 10,
+        };
+        let encoded = msg.encode().unwrap();
+        let decoded = Message::decode(&encoded).unwrap();
+        match decoded {
+            Message::ToolQuery {
+                server_filter,
+                limit,
+                ..
+            } => {
+                assert!(server_filter.is_none());
+                assert_eq!(limit, 10);
+            }
+            _ => panic!("wrong message type"),
+        }
+    }
+
+    #[test]
+    fn message_roundtrip_tool_query_response() {
+        let tool = McpToolSchema::new(
+            "search_code",
+            "Search code",
+            serde_json::json!({}),
+            "github",
+        );
+        let result = ToolQueryResult {
+            tool,
+            score: 0.95,
+            peer_id: vec![1, 2, 3],
+        };
+        let msg = Message::ToolQueryResponse {
+            tools: vec![result],
+        };
+        let encoded = msg.encode().unwrap();
+        let decoded = Message::decode(&encoded).unwrap();
+        match decoded {
+            Message::ToolQueryResponse { tools } => {
+                assert_eq!(tools.len(), 1);
+                assert_eq!(tools[0].tool.name, "search_code");
+                assert!((tools[0].score - 0.95).abs() < f64::EPSILON);
+                assert_eq!(tools[0].peer_id, vec![1, 2, 3]);
+            }
+            _ => panic!("wrong message type"),
+        }
+    }
+
+    #[test]
+    fn message_roundtrip_empty_tool_catalog() {
+        let msg = Message::ToolCatalog {
+            peer_id: vec![0xFF],
+            tools: vec![],
+        };
+        let encoded = msg.encode().unwrap();
+        let decoded = Message::decode(&encoded).unwrap();
+        match decoded {
+            Message::ToolCatalog { tools, .. } => {
+                assert!(tools.is_empty());
+            }
+            _ => panic!("wrong message type"),
+        }
+    }
+
+    #[test]
+    fn tool_query_result_roundtrip() {
+        let result = ToolQueryResult {
+            tool: McpToolSchema::new("test", "Test tool", serde_json::json!({}), "test"),
+            score: 0.42,
+            peer_id: vec![0xDE, 0xAD],
+        };
+        let bytes = bincode::serialize(&result).unwrap();
+        let decoded: ToolQueryResult = bincode::deserialize(&bytes).unwrap();
+        assert_eq!(decoded.tool.name, "test");
+        assert!((decoded.score - 0.42).abs() < f64::EPSILON);
     }
 }
