@@ -451,17 +451,12 @@ async fn queue_drain_dispatches_pending_tasks() {
 
     // Drain loop (simulates the drain worker)
     let mut dispatched = 0;
-    loop {
-        match queue.dequeue().unwrap() {
-            Some(record) => {
-                let task_id = record.request.id;
-                let resp = runtime.dispatch(record.request).await;
-                assert_eq!(resp.status, TaskStatus::Success);
-                queue.complete(task_id, resp).unwrap();
-                dispatched += 1;
-            }
-            None => break,
-        }
+    while let Some(record) = queue.dequeue().unwrap() {
+        let task_id = record.request.id;
+        let resp = runtime.dispatch(record.request).await;
+        assert_eq!(resp.status, TaskStatus::Success);
+        queue.complete(task_id, resp).unwrap();
+        dispatched += 1;
     }
 
     assert_eq!(dispatched, 3);
