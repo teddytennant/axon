@@ -171,6 +171,38 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+
+    /// Show trust scores for mesh peers
+    Trust {
+        #[command(subcommand)]
+        action: TrustAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum TrustAction {
+    /// Show trust scores for all known peers (or a specific peer)
+    Show {
+        /// Hex-encoded peer ID to show (omit for all peers)
+        #[arg(short, long)]
+        peer: Option<String>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show observation history for a specific peer
+    History {
+        /// Hex-encoded peer ID
+        peer: String,
+        /// Maximum observations to show (most recent first)
+        #[arg(short, long, default_value = "20")]
+        limit: usize,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Simulate trust scoring with example data (for testing/demo)
+    Demo,
 }
 
 #[tokio::main]
@@ -563,9 +595,159 @@ async fn main() -> anyhow::Result<()> {
             };
             query_tools(node, query, server, limit, budget, detail_byte, json).await?;
         }
+        Commands::Trust { action } => {
+            handle_trust_command(action);
+        }
     }
 
     Ok(())
+}
+
+fn handle_trust_command(action: TrustAction) {
+    use axon_core::{TaskOutcome, TrustObservation, TrustScore, TrustScorer, TrustStore};
+
+    match action {
+        TrustAction::Show { peer, json } => {
+            // In a running node, the TrustStore would be loaded from persistent state.
+            // For now, show the trust model's behavior with synthesized data.
+            eprintln!("Trust store requires a running node. Use 'axon trust demo' to see the trust model in action.");
+            if let Some(peer_hex) = peer {
+                let score = TrustScore::neutral();
+                if json {
+                    println!(
+                        "{{\"peer\":\"{}\",\"overall\":{:.3},\"reliability\":{:.3},\"accuracy\":{:.3},\"availability\":{:.3},\"quality\":{:.3},\"confidence\":{:.3},\"observations\":{}}}",
+                        peer_hex, score.overall, score.reliability, score.accuracy,
+                        score.availability, score.quality, score.confidence, score.observation_count,
+                    );
+                } else {
+                    println!("Peer: {}", peer_hex);
+                    print_trust_score(&score);
+                }
+            }
+        }
+        TrustAction::History { peer, limit, json } => {
+            eprintln!("Trust store requires a running node. Use 'axon trust demo' to see the trust model in action.");
+            if json {
+                println!(
+                    "{{\"peer\":\"{}\",\"limit\":{},\"observations\":[]}}",
+                    peer, limit
+                );
+            } else {
+                println!(
+                    "Peer: {} — no observations (not connected to running node)",
+                    peer
+                );
+            }
+        }
+        TrustAction::Demo => {
+            println!("=== axon trust system demo ===\n");
+
+            let scorer = TrustScorer::new();
+            let mut store = TrustStore::new(scorer);
+
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
+
+            // Simulate 3 peers with different behavior patterns
+            let reliable_peer = vec![0xAA, 0xBB, 0xCC];
+            let flaky_peer = vec![0xDD, 0xEE, 0xFF];
+            let liar_peer = vec![0x11, 0x22, 0x33];
+
+            println!("Simulating 3 peers over 100 interactions:\n");
+            println!("  Peer AABBCC — reliable (95% success, accurate estimates)");
+            println!("  Peer DDEEFF — flaky (60% success, 20% timeouts)");
+            println!("  Peer 112233 — liar (90% success, but estimates 100ms, takes 2000ms)\n");
+
+            // Reliable peer: 95/100 success, accurate latency
+            for i in 0..100 {
+                let outcome = if i % 20 == 17 {
+                    TaskOutcome::Failure
+                } else {
+                    TaskOutcome::Success
+                };
+                store.record_observation(
+                    &reliable_peer,
+                    TrustObservation::new(outcome, 100, 110).with_timestamp(now - 100 + i),
+                );
+            }
+
+            // Flaky peer: 60% success, 20% timeout, 20% failure
+            for i in 0..100 {
+                let outcome = if i % 5 == 0 {
+                    TaskOutcome::Timeout
+                } else if i % 5 == 1 {
+                    TaskOutcome::Failure
+                } else {
+                    TaskOutcome::Success
+                };
+                let actual = if outcome == TaskOutcome::Timeout {
+                    0
+                } else {
+                    200
+                };
+                store.record_observation(
+                    &flaky_peer,
+                    TrustObservation::new(outcome, 150, actual).with_timestamp(now - 100 + i),
+                );
+            }
+
+            // Liar peer: high success but wildly inaccurate estimates
+            for i in 0..100 {
+                store.record_observation(
+                    &liar_peer,
+                    TrustObservation::new(TaskOutcome::Success, 100, 2000)
+                        .with_timestamp(now - 100 + i),
+                );
+            }
+
+            let ranked = store.ranked_peers_at(now);
+            println!("Trust scores (ranked):\n");
+            for (id, score) in &ranked {
+                let hex: String = id.iter().map(|b| format!("{:02X}", b)).collect();
+                print!("  Peer {} ", hex);
+                print_trust_score(score);
+                println!();
+            }
+
+            // Demonstrate trust-weighted bid scoring
+            println!("--- Trust-weighted negotiation demo ---\n");
+            println!("All 3 peers bid identically: 50ms latency, 0.2 load, 0.9 confidence\n");
+
+            let tws = axon_core::TrustWeightedScoring::new(0.5);
+            let negotiator = axon_core::Negotiator::new(
+                std::time::Duration::from_millis(500),
+                axon_core::BidScoring::default(),
+            );
+
+            for (id, trust) in &ranked {
+                let hex: String = id.iter().map(|b| format!("{:02X}", b)).collect();
+                let bid =
+                    axon_core::ReceivedBid::new(uuid::Uuid::new_v4(), id.clone(), 50, 0.2, 0.9);
+                let raw = negotiator.score_bid(&bid);
+                let weighted = tws.weighted_score(raw, trust);
+                println!(
+                    "  Peer {} — raw: {:.3}, trust-weighted: {:.3}",
+                    hex, raw, weighted
+                );
+            }
+            println!("\nThe reliable peer wins despite identical bids. Trust breaks ties.");
+        }
+    }
+}
+
+fn print_trust_score(score: &axon_core::TrustScore) {
+    println!(
+        "[overall: {:.3}] reliability: {:.3}, accuracy: {:.3}, availability: {:.3}, quality: {:.3} (confidence: {:.3}, obs: {})",
+        score.overall,
+        score.reliability,
+        score.accuracy,
+        score.availability,
+        score.quality,
+        score.confidence,
+        score.observation_count,
+    );
 }
 
 async fn run_node(

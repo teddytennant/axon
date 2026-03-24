@@ -152,6 +152,30 @@ pub enum Message {
         /// Whether results were truncated due to budget or limit.
         truncated: bool,
     },
+
+    /// Share trust observations with a peer (transitive trust).
+    /// The receiver discounts these by their trust in the sender.
+    TrustGossip {
+        /// Who recorded these observations.
+        observer_peer_id: Vec<u8>,
+        /// Observations to share.
+        observations: Vec<TrustGossipEntry>,
+    },
+}
+
+/// A single trust observation shared via gossip.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrustGossipEntry {
+    /// Who the observation is about.
+    pub subject_peer_id: Vec<u8>,
+    /// Task outcome: 0=Success, 1=Failure, 2=Timeout, 3=Rejected.
+    pub outcome: u8,
+    /// Estimated latency from the bid (ms).
+    pub estimated_latency_ms: u64,
+    /// Actual observed latency (ms).
+    pub actual_latency_ms: u64,
+    /// Seconds since UNIX epoch when observed.
+    pub timestamp: u64,
 }
 
 /// A single result from a ToolQuery, returned in ToolQueryResponse.
@@ -592,5 +616,59 @@ mod tests {
         let decoded: ToolQueryResult = bincode::deserialize(&bytes).unwrap();
         assert_eq!(decoded.tool.name, "test");
         assert!((decoded.score - 0.42).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn message_roundtrip_trust_gossip() {
+        let msg = Message::TrustGossip {
+            observer_peer_id: vec![1, 2, 3],
+            observations: vec![
+                TrustGossipEntry {
+                    subject_peer_id: vec![4, 5, 6],
+                    outcome: 0, // Success
+                    estimated_latency_ms: 100,
+                    actual_latency_ms: 105,
+                    timestamp: 1234567890,
+                },
+                TrustGossipEntry {
+                    subject_peer_id: vec![7, 8, 9],
+                    outcome: 1, // Failure
+                    estimated_latency_ms: 200,
+                    actual_latency_ms: 500,
+                    timestamp: 1234567891,
+                },
+            ],
+        };
+        let encoded = msg.encode().unwrap();
+        let decoded = Message::decode(&encoded).unwrap();
+        match decoded {
+            Message::TrustGossip {
+                observer_peer_id,
+                observations,
+            } => {
+                assert_eq!(observer_peer_id, vec![1, 2, 3]);
+                assert_eq!(observations.len(), 2);
+                assert_eq!(observations[0].subject_peer_id, vec![4, 5, 6]);
+                assert_eq!(observations[0].outcome, 0);
+                assert_eq!(observations[1].actual_latency_ms, 500);
+            }
+            _ => panic!("wrong message type"),
+        }
+    }
+
+    #[test]
+    fn trust_gossip_entry_roundtrip() {
+        let entry = TrustGossipEntry {
+            subject_peer_id: vec![0xAA, 0xBB],
+            outcome: 2, // Timeout
+            estimated_latency_ms: 1000,
+            actual_latency_ms: 0,
+            timestamp: 9999999999,
+        };
+        let bytes = bincode::serialize(&entry).unwrap();
+        let decoded: TrustGossipEntry = bincode::deserialize(&bytes).unwrap();
+        assert_eq!(decoded.subject_peer_id, vec![0xAA, 0xBB]);
+        assert_eq!(decoded.outcome, 2);
+        assert_eq!(decoded.timestamp, 9999999999);
     }
 }
