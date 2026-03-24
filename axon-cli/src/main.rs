@@ -4,8 +4,8 @@ mod providers;
 mod tui;
 
 use axon_core::{
-    Capability, DiscoveryEvent, Identity, MdnsDiscovery, Message, PeerInfo, PeerTable, Runtime,
-    TaskQueue, TaskQueueConfig, TaskStatus, ToolRegistry, Transport,
+    Capability, DiscoveryEvent, Identity, McpBridge, McpBridgeAgent, MdnsDiscovery, Message,
+    PeerInfo, PeerTable, Runtime, TaskQueue, TaskQueueConfig, TaskStatus, ToolRegistry, Transport,
 };
 use clap::{Parser, Subcommand};
 use std::net::SocketAddr;
@@ -228,12 +228,20 @@ async fn main() -> anyhow::Result<()> {
 
             let effective_health_port = health_port.or(file_config.node.health_port);
 
+            let mcp_configs: Vec<_> = file_config
+                .mcp
+                .servers
+                .iter()
+                .map(|s| s.to_server_config())
+                .collect();
+
             run_node(
                 effective_listen,
                 effective_peers,
                 effective_headless,
                 llm_provider,
                 effective_health_port,
+                mcp_configs,
             )
             .await?;
         }
@@ -339,6 +347,7 @@ async fn run_node(
     headless: bool,
     llm_provider: Box<dyn providers::LlmProvider>,
     health_port: Option<u16>,
+    mcp_configs: Vec<axon_core::McpServerConfig>,
 ) -> anyhow::Result<()> {
     let identity = Identity::load_or_generate(&Identity::default_path())?;
     let peer_id_hex = identity.peer_id_hex();
@@ -369,6 +378,23 @@ async fn run_node(
         .register(Arc::new(LlmAgent::new(Arc::from(llm_provider))))
         .await;
 
+    // Connect to MCP servers and register the bridge agent
+    let mcp_bridge = Arc::new(McpBridge::new());
+    if !mcp_configs.is_empty() {
+        info!("Connecting to {} MCP server(s)...", mcp_configs.len());
+        let tools = mcp_bridge.connect_all(mcp_configs).await;
+        if !tools.is_empty() {
+            info!(
+                "MCP bridge: {} tools discovered across {} server(s)",
+                tools.len(),
+                mcp_bridge.server_count().await
+            );
+        }
+        runtime
+            .register(Arc::new(McpBridgeAgent::new(mcp_bridge.clone())))
+            .await;
+    }
+
     let local_peer = PeerInfo {
         peer_id: identity.public_key_bytes(),
         addr: local_addr.to_string(),
@@ -396,6 +422,23 @@ async fn run_node(
                 "Recovered {} tasks from previous session",
                 recovered
             ));
+        }
+        let mcp_tool_count = mcp_bridge.all_tools().await.len();
+        if mcp_tool_count > 0 {
+            state.add_log(format!(
+                "MCP bridge: {} tools from {} server(s)",
+                mcp_tool_count,
+                mcp_bridge.server_count().await,
+            ));
+        }
+    }
+
+    // Register MCP tools in the local tool registry
+    {
+        let mcp_tools = mcp_bridge.all_tools().await;
+        if !mcp_tools.is_empty() {
+            let mut reg = tool_registry.write().await;
+            reg.register_peer_tools(&identity.public_key_bytes(), mcp_tools);
         }
     }
 
@@ -844,13 +887,16 @@ async fn run_node(
         uptime, total_tasks, failed_tasks, total_msgs
     );
 
-    // 3. Shut down mDNS (stops advertising)
+    // 3. Shut down MCP bridge (kills server processes)
+    mcp_bridge.shutdown().await;
+
+    // 4. Shut down mDNS (stops advertising)
     if let Some(mdns) = _mdns {
         mdns.shutdown();
         info!("mDNS discovery stopped");
     }
 
-    // 4. Close transport (sends close frames to all peers)
+    // 5. Close transport (sends close frames to all peers)
     transport.shutdown().await;
     info!("Node shut down cleanly.");
     Ok(())
@@ -1044,8 +1090,7 @@ async fn handle_message(
             server_filter,
             limit,
         } => {
-            let filter = axon_core::ToolFilter::new()
-                .with_limit(limit as usize);
+            let filter = axon_core::ToolFilter::new().with_limit(limit as usize);
             let filter = if query.is_empty() {
                 filter
             } else {
@@ -1274,7 +1319,10 @@ async fn query_tools(
                 println!(
                     "\n{} tool(s) found. ~{} tokens if loaded into context.",
                     tools.len(),
-                    tools.iter().map(|t| t.tool.estimated_tokens()).sum::<usize>()
+                    tools
+                        .iter()
+                        .map(|t| t.tool.estimated_tokens())
+                        .sum::<usize>()
                 );
             }
         }

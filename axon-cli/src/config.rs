@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
@@ -12,6 +13,8 @@ pub struct NodeConfig {
     pub node: NodeSection,
     #[serde(default)]
     pub llm: LlmSection,
+    #[serde(default)]
+    pub mcp: McpSection,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,6 +68,49 @@ impl Default for LlmSection {
             api_key: String::new(),
             model: String::new(),
         }
+    }
+}
+
+/// MCP server configuration section.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct McpSection {
+    /// List of MCP servers to connect to on startup.
+    #[serde(default)]
+    pub servers: Vec<McpServerEntry>,
+}
+
+/// Configuration for a single MCP server.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpServerEntry {
+    /// Human-readable name (e.g., "filesystem", "github")
+    pub name: String,
+    /// Command to spawn (e.g., "npx", "uvx")
+    pub command: String,
+    /// Command arguments
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// Environment variables
+    #[serde(default)]
+    pub env: HashMap<String, String>,
+    /// Request timeout in seconds (default: 30)
+    #[serde(default = "default_mcp_timeout")]
+    pub timeout_secs: u64,
+}
+
+fn default_mcp_timeout() -> u64 {
+    30
+}
+
+impl McpServerEntry {
+    /// Convert to the core McpServerConfig type.
+    pub fn to_server_config(&self) -> axon_core::McpServerConfig {
+        let mut config = axon_core::McpServerConfig::new(&self.name, &self.command)
+            .with_args(self.args.clone())
+            .with_timeout(self.timeout_secs);
+        for (k, v) in &self.env {
+            config = config.with_env(k, v);
+        }
+        config
     }
 }
 
@@ -133,12 +179,22 @@ pub fn generate_example_config() -> anyhow::Result<PathBuf> {
             api_key: String::new(),
             model: "llama3.2".to_string(),
         },
+        mcp: McpSection {
+            servers: Vec::new(),
+        },
     };
 
     let contents = toml::to_string_pretty(&example)?;
     let header = "# Axon node configuration\n\
                   # CLI flags override these values.\n\
-                  # API keys: prefer env vars (OPENAI_API_KEY, XAI_API_KEY, etc.)\n\n";
+                  # API keys: prefer env vars (OPENAI_API_KEY, XAI_API_KEY, etc.)\n\
+                  #\n\
+                  # MCP server example:\n\
+                  # [[mcp.servers]]\n\
+                  # name = \"filesystem\"\n\
+                  # command = \"npx\"\n\
+                  # args = [\"-y\", \"@modelcontextprotocol/server-filesystem\", \"/tmp\"]\n\
+                  # timeout_secs = 30\n\n";
 
     std::fs::write(&path, format!("{}{}", header, contents))?;
     Ok(path)
@@ -201,5 +257,60 @@ model = "gpt-4o"
         let deserialized: NodeConfig = toml::from_str(&serialized).unwrap();
         assert_eq!(config.node.listen, deserialized.node.listen);
         assert_eq!(config.llm.provider, deserialized.llm.provider);
+    }
+
+    #[test]
+    fn parse_mcp_servers() {
+        let toml = r#"
+[[mcp.servers]]
+name = "filesystem"
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+
+[[mcp.servers]]
+name = "github"
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-github"]
+timeout_secs = 60
+
+[mcp.servers.env]
+GITHUB_TOKEN = "ghp_test123"
+"#;
+        let config: NodeConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.mcp.servers.len(), 2);
+        assert_eq!(config.mcp.servers[0].name, "filesystem");
+        assert_eq!(config.mcp.servers[0].command, "npx");
+        assert_eq!(config.mcp.servers[0].args.len(), 3);
+        assert_eq!(config.mcp.servers[0].timeout_secs, 30); // default
+        assert_eq!(config.mcp.servers[1].name, "github");
+        assert_eq!(config.mcp.servers[1].timeout_secs, 60);
+        assert_eq!(
+            config.mcp.servers[1].env.get("GITHUB_TOKEN").unwrap(),
+            "ghp_test123"
+        );
+    }
+
+    #[test]
+    fn mcp_server_to_core_config() {
+        let entry = McpServerEntry {
+            name: "test".to_string(),
+            command: "/usr/bin/test-server".to_string(),
+            args: vec!["--flag".to_string()],
+            env: HashMap::from([("KEY".to_string(), "val".to_string())]),
+            timeout_secs: 45,
+        };
+        let config = entry.to_server_config();
+        assert_eq!(config.name, "test");
+        assert_eq!(config.command, "/usr/bin/test-server");
+        assert_eq!(config.args, vec!["--flag"]);
+        assert_eq!(config.timeout_secs, 45);
+        assert_eq!(config.env.get("KEY").unwrap(), "val");
+    }
+
+    #[test]
+    fn empty_mcp_section() {
+        let toml = "[node]\nlisten = \"0.0.0.0:4242\"\n";
+        let config: NodeConfig = toml::from_str(toml).unwrap();
+        assert!(config.mcp.servers.is_empty());
     }
 }
