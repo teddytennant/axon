@@ -4,6 +4,7 @@ pub mod gossip;
 pub mod identity;
 pub mod mcp;
 pub mod mdns;
+pub mod negotiate;
 pub mod protocol;
 pub mod router;
 pub mod runtime;
@@ -20,6 +21,10 @@ pub use mcp::{
     ToolFilter, ToolRegistry, ToolSearchResult,
 };
 pub use mdns::{DiscoveryEvent, MdnsDiscovery};
+pub use negotiate::{
+    ActiveNegotiation, BidScoring, BiddingStrategy, EagerBidder, LoadAwareBidder, NegotiationState,
+    Negotiator, ReceivedBid,
+};
 pub use protocol::{
     Capability, Message, PeerInfo, TaskRequest, TaskResponse, TaskStatus, ToolQueryResult,
 };
