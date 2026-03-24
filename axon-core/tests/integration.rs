@@ -619,3 +619,93 @@ async fn queue_crash_recovery_and_drain() {
     // Cleanup
     let _ = std::fs::remove_dir_all(&tmp);
 }
+
+/// Test: TLS certificates are derived from identity keys. When two nodes
+/// exchange messages, the TLS handshake is authenticated by MeshCertVerifier
+/// (real signature verification, not skipped).
+#[tokio::test]
+async fn tls_identity_derived_certs_work() {
+    let id1 = Identity::generate();
+    let id2 = Identity::generate();
+
+    // Both transports create identity-derived TLS certs
+    let t1 = Transport::bind("127.0.0.1:0".parse().unwrap(), &id1)
+        .await
+        .unwrap();
+    let t2 = Transport::bind("127.0.0.1:0".parse().unwrap(), &id2)
+        .await
+        .unwrap();
+    let t2_addr = t2.local_addr().unwrap();
+
+    let (done_tx, done_rx) = tokio::sync::oneshot::channel::<()>();
+
+    let t2_handle = tokio::spawn(async move {
+        let conn = t2.accept().await.unwrap();
+        let msg = Transport::recv(&conn).await.unwrap();
+        Transport::send(&conn, &Message::Pong { nonce: 42 }).await.unwrap();
+        let _ = done_rx.await;
+        msg
+    });
+
+    // connect_verified checks both TLS cert and identity handshake
+    let conn = t1.connect_verified(t2_addr, &id2.public_key_bytes()).await.unwrap();
+    Transport::send(&conn, &Message::Ping { nonce: 42 }).await.unwrap();
+
+    let resp = Transport::recv(&conn).await.unwrap();
+    match resp {
+        Message::Pong { nonce } => assert_eq!(nonce, 42),
+        _ => panic!("expected Pong"),
+    }
+
+    let _ = done_tx.send(());
+    let _ = t2_handle.await;
+}
+
+/// Test: connect_verified correctly rejects a peer whose TLS cert has a
+/// different identity (MITM scenario).
+#[tokio::test]
+async fn tls_cert_mismatch_rejected() {
+    let id1 = Identity::generate();
+    let id2 = Identity::generate();
+    let id3 = Identity::generate(); // the expected (wrong) identity
+
+    let t1 = Transport::bind("127.0.0.1:0".parse().unwrap(), &id1)
+        .await
+        .unwrap();
+    let t2 = Transport::bind("127.0.0.1:0".parse().unwrap(), &id2)
+        .await
+        .unwrap();
+    let t2_addr = t2.local_addr().unwrap();
+
+    tokio::spawn(async move {
+        let _ = t2.accept().await;
+    });
+
+    // We expect id3 but t2 has id2 — should fail at either TLS cert check
+    // or identity handshake.
+    let result = t1.connect_verified(t2_addr, &id3.public_key_bytes()).await;
+    assert!(result.is_err());
+}
+
+/// Test: extract_ed25519_pubkey_from_cert round-trips through a real cert.
+#[test]
+fn extract_pubkey_from_identity_cert() {
+    use axon_core::transport::extract_ed25519_pubkey_from_cert;
+
+    let id = Identity::generate();
+
+    // Build a cert the same way Transport::make_tls_configs does
+    let seed = id.secret_bytes();
+    let mut pkcs8 = Vec::with_capacity(48);
+    pkcs8.extend_from_slice(&[0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05]);
+    pkcs8.extend_from_slice(&[0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20]);
+    pkcs8.extend_from_slice(seed);
+
+    let pkcs8_der = rustls::pki_types::PrivateKeyDer::try_from(pkcs8).unwrap();
+    let kp = rcgen::KeyPair::from_der_and_sign_algo(&pkcs8_der, &rcgen::PKCS_ED25519).unwrap();
+    let params = rcgen::CertificateParams::new(vec!["axon".to_string()]).unwrap();
+    let cert = params.self_signed(&kp).unwrap();
+
+    let extracted = extract_ed25519_pubkey_from_cert(cert.der()).unwrap();
+    assert_eq!(extracted.as_slice(), id.public_key_bytes().as_slice());
+}

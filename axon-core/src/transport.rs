@@ -10,6 +10,48 @@ use tracing::{debug, info, warn};
 /// Size of an Ed25519 public key in bytes.
 const ED25519_PUBKEY_LEN: usize = 32;
 
+/// Wrap a 32-byte Ed25519 secret key seed in PKCS#8 v1 DER encoding (RFC 8410).
+///
+/// The resulting 48-byte DER can be consumed by `rcgen::KeyPair::from_der()` or
+/// `rustls::pki_types::PrivateKeyDer::try_from()`.
+fn ed25519_seed_to_pkcs8_der(seed: &[u8; 32]) -> Vec<u8> {
+    let mut der = Vec::with_capacity(48);
+    der.extend_from_slice(&[0x30, 0x2e]);                   // SEQUENCE (46 bytes)
+    der.extend_from_slice(&[0x02, 0x01, 0x00]);             // INTEGER 0 (version)
+    der.extend_from_slice(&[0x30, 0x05]);                   // SEQUENCE (5 bytes)
+    der.extend_from_slice(&[0x06, 0x03, 0x2b, 0x65, 0x70]); // OID 1.3.101.112 (Ed25519)
+    der.extend_from_slice(&[0x04, 0x22]);                   // OCTET STRING (34 bytes)
+    der.extend_from_slice(&[0x04, 0x20]);                   // OCTET STRING (32 bytes)
+    der.extend_from_slice(seed);
+    der
+}
+
+/// Extract the Ed25519 public key from a DER-encoded X.509 certificate.
+///
+/// Finds the SubjectPublicKeyInfo structure with the Ed25519 OID (1.3.101.112)
+/// and returns the 32-byte public key. Returns `None` if the certificate does
+/// not contain an Ed25519 key.
+pub fn extract_ed25519_pubkey_from_cert(cert_der: &[u8]) -> Option<[u8; 32]> {
+    // SubjectPublicKeyInfo for Ed25519 has a fixed DER prefix:
+    // SEQUENCE(42) { SEQUENCE(5) { OID 1.3.101.112 } BITSTRING(33) { 0x00 <32 bytes> } }
+    const SPKI_PREFIX: [u8; 12] = [
+        0x30, 0x2a, // SEQUENCE (42 bytes)
+        0x30, 0x05, // SEQUENCE (5 bytes)
+        0x06, 0x03, 0x2b, 0x65, 0x70, // OID 1.3.101.112
+        0x03, 0x21, // BIT STRING (33 bytes)
+        0x00,       // unused bits
+    ];
+
+    cert_der
+        .windows(SPKI_PREFIX.len() + 32)
+        .find(|w| w[..SPKI_PREFIX.len()] == SPKI_PREFIX)
+        .map(|w| {
+            let mut key = [0u8; 32];
+            key.copy_from_slice(&w[SPKI_PREFIX.len()..SPKI_PREFIX.len() + 32]);
+            key
+        })
+}
+
 #[derive(Error, Debug)]
 pub enum TransportError {
     #[error("Connection error: {0}")]
@@ -44,15 +86,16 @@ pub enum TransportError {
 const MAX_MESSAGE_SIZE: usize = 16 * 1024 * 1024;
 
 /// QUIC-based transport layer for the mesh.
+///
+/// TLS certificates are derived from the node's Ed25519 identity key, so the
+/// certificate's public key IS the peer ID.  TLS handshake signatures are
+/// cryptographically verified (via `MeshCertVerifier`), proving the remote
+/// peer holds the private key for the advertised identity.  An additional
+/// application-level identity handshake exchanges raw Ed25519 public keys as
+/// a belt-and-suspenders check.
 pub struct Transport {
     endpoint: Endpoint,
     connections: Arc<Mutex<std::collections::HashMap<SocketAddr, Connection>>>,
-    /// The local node's Ed25519 public key, sent as the first message after
-    /// a QUIC connection is established to allow lightweight peer identity
-    /// verification. This is not a full PKI solution — TLS certificate
-    /// verification is still skipped for self-signed certs — but it ensures
-    /// the peer we connected to is who we expected (based on mDNS discovery
-    /// or an explicit peer ID).
     local_public_key: Vec<u8>,
 }
 
@@ -79,12 +122,10 @@ impl Transport {
         Ok(self.endpoint.local_addr()?)
     }
 
-    /// Connect to a remote peer. After establishing the QUIC connection,
-    /// performs a lightweight identity handshake: both sides exchange Ed25519
-    /// public keys on dedicated unidirectional streams. This is not a full PKI
-    /// solution — TLS certificate verification is still skipped for self-signed
-    /// certs — but it allows either side to verify the peer it connected to is
-    /// who it expected (based on mDNS discovery or explicit peer ID).
+    /// Connect to a remote peer. After establishing the QUIC connection (with
+    /// TLS handshake signature verification), performs an identity handshake:
+    /// both sides exchange Ed25519 public keys on dedicated unidirectional
+    /// streams. Use `connect_verified` to also assert the peer's identity.
     pub async fn connect(&self, addr: SocketAddr) -> Result<Connection, TransportError> {
         {
             let conns = self.connections.lock().await;
@@ -111,8 +152,16 @@ impl Transport {
     }
 
     /// Connect to a remote peer and verify its identity against `expected_peer_id`.
-    /// If the remote peer's public key does not match, the connection is closed
-    /// and an error is returned.
+    ///
+    /// Verification happens at two layers:
+    /// 1. **TLS layer** — the peer's certificate public key is extracted and
+    ///    compared against `expected_peer_id` (the cert is derived from the
+    ///    identity key, so this proves the TLS channel terminates at the
+    ///    expected node).
+    /// 2. **Application layer** — the identity handshake exchanges raw Ed25519
+    ///    public keys and the received key is checked.
+    ///
+    /// If either check fails, the connection is closed and an error is returned.
     pub async fn connect_verified(
         &self,
         addr: SocketAddr,
@@ -123,7 +172,28 @@ impl Transport {
             .connect(addr, "axon")?
             .await?;
 
-        // Identity handshake: send ours, verify theirs.
+        // TLS-level verification: extract the public key from the peer's
+        // certificate and check it matches the expected identity.
+        if let Some(peer_identity) = conn.peer_identity() {
+            if let Some(certs) = peer_identity
+                .downcast_ref::<Vec<rustls::pki_types::CertificateDer<'static>>>()
+            {
+                if let Some(cert) = certs.first() {
+                    if let Some(cert_pubkey) = extract_ed25519_pubkey_from_cert(cert.as_ref()) {
+                        if cert_pubkey.as_slice() != expected_peer_id {
+                            conn.close(1u32.into(), b"TLS cert identity mismatch");
+                            return Err(TransportError::PeerVerificationFailed(
+                                "TLS certificate public key does not match expected peer ID"
+                                    .to_string(),
+                            ));
+                        }
+                        debug!("TLS certificate identity verified for peer at {}", addr);
+                    }
+                }
+            }
+        }
+
+        // Application-level identity handshake: send ours, verify theirs.
         Self::send_identity(&conn, &self.local_public_key).await?;
         let remote_key = Self::recv_identity(&conn).await?;
 
@@ -289,10 +359,16 @@ impl Transport {
     }
 
     fn make_tls_configs(
-        _identity: &Identity,
+        identity: &Identity,
     ) -> Result<(ServerConfig, ClientConfig), TransportError> {
-        // Generate a self-signed certificate for QUIC
-        let key_pair = rcgen::KeyPair::generate_for(&rcgen::PKCS_ED25519)?;
+        // Derive the TLS certificate from the node's persistent Ed25519 identity
+        // key.  This binds the TLS channel to the node identity: the certificate's
+        // public key IS the peer ID.
+        let pkcs8_bytes = ed25519_seed_to_pkcs8_der(identity.secret_bytes());
+        let pkcs8_der = rustls::pki_types::PrivateKeyDer::try_from(pkcs8_bytes)
+            .map_err(|e| TransportError::Rustls(rustls::Error::General(e.to_string())))?;
+        let key_pair = rcgen::KeyPair::from_der_and_sign_algo(&pkcs8_der, &rcgen::PKCS_ED25519)?;
+
         let params = rcgen::CertificateParams::new(vec!["axon".to_string()])?;
         let cert = params.self_signed(&key_pair)?;
 
@@ -306,10 +382,11 @@ impl Transport {
             key_der.clone_key(),
         )?;
 
-        // Client config — skip server certificate verification (mesh peers use self-signed)
+        // Client config — self-signed certs are accepted, but TLS handshake
+        // signatures are cryptographically verified (not skipped).
         let client_crypto = rustls::ClientConfig::builder()
             .dangerous()
-            .with_custom_certificate_verifier(Arc::new(SkipVerification))
+            .with_custom_certificate_verifier(Arc::new(MeshCertVerifier::new()))
             .with_no_client_auth();
 
         let client_config = ClientConfig::new(Arc::new(
@@ -321,11 +398,31 @@ impl Transport {
     }
 }
 
-/// Accepts any certificate (peers in the mesh use self-signed certs).
+/// Certificate verifier for the axon mesh.
+///
+/// Self-signed certificates are accepted (no CA chain verification), but TLS
+/// handshake signatures are cryptographically verified using the ring crypto
+/// provider.  This proves the remote peer holds the private key corresponding
+/// to the certificate — and since certificates are derived from identity keys,
+/// this proves the peer's identity at the TLS layer.
+///
+/// Post-handshake identity verification (checking the cert's public key against
+/// the expected peer ID) happens in `connect_verified()` / `accept_verified()`.
 #[derive(Debug)]
-struct SkipVerification;
+struct MeshCertVerifier {
+    supported_algs: rustls::crypto::WebPkiSupportedAlgorithms,
+}
 
-impl rustls::client::danger::ServerCertVerifier for SkipVerification {
+impl MeshCertVerifier {
+    fn new() -> Self {
+        Self {
+            supported_algs: rustls::crypto::ring::default_provider()
+                .signature_verification_algorithms,
+        }
+    }
+}
+
+impl rustls::client::danger::ServerCertVerifier for MeshCertVerifier {
     fn verify_server_cert(
         &self,
         _end_entity: &rustls::pki_types::CertificateDer<'_>,
@@ -334,51 +431,119 @@ impl rustls::client::danger::ServerCertVerifier for SkipVerification {
         _ocsp_response: &[u8],
         _now: rustls::pki_types::UnixTime,
     ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+        // Accept self-signed certificates — there is no CA in the mesh.
+        // The actual identity check happens post-handshake by extracting
+        // the cert's public key and comparing against the expected peer ID.
         Ok(rustls::client::danger::ServerCertVerified::assertion())
     }
 
     fn verify_tls12_signature(
         &self,
-        _message: &[u8],
-        _cert: &rustls::pki_types::CertificateDer<'_>,
-        _dss: &rustls::DigitallySignedStruct,
+        message: &[u8],
+        cert: &rustls::pki_types::CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
     ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
-        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+        // QUIC mandates TLS 1.3, so this should never be called — but verify
+        // properly in case it is.
+        rustls::crypto::verify_tls12_signature(message, cert, dss, &self.supported_algs)
     }
 
     fn verify_tls13_signature(
         &self,
-        _message: &[u8],
-        _cert: &rustls::pki_types::CertificateDer<'_>,
-        _dss: &rustls::DigitallySignedStruct,
+        message: &[u8],
+        cert: &rustls::pki_types::CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
     ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
-        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+        rustls::crypto::verify_tls13_signature(message, cert, dss, &self.supported_algs)
     }
 
     fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
-        vec![
-            rustls::SignatureScheme::ED25519,
-            rustls::SignatureScheme::ECDSA_NISTP256_SHA256,
-            rustls::SignatureScheme::ECDSA_NISTP384_SHA384,
-            rustls::SignatureScheme::RSA_PSS_SHA256,
-            rustls::SignatureScheme::RSA_PSS_SHA384,
-            rustls::SignatureScheme::RSA_PSS_SHA512,
-            rustls::SignatureScheme::RSA_PKCS1_SHA256,
-            rustls::SignatureScheme::RSA_PKCS1_SHA384,
-            rustls::SignatureScheme::RSA_PKCS1_SHA512,
-        ]
+        self.supported_algs.supported_schemes()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rustls::client::danger::ServerCertVerifier;
+
+    /// Helper: create an rcgen KeyPair from an Identity using PKCS#8 DER.
+    fn keypair_from_identity(id: &Identity) -> rcgen::KeyPair {
+        let bytes = ed25519_seed_to_pkcs8_der(id.secret_bytes());
+        let pkcs8 = rustls::pki_types::PrivateKeyDer::try_from(bytes).unwrap();
+        rcgen::KeyPair::from_der_and_sign_algo(&pkcs8, &rcgen::PKCS_ED25519).unwrap()
+    }
 
     #[test]
     fn tls_config_generation_succeeds() {
         let identity = Identity::generate();
         let result = Transport::make_tls_configs(&identity);
         assert!(result.is_ok(), "TLS config generation should not fail: {:?}", result.err());
+    }
+
+    #[test]
+    fn pkcs8_der_encoding_length() {
+        let seed = [0xABu8; 32];
+        let der = ed25519_seed_to_pkcs8_der(&seed);
+        assert_eq!(der.len(), 48);
+    }
+
+    #[test]
+    fn pkcs8_der_roundtrip_via_rcgen() {
+        let identity = Identity::generate();
+        let kp = keypair_from_identity(&identity);
+        assert_eq!(kp.public_key_raw(), identity.public_key_bytes());
+    }
+
+    #[test]
+    fn identity_derived_cert_contains_peer_id() {
+        let identity = Identity::generate();
+        let kp = keypair_from_identity(&identity);
+        let params = rcgen::CertificateParams::new(vec!["axon".to_string()]).unwrap();
+        let cert = params.self_signed(&kp).unwrap();
+        let cert_der = cert.der();
+
+        let extracted = extract_ed25519_pubkey_from_cert(cert_der);
+        assert!(extracted.is_some(), "should extract Ed25519 pubkey from cert");
+        assert_eq!(
+            extracted.unwrap().as_slice(),
+            identity.public_key_bytes().as_slice(),
+            "cert pubkey must equal identity pubkey"
+        );
+    }
+
+    #[test]
+    fn extract_pubkey_from_non_ed25519_cert_returns_none() {
+        assert!(extract_ed25519_pubkey_from_cert(&[]).is_none());
+        assert!(extract_ed25519_pubkey_from_cert(&[0u8; 100]).is_none());
+    }
+
+    #[test]
+    fn different_identities_produce_different_certs() {
+        let id1 = Identity::generate();
+        let id2 = Identity::generate();
+
+        let make_cert = |id: &Identity| -> Vec<u8> {
+            let kp = keypair_from_identity(id);
+            let params = rcgen::CertificateParams::new(vec!["axon".to_string()]).unwrap();
+            let cert = params.self_signed(&kp).unwrap();
+            cert.der().to_vec()
+        };
+
+        let cert1 = make_cert(&id1);
+        let cert2 = make_cert(&id2);
+
+        let pk1 = extract_ed25519_pubkey_from_cert(&cert1).unwrap();
+        let pk2 = extract_ed25519_pubkey_from_cert(&cert2).unwrap();
+        assert_ne!(pk1, pk2);
+    }
+
+    #[test]
+    fn mesh_cert_verifier_supported_schemes_not_empty() {
+        let v = MeshCertVerifier::new();
+        let schemes = v.supported_verify_schemes();
+        assert!(!schemes.is_empty());
+        assert!(schemes.contains(&rustls::SignatureScheme::ED25519));
     }
 
     #[tokio::test]
