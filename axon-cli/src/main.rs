@@ -4,13 +4,13 @@ mod providers;
 mod tui;
 
 use axon_core::{
-    Identity, Message, PeerInfo, PeerTable, Runtime, Transport, Capability,
-    TaskStatus, MdnsDiscovery, DiscoveryEvent, TaskQueue, TaskQueueConfig,
+    Capability, DiscoveryEvent, Identity, MdnsDiscovery, Message, PeerInfo, PeerTable, Runtime,
+    TaskQueue, TaskQueueConfig, TaskStatus, Transport,
 };
 use clap::{Parser, Subcommand};
 use std::net::SocketAddr;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{error, info};
 use uuid::Uuid;
@@ -166,9 +166,7 @@ async fn main() -> anyhow::Result<()> {
             };
 
             if !effective_headless {
-                tracing_subscriber::fmt()
-                    .with_writer(std::io::sink)
-                    .init();
+                tracing_subscriber::fmt().with_writer(std::io::sink).init();
             } else {
                 tracing_subscriber::fmt::init();
             }
@@ -207,7 +205,14 @@ async fn main() -> anyhow::Result<()> {
 
             let effective_health_port = health_port.or(file_config.node.health_port);
 
-            run_node(effective_listen, effective_peers, effective_headless, llm_provider, effective_health_port).await?;
+            run_node(
+                effective_listen,
+                effective_peers,
+                effective_headless,
+                llm_provider,
+                effective_health_port,
+            )
+            .await?;
         }
         Commands::Status => {
             println!("axon mesh node status");
@@ -353,7 +358,10 @@ async fn run_node(
         state.add_log(format!("Node started: {}", peer_id_hex));
         state.add_log(format!("Listening on {}", local_addr));
         if recovered > 0 {
-            state.add_log(format!("Recovered {} tasks from previous session", recovered));
+            state.add_log(format!(
+                "Recovered {} tasks from previous session",
+                recovered
+            ));
         }
     }
 
@@ -469,11 +477,7 @@ async fn run_node(
 
     // Start mDNS discovery
     let all_caps = runtime.all_capabilities().await;
-    let mdns_result = MdnsDiscovery::new(
-        peer_id_hex.clone(),
-        local_addr.port(),
-        all_caps,
-    );
+    let mdns_result = MdnsDiscovery::new(peer_id_hex.clone(), local_addr.port(), all_caps);
 
     let _mdns = if let Ok((mdns, mut mdns_rx)) = mdns_result {
         let mdns_pt = peer_table.clone();
@@ -510,7 +514,10 @@ async fn run_node(
                                     }
                                     Err(e) => {
                                         let mut state = mdns_ds.write().await;
-                                        state.add_log(format!("mDNS: failed to connect to {}: {}", addr, e));
+                                        state.add_log(format!(
+                                            "mDNS: failed to connect to {}: {}",
+                                            addr, e
+                                        ));
                                     }
                                 }
                             }
@@ -765,7 +772,8 @@ async fn run_node(
     if headless {
         info!("Running in headless mode. Press Ctrl+C to stop.");
         // Wait for SIGINT or SIGTERM
-        let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+        let mut sigterm =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {
                 info!("Received SIGINT");
@@ -812,6 +820,7 @@ async fn run_node(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn handle_message(
     msg: Message,
     conn: &quinn::Connection,
@@ -834,7 +843,11 @@ async fn handle_message(
             pt.upsert(info.clone());
             drop(pt);
             let mut state = dashboard.write().await;
-            state.add_log(format!("Peer announced: {} at {}", short_id(&info.peer_id), info.addr));
+            state.add_log(format!(
+                "Peer announced: {} at {}",
+                short_id(&info.peer_id),
+                info.addr
+            ));
         }
         Message::Gossip { peers } => {
             let mut pt = peer_table.write().await;
@@ -859,9 +872,9 @@ async fn handle_message(
 
             // If no local agent can handle it, try forwarding to a capable peer.
             if resp.status == TaskStatus::NoCapability {
-                resp = forward_to_peer(
-                    &req, peer_table, transport, dashboard, metrics, remote,
-                ).await.unwrap_or(resp);
+                resp = forward_to_peer(&req, peer_table, transport, dashboard, metrics, remote)
+                    .await
+                    .unwrap_or(resp);
             }
 
             // Update persistent record with result
@@ -918,7 +931,10 @@ async fn handle_message(
             let req_id = req.id.to_string();
             let cap_tag = req.capability.tag();
 
-            info!("Received forwarded task {} ({}) from {}", task_id, cap_tag, remote);
+            info!(
+                "Received forwarded task {} ({}) from {}",
+                task_id, cap_tag, remote
+            );
 
             let resp = runtime.dispatch(req).await;
             metrics.tasks_processed.fetch_add(1, Ordering::Relaxed);
@@ -1002,7 +1018,9 @@ async fn forward_to_peer(
     let cap_tag = req.capability.tag();
     info!(
         "Forwarding task {} ({}) — {} candidate peer(s)",
-        req.id, cap_tag, candidates.len()
+        req.id,
+        cap_tag,
+        candidates.len()
     );
 
     // Try candidates in order until one succeeds
@@ -1042,7 +1060,8 @@ async fn forward_to_peer(
                     Ok(other) => {
                         tracing::warn!(
                             "Forward to {} returned unexpected message: {:?}",
-                            addr, other
+                            addr,
+                            other
                         );
                     }
                     Err(e) => {
@@ -1060,7 +1079,12 @@ async fn forward_to_peer(
     None
 }
 
-async fn send_task(peer_addr: SocketAddr, namespace: &str, name: &str, data: &[u8]) -> anyhow::Result<()> {
+async fn send_task(
+    peer_addr: SocketAddr,
+    namespace: &str,
+    name: &str,
+    data: &[u8],
+) -> anyhow::Result<()> {
     let identity = Identity::load_or_generate(&Identity::default_path())?;
     let transport = Transport::bind("0.0.0.0:0".parse()?, &identity).await?;
 

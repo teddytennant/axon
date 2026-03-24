@@ -1,5 +1,5 @@
-use axon_sdk::{async_trait, Agent, AgentError, Capability, TaskRequest, TaskResponse, TaskStatus};
 use crate::providers::{CompletionRequest, LlmProvider};
+use axon_sdk::{async_trait, Agent, AgentError, Capability, TaskRequest, TaskResponse, TaskStatus};
 use std::sync::Arc;
 
 /// Echo agent — returns the input payload as-is. Useful for testing and diagnostics.
@@ -85,7 +85,8 @@ impl Agent for LlmAgent {
         let prompt = String::from_utf8(request.payload)
             .map_err(|e| AgentError::Internal(format!("invalid UTF-8 payload: {}", e)))?;
 
-        let completion = self.provider
+        let completion = self
+            .provider
             .complete(CompletionRequest {
                 prompt,
                 max_tokens: None,

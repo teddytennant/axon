@@ -70,15 +70,28 @@ pub struct PeerInfo {
 /// Messages exchanged between mesh nodes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Message {
-    Ping { nonce: u64 },
-    Pong { nonce: u64 },
+    Ping {
+        nonce: u64,
+    },
+    Pong {
+        nonce: u64,
+    },
     Announce(PeerInfo),
-    Discover { capability: Capability },
-    DiscoverResponse { peers: Vec<PeerInfo> },
+    Discover {
+        capability: Capability,
+    },
+    DiscoverResponse {
+        peers: Vec<PeerInfo>,
+    },
     TaskRequest(TaskRequest),
     TaskResponse(TaskResponse),
-    StateSync { key: String, data: Vec<u8> },
-    Gossip { peers: Vec<PeerInfo> },
+    StateSync {
+        key: String,
+        data: Vec<u8>,
+    },
+    Gossip {
+        peers: Vec<PeerInfo>,
+    },
     /// A task forwarded from another node that couldn't handle it locally.
     /// Receiving nodes process this like TaskRequest but never forward again,
     /// preventing routing loops. Max one hop.

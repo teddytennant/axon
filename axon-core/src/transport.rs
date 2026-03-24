@@ -16,12 +16,12 @@ const ED25519_PUBKEY_LEN: usize = 32;
 /// `rustls::pki_types::PrivateKeyDer::try_from()`.
 fn ed25519_seed_to_pkcs8_der(seed: &[u8; 32]) -> Vec<u8> {
     let mut der = Vec::with_capacity(48);
-    der.extend_from_slice(&[0x30, 0x2e]);                   // SEQUENCE (46 bytes)
-    der.extend_from_slice(&[0x02, 0x01, 0x00]);             // INTEGER 0 (version)
-    der.extend_from_slice(&[0x30, 0x05]);                   // SEQUENCE (5 bytes)
+    der.extend_from_slice(&[0x30, 0x2e]); // SEQUENCE (46 bytes)
+    der.extend_from_slice(&[0x02, 0x01, 0x00]); // INTEGER 0 (version)
+    der.extend_from_slice(&[0x30, 0x05]); // SEQUENCE (5 bytes)
     der.extend_from_slice(&[0x06, 0x03, 0x2b, 0x65, 0x70]); // OID 1.3.101.112 (Ed25519)
-    der.extend_from_slice(&[0x04, 0x22]);                   // OCTET STRING (34 bytes)
-    der.extend_from_slice(&[0x04, 0x20]);                   // OCTET STRING (32 bytes)
+    der.extend_from_slice(&[0x04, 0x22]); // OCTET STRING (34 bytes)
+    der.extend_from_slice(&[0x04, 0x20]); // OCTET STRING (32 bytes)
     der.extend_from_slice(seed);
     der
 }
@@ -39,7 +39,7 @@ pub fn extract_ed25519_pubkey_from_cert(cert_der: &[u8]) -> Option<[u8; 32]> {
         0x30, 0x05, // SEQUENCE (5 bytes)
         0x06, 0x03, 0x2b, 0x65, 0x70, // OID 1.3.101.112
         0x03, 0x21, // BIT STRING (33 bytes)
-        0x00,       // unused bits
+        0x00, // unused bits
     ];
 
     cert_der
@@ -101,10 +101,7 @@ pub struct Transport {
 
 impl Transport {
     /// Create a new transport bound to the given address.
-    pub async fn bind(
-        addr: SocketAddr,
-        identity: &Identity,
-    ) -> Result<Self, TransportError> {
+    pub async fn bind(addr: SocketAddr, identity: &Identity) -> Result<Self, TransportError> {
         let (server_config, client_config) = Self::make_tls_configs(identity)?;
 
         let mut endpoint = Endpoint::server(server_config, addr)?;
@@ -136,10 +133,7 @@ impl Transport {
             }
         }
 
-        let conn = self
-            .endpoint
-            .connect(addr, "axon")?
-            .await?;
+        let conn = self.endpoint.connect(addr, "axon")?.await?;
 
         // Identity handshake: send ours, consume theirs.
         Self::send_identity(&conn, &self.local_public_key).await?;
@@ -167,16 +161,13 @@ impl Transport {
         addr: SocketAddr,
         expected_peer_id: &[u8],
     ) -> Result<Connection, TransportError> {
-        let conn = self
-            .endpoint
-            .connect(addr, "axon")?
-            .await?;
+        let conn = self.endpoint.connect(addr, "axon")?.await?;
 
         // TLS-level verification: extract the public key from the peer's
         // certificate and check it matches the expected identity.
         if let Some(peer_identity) = conn.peer_identity() {
-            if let Some(certs) = peer_identity
-                .downcast_ref::<Vec<rustls::pki_types::CertificateDer<'static>>>()
+            if let Some(certs) =
+                peer_identity.downcast_ref::<Vec<rustls::pki_types::CertificateDer<'static>>>()
             {
                 if let Some(cert) = certs.first() {
                     if let Some(cert_pubkey) = extract_ed25519_pubkey_from_cert(cert.as_ref()) {
@@ -228,7 +219,11 @@ impl Transport {
                 }
                 match Self::recv_identity(&conn).await {
                     Ok(remote_key) => {
-                        debug!("Peer at {} presented identity {:02x?}...", addr, &remote_key[..4.min(remote_key.len())]);
+                        debug!(
+                            "Peer at {} presented identity {:02x?}...",
+                            addr,
+                            &remote_key[..4.min(remote_key.len())]
+                        );
                     }
                     Err(e) => {
                         warn!("Failed to receive identity from {}: {}", addr, e);
@@ -255,7 +250,11 @@ impl Transport {
         &self,
         expected_peer_id: Option<&[u8]>,
     ) -> Result<(Connection, Vec<u8>), TransportError> {
-        let incoming = self.endpoint.accept().await.ok_or(TransportError::NotConnected)?;
+        let incoming = self
+            .endpoint
+            .accept()
+            .await
+            .ok_or(TransportError::NotConnected)?;
         let conn = incoming.await?;
         let addr = conn.remote_address();
 
@@ -281,13 +280,13 @@ impl Transport {
     }
 
     /// Send a message over an existing connection.
-    pub async fn send(
-        conn: &Connection,
-        message: &Message,
-    ) -> Result<(), TransportError> {
+    pub async fn send(conn: &Connection, message: &Message) -> Result<(), TransportError> {
         let data = message.encode()?;
         if data.len() > MAX_MESSAGE_SIZE {
-            return Err(TransportError::MessageTooLarge(data.len(), MAX_MESSAGE_SIZE));
+            return Err(TransportError::MessageTooLarge(
+                data.len(),
+                MAX_MESSAGE_SIZE,
+            ));
         }
 
         let mut send = conn.open_uni().await?;
@@ -337,7 +336,10 @@ impl Transport {
     /// Number of active connections.
     pub async fn connection_count(&self) -> usize {
         let conns = self.connections.lock().await;
-        conns.values().filter(|c| c.close_reason().is_none()).count()
+        conns
+            .values()
+            .filter(|c| c.close_reason().is_none())
+            .count()
     }
 
     /// Send our Ed25519 public key over a unidirectional stream.
@@ -377,10 +379,8 @@ impl Transport {
             .map_err(|e| TransportError::Rustls(rustls::Error::General(e.to_string())))?;
 
         // Server config
-        let server_config = ServerConfig::with_single_cert(
-            vec![cert_der.clone()],
-            key_der.clone_key(),
-        )?;
+        let server_config =
+            ServerConfig::with_single_cert(vec![cert_der.clone()], key_der.clone_key())?;
 
         // Client config — self-signed certs are accepted, but TLS handshake
         // signatures are cryptographically verified (not skipped).
@@ -478,7 +478,11 @@ mod tests {
     fn tls_config_generation_succeeds() {
         let identity = Identity::generate();
         let result = Transport::make_tls_configs(&identity);
-        assert!(result.is_ok(), "TLS config generation should not fail: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "TLS config generation should not fail: {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -504,7 +508,10 @@ mod tests {
         let cert_der = cert.der();
 
         let extracted = extract_ed25519_pubkey_from_cert(cert_der);
-        assert!(extracted.is_some(), "should extract Ed25519 pubkey from cert");
+        assert!(
+            extracted.is_some(),
+            "should extract Ed25519 pubkey from cert"
+        );
         assert_eq!(
             extracted.unwrap().as_slice(),
             identity.public_key_bytes().as_slice(),
@@ -621,7 +628,9 @@ mod tests {
 
         let conn = t1.connect_verified(t2_addr, &id2_pubkey).await.unwrap();
         // Verify the connection works by exchanging a message.
-        Transport::send(&conn, &Message::Ping { nonce: 77 }).await.unwrap();
+        Transport::send(&conn, &Message::Ping { nonce: 77 })
+            .await
+            .unwrap();
 
         let _ = done_tx.send(());
         let _ = accept_handle.await;
@@ -686,7 +695,9 @@ mod tests {
         });
 
         let conn = t1.connect(t2_addr).await.unwrap();
-        Transport::send(&conn, &Message::Ping { nonce: 99 }).await.unwrap();
+        Transport::send(&conn, &Message::Ping { nonce: 99 })
+            .await
+            .unwrap();
 
         let pong = Transport::recv(&conn).await.unwrap();
         match pong {

@@ -44,7 +44,11 @@ impl PeerTable {
         }
         let is_new = !self.peers.contains_key(&info.peer_id);
         if is_new {
-            info!("Discovered new peer: {} at {}", short_id(&info.peer_id), info.addr);
+            info!(
+                "Discovered new peer: {} at {}",
+                short_id(&info.peer_id),
+                info.addr
+            );
         }
         self.peers.insert(info.peer_id.clone(), info);
         is_new
@@ -100,7 +104,11 @@ impl PeerTable {
         let mut evicted = Vec::new();
         for id in stale {
             if let Some(peer) = self.peers.remove(&id) {
-                info!("Evicted stale peer: {} at {}", short_id(&peer.peer_id), peer.addr);
+                info!(
+                    "Evicted stale peer: {} at {}",
+                    short_id(&peer.peer_id),
+                    peer.addr
+                );
                 evicted.push(peer);
             }
         }
@@ -232,7 +240,10 @@ mod tests {
         let mut table = PeerTable::new(local_peer());
         let cap = Capability::new("llm", "chat", 1);
         table.upsert(make_peer_with_caps(2, vec![cap.clone()]));
-        table.upsert(make_peer_with_caps(3, vec![Capability::new("code", "review", 1)]));
+        table.upsert(make_peer_with_caps(
+            3,
+            vec![Capability::new("code", "review", 1)],
+        ));
         table.upsert(make_peer_with_caps(4, vec![cap.clone()]));
 
         let found = table.find_by_capability(&cap);
@@ -242,7 +253,10 @@ mod tests {
     #[test]
     fn peer_table_find_no_capability() {
         let mut table = PeerTable::new(local_peer());
-        table.upsert(make_peer_with_caps(2, vec![Capability::new("llm", "chat", 1)]));
+        table.upsert(make_peer_with_caps(
+            2,
+            vec![Capability::new("llm", "chat", 1)],
+        ));
         let found = table.find_by_capability(&Capability::new("code", "review", 1));
         assert_eq!(found.len(), 0);
     }
