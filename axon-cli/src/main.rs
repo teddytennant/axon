@@ -12,6 +12,7 @@ use axon_core::{
     TrustObservation, TrustScorer, TrustWeightedScoring,
 };
 use clap::{Parser, Subcommand};
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -891,6 +892,9 @@ async fn run_node(
         axon_core::BidScoring::default(),
     ));
     let trust_scoring = Arc::new(TrustWeightedScoring::default());
+    // Track requester connections for async negotiation responses
+    let negotiation_requesters: Arc<Mutex<HashMap<Uuid, quinn::Connection>>> =
+        Arc::new(Mutex::new(HashMap::new()));
 
     let transport = Transport::bind(listen, &identity).await?;
     let local_addr = transport.local_addr()?;
@@ -1000,6 +1004,7 @@ async fn run_node(
     let accept_trust_scoring = trust_scoring.clone();
     let accept_bidder = bidder.clone();
     let accept_local_peer_id = identity.public_key_bytes();
+    let accept_neg_requesters = negotiation_requesters.clone();
     let mut accept_shutdown = shutdown_tx.subscribe();
 
     tokio::spawn(async move {
@@ -1023,6 +1028,7 @@ async fn run_node(
                     let tws = accept_trust_scoring.clone();
                     let bid = accept_bidder.clone();
                     let lpid = accept_local_peer_id.clone();
+                    let nr = accept_neg_requesters.clone();
                     let remote = conn.remote_address();
 
                     {
@@ -1035,7 +1041,7 @@ async fn run_node(
                             match Transport::recv(&conn).await {
                                 Ok(msg) => {
                                     m.messages_received.fetch_add(1, Ordering::Relaxed);
-                                    handle_message(msg, &conn, &rt, &pt, &ds, remote, &m, &tq, &fwd_t, &tr, &ts, &ns, &neg, &tws, &bid, &lpid).await;
+                                    handle_message(msg, &conn, &rt, &pt, &ds, remote, &m, &tq, &fwd_t, &tr, &ts, &ns, &neg, &tws, &bid, &lpid, &nr).await;
                                 }
                                 Err(e) => {
                                     info!("Connection from {} closed: {}", remote, e);
@@ -1524,6 +1530,7 @@ async fn handle_message(
     trust_scoring: &Arc<TrustWeightedScoring>,
     bidder: &Arc<EagerBidder>,
     local_peer_id: &[u8],
+    negotiation_requesters: &Arc<Mutex<HashMap<Uuid, quinn::Connection>>>,
 ) {
     match msg {
         Message::Ping { nonce } => {
@@ -1584,8 +1591,134 @@ async fn handle_message(
 
             let mut resp = runtime.dispatch(req.clone()).await;
 
-            // If no local agent can handle it, try forwarding to a capable peer.
+            // If no local agent can handle it, try negotiation with capable peers.
             if resp.status == TaskStatus::NoCapability {
+                let candidates: Vec<PeerInfo> = {
+                    let pt = peer_table.read().await;
+                    pt.find_by_capability(&req.capability)
+                        .into_iter()
+                        .filter(|p| p.addr != remote.to_string())
+                        .cloned()
+                        .collect()
+                };
+
+                if !candidates.is_empty() {
+                    // Initiate negotiation: send TaskOffer to all capable peers
+                    let payload_hint = req.payload.len() as u64;
+                    let bid_deadline_ms = negotiator.bid_timeout.as_millis() as u64;
+                    let offer = Message::TaskOffer {
+                        request_id: task_id,
+                        capability: req.capability.clone(),
+                        payload_hint,
+                        bid_deadline_ms,
+                    };
+
+                    let mut peers_solicited = 0;
+                    for peer in &candidates {
+                        let addr: SocketAddr = match peer.addr.parse() {
+                            Ok(a) => a,
+                            Err(_) => continue,
+                        };
+                        match transport.connect(addr).await {
+                            Ok(peer_conn) => {
+                                if Transport::send(&peer_conn, &offer).await.is_ok() {
+                                    metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
+                                    peers_solicited += 1;
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    "Failed to connect to {} for TaskOffer: {}",
+                                    addr,
+                                    e
+                                );
+                            }
+                        }
+                    }
+
+                    if peers_solicited > 0 {
+                        // Start negotiation and store the request for later dispatch
+                        let mut ns = negotiation_state.lock().await;
+                        ns.start_with_request(
+                            task_id,
+                            req.capability.clone(),
+                            payload_hint,
+                            negotiator.bid_timeout,
+                            peers_solicited,
+                            req,
+                        );
+                        drop(ns);
+
+                        // Store the requester's connection so we can respond after winner selection
+                        let mut nr = negotiation_requesters.lock().await;
+                        nr.insert(task_id, conn.clone());
+                        drop(nr);
+
+                        info!(
+                            "Started negotiation {} — {} peers solicited for {}",
+                            task_id, peers_solicited, cap_tag,
+                        );
+                        {
+                            let mut state = dashboard.write().await;
+                            state.add_log(format!(
+                                "Negotiation started for task {} ({}) — {} peers",
+                                short_id(task_id.as_bytes()),
+                                cap_tag,
+                                peers_solicited,
+                            ));
+                        }
+
+                        // Don't send response yet — it comes after winner selection.
+                        // Spawn a deadline timeout to handle the case where no bids arrive.
+                        let ns_timeout = negotiation_state.clone();
+                        let nr_timeout = negotiation_requesters.clone();
+                        let tq_timeout = task_queue.clone();
+                        let m_timeout = metrics.clone();
+                        let ds_timeout = dashboard.clone();
+                        let deadline = negotiator.bid_timeout;
+                        tokio::spawn(async move {
+                            tokio::time::sleep(deadline + std::time::Duration::from_millis(100))
+                                .await;
+                            let mut ns = ns_timeout.lock().await;
+                            // If the negotiation is still active (wasn't completed by a bid),
+                            // it expired with no bids — respond with NoCapability.
+                            if let Some(mut neg) = ns.complete(&task_id) {
+                                drop(ns);
+                                let req = neg.take_request();
+                                let mut nr = nr_timeout.lock().await;
+                                if let Some(requester_conn) = nr.remove(&task_id) {
+                                    drop(nr);
+                                    let resp = axon_core::TaskResponse {
+                                        request_id: task_id,
+                                        status: TaskStatus::NoCapability,
+                                        payload: Vec::new(),
+                                        duration_ms: 0,
+                                    };
+                                    let _ = Transport::send(
+                                        &requester_conn,
+                                        &Message::TaskResponse(resp.clone()),
+                                    )
+                                    .await;
+                                    m_timeout.tasks_processed.fetch_add(1, Ordering::Relaxed);
+                                    m_timeout.tasks_failed.fetch_add(1, Ordering::Relaxed);
+                                    if let Some(req) = req {
+                                        let _ = tq_timeout.complete(req.id, resp);
+                                    }
+                                    let mut state = ds_timeout.write().await;
+                                    state.add_log(format!(
+                                        "Negotiation {} expired — no winning bids",
+                                        short_id(task_id.as_bytes()),
+                                    ));
+                                }
+                            }
+                        });
+
+                        return; // Exit early — response deferred to negotiation completion
+                    }
+                }
+
+                // Fallback: no capable peers or no peers responded to offers —
+                // use simple forwarding
                 resp = forward_to_peer(
                     &req,
                     peer_table,
@@ -1845,8 +1978,12 @@ async fn handle_message(
             let mut ns = negotiation_state.lock().await;
             let ready: Vec<Uuid> = ns.ready_negotiations();
             for neg_id in ready {
-                if let Some(neg) = ns.complete(&neg_id) {
+                if let Some(mut neg) = ns.complete(&neg_id) {
                     let bids = &neg.bids;
+                    if bids.is_empty() {
+                        continue;
+                    }
+
                     // Apply trust-weighted scoring to select winner
                     let scored_bids: Vec<(ReceivedBid, f64)> = bids
                         .iter()
@@ -1863,19 +2000,213 @@ async fn handle_message(
                         })
                         .collect();
 
-                    if let Some((winner, _score)) = scored_bids
+                    if let Some((winner, score)) = scored_bids
                         .iter()
                         .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
                     {
                         info!(
-                            "Negotiation {} complete — winner: {}",
+                            "Negotiation {} complete — winner: {} (score: {:.3})",
                             neg_id,
                             short_id(&winner.peer_id),
+                            score,
                         );
-                        // TODO: Send BidAccept to winner, BidReject to losers,
-                        // then forward the actual TaskRequest to the winner.
-                        // This requires storing the original TaskRequest alongside
-                        // the negotiation state — left for the next cycle.
+
+                        let winner_peer_id = winner.peer_id.clone();
+                        let winner_estimated_latency = winner.estimated_latency_ms;
+
+                        // Send BidAccept to winner, BidReject to losers
+                        let accept_msg = Message::BidAccept {
+                            request_id: neg_id,
+                            winner_peer_id: winner_peer_id.clone(),
+                        };
+                        let reject_msg = Message::BidReject { request_id: neg_id };
+
+                        // Find peer addresses for notification
+                        let pt = peer_table.read().await;
+                        for bid in bids {
+                            let msg = if bid.peer_id == winner_peer_id {
+                                &accept_msg
+                            } else {
+                                &reject_msg
+                            };
+                            // Find peer address
+                            if let Some(peer_info) = pt
+                                .all_peers_owned()
+                                .iter()
+                                .find(|p| p.peer_id == bid.peer_id)
+                            {
+                                if let Ok(addr) = peer_info.addr.parse::<SocketAddr>() {
+                                    if let Ok(peer_conn) = transport.connect(addr).await {
+                                        let _ = Transport::send(&peer_conn, msg).await;
+                                        metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
+                                    }
+                                }
+                            }
+                        }
+                        drop(pt);
+
+                        // Forward the stored TaskRequest to the winner
+                        let task_req = neg.take_request();
+                        if let Some(req) = task_req {
+                            let task_id = req.id;
+                            let cap_tag = req.capability.tag();
+
+                            // Find winner's address and forward
+                            let pt = peer_table.read().await;
+                            let winner_addr = pt
+                                .all_peers_owned()
+                                .iter()
+                                .find(|p| p.peer_id == winner_peer_id)
+                                .and_then(|p| p.addr.parse::<SocketAddr>().ok());
+                            drop(pt);
+
+                            let mut task_resp = None;
+                            if let Some(addr) = winner_addr {
+                                match transport.connect(addr).await {
+                                    Ok(fwd_conn) => {
+                                        let fwd_msg = Message::ForwardedTask(req.clone());
+                                        if let Err(e) = Transport::send(&fwd_conn, &fwd_msg).await {
+                                            tracing::warn!(
+                                                "Forward to winner {} failed: {}",
+                                                addr,
+                                                e
+                                            );
+                                            record_trust(
+                                                trust_store,
+                                                &winner_peer_id,
+                                                TaskOutcome::Timeout,
+                                                0,
+                                                0,
+                                            )
+                                            .await;
+                                        } else {
+                                            metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
+                                            match Transport::recv(&fwd_conn).await {
+                                                Ok(Message::TaskResponse(resp)) => {
+                                                    info!(
+                                                        "Negotiated task {} dispatched to {} — {:?}",
+                                                        task_id, addr, resp.status
+                                                    );
+                                                    record_trust(
+                                                        trust_store,
+                                                        &winner_peer_id,
+                                                        status_to_outcome(&resp.status),
+                                                        resp.duration_ms,
+                                                        winner_estimated_latency,
+                                                    )
+                                                    .await;
+                                                    task_resp = Some(resp);
+                                                }
+                                                Ok(_) => {
+                                                    tracing::warn!(
+                                                        "Winner {} returned unexpected message",
+                                                        addr
+                                                    );
+                                                    record_trust(
+                                                        trust_store,
+                                                        &winner_peer_id,
+                                                        TaskOutcome::Failure,
+                                                        0,
+                                                        0,
+                                                    )
+                                                    .await;
+                                                }
+                                                Err(e) => {
+                                                    tracing::warn!(
+                                                        "Recv from winner {} failed: {}",
+                                                        addr,
+                                                        e
+                                                    );
+                                                    record_trust(
+                                                        trust_store,
+                                                        &winner_peer_id,
+                                                        TaskOutcome::Timeout,
+                                                        0,
+                                                        0,
+                                                    )
+                                                    .await;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!("Connect to winner {} failed: {}", addr, e);
+                                        record_trust(
+                                            trust_store,
+                                            &winner_peer_id,
+                                            TaskOutcome::Timeout,
+                                            0,
+                                            0,
+                                        )
+                                        .await;
+                                    }
+                                }
+                            }
+
+                            // Send response back to the original requester
+                            let resp = task_resp.unwrap_or(axon_core::TaskResponse {
+                                request_id: task_id,
+                                status: TaskStatus::Error(
+                                    "Negotiation dispatch failed".to_string(),
+                                ),
+                                payload: Vec::new(),
+                                duration_ms: 0,
+                            });
+
+                            // Update task queue
+                            match &resp.status {
+                                TaskStatus::Success => {
+                                    metrics.tasks_processed.fetch_add(1, Ordering::Relaxed);
+                                    let _ = task_queue.complete(task_id, resp.clone());
+                                }
+                                TaskStatus::Error(e) => {
+                                    metrics.tasks_processed.fetch_add(1, Ordering::Relaxed);
+                                    metrics.tasks_failed.fetch_add(1, Ordering::Relaxed);
+                                    let _ = task_queue.fail(task_id, e.clone());
+                                }
+                                TaskStatus::Timeout => {
+                                    metrics.tasks_processed.fetch_add(1, Ordering::Relaxed);
+                                    metrics.tasks_failed.fetch_add(1, Ordering::Relaxed);
+                                    let _ = task_queue.timeout(task_id);
+                                }
+                                TaskStatus::NoCapability => {
+                                    metrics.tasks_processed.fetch_add(1, Ordering::Relaxed);
+                                    metrics.tasks_failed.fetch_add(1, Ordering::Relaxed);
+                                    let _ = task_queue.complete(task_id, resp.clone());
+                                }
+                            }
+
+                            // Dashboard log
+                            let status_str = match &resp.status {
+                                TaskStatus::Success => "Success".to_string(),
+                                TaskStatus::Error(e) => format!("Error: {}", e),
+                                TaskStatus::Timeout => "Timeout".to_string(),
+                                TaskStatus::NoCapability => "NoCapability".to_string(),
+                            };
+                            {
+                                let mut state = dashboard.write().await;
+                                state.task_log.push(TaskLogEntry {
+                                    id: task_id.to_string(),
+                                    capability: cap_tag,
+                                    status: status_str,
+                                    duration_ms: resp.duration_ms,
+                                    peer: format!("negotiated:{}", short_id(&winner_peer_id)),
+                                });
+                                if state.task_log.len() > 1000 {
+                                    state.task_log.remove(0);
+                                }
+                            }
+
+                            // Respond to original requester
+                            let mut nr = negotiation_requesters.lock().await;
+                            if let Some(requester_conn) = nr.remove(&task_id) {
+                                drop(nr);
+                                let _ =
+                                    Transport::send(&requester_conn, &Message::TaskResponse(resp))
+                                        .await;
+                                metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
+                            }
+                        }
                     }
                 }
             }
