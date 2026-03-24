@@ -5,7 +5,7 @@ mod tui;
 
 use axon_core::{
     Capability, DiscoveryEvent, Identity, MdnsDiscovery, Message, PeerInfo, PeerTable, Runtime,
-    TaskQueue, TaskQueueConfig, TaskStatus, Transport,
+    TaskQueue, TaskQueueConfig, TaskStatus, ToolRegistry, Transport,
 };
 use clap::{Parser, Subcommand};
 use std::net::SocketAddr;
@@ -122,6 +122,29 @@ enum Commands {
 
     /// Generate example config file at ~/.config/axon/config.toml
     Init,
+
+    /// Query MCP tools available on a mesh node
+    Tools {
+        /// Address of a running node to query
+        #[arg(short, long, default_value = "127.0.0.1:4242")]
+        node: SocketAddr,
+
+        /// Search query to filter tools by relevance
+        #[arg(short, long)]
+        query: Option<String>,
+
+        /// Filter by MCP server name (e.g., "filesystem", "github")
+        #[arg(short, long)]
+        server: Option<String>,
+
+        /// Maximum number of results
+        #[arg(short, long, default_value = "20")]
+        limit: u32,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[tokio::main]
@@ -295,6 +318,16 @@ async fn main() -> anyhow::Result<()> {
             println!("Config file created at: {}", path.display());
             println!("Edit it to configure your node, then run `axon start`.");
         }
+        Commands::Tools {
+            node,
+            query,
+            server,
+            limit,
+            json,
+        } => {
+            tracing_subscriber::fmt::init();
+            query_tools(node, query, server, limit, json).await?;
+        }
     }
 
     Ok(())
@@ -344,6 +377,7 @@ async fn run_node(
     };
 
     let peer_table = Arc::new(RwLock::new(PeerTable::new(local_peer)));
+    let tool_registry = Arc::new(RwLock::new(ToolRegistry::new()));
     let metrics = Arc::new(NodeMetrics::new());
 
     let dashboard_state = Arc::new(RwLock::new(DashboardState::new(
@@ -381,6 +415,7 @@ async fn run_node(
     let accept_metrics = metrics.clone();
     let accept_queue = task_queue.clone();
     let accept_fwd_transport = transport.clone();
+    let accept_tool_registry = tool_registry.clone();
     let mut accept_shutdown = shutdown_tx.subscribe();
 
     tokio::spawn(async move {
@@ -397,6 +432,7 @@ async fn run_node(
                     let m = accept_metrics.clone();
                     let tq = accept_queue.clone();
                     let fwd_t = accept_fwd_transport.clone();
+                    let tr = accept_tool_registry.clone();
                     let remote = conn.remote_address();
 
                     {
@@ -409,7 +445,7 @@ async fn run_node(
                             match Transport::recv(&conn).await {
                                 Ok(msg) => {
                                     m.messages_received.fetch_add(1, Ordering::Relaxed);
-                                    handle_message(msg, &conn, &rt, &pt, &ds, remote, &m, &tq, &fwd_t).await;
+                                    handle_message(msg, &conn, &rt, &pt, &ds, remote, &m, &tq, &fwd_t, &tr).await;
                                 }
                                 Err(e) => {
                                     info!("Connection from {} closed: {}", remote, e);
@@ -831,6 +867,7 @@ async fn handle_message(
     metrics: &Arc<NodeMetrics>,
     task_queue: &Arc<TaskQueue>,
     transport: &Arc<Transport>,
+    tool_registry: &Arc<RwLock<ToolRegistry>>,
 ) {
     match msg {
         Message::Ping { nonce } => {
@@ -982,6 +1019,67 @@ async fn handle_message(
         Message::Pong { nonce } => {
             tracing::debug!("Received Pong from {} with nonce {}", remote, nonce);
         }
+        Message::ToolCatalog { peer_id, tools } => {
+            let tool_count = tools.len();
+            {
+                let mut reg = tool_registry.write().await;
+                reg.register_peer_tools(&peer_id, tools);
+            }
+            {
+                let mut state = dashboard.write().await;
+                state.add_log(format!(
+                    "Received {} MCP tools from peer {}",
+                    tool_count,
+                    short_id(&peer_id),
+                ));
+            }
+            info!(
+                "Registered {} MCP tools from peer {}",
+                tool_count,
+                short_id(&peer_id),
+            );
+        }
+        Message::ToolQuery {
+            query,
+            server_filter,
+            limit,
+        } => {
+            let filter = axon_core::ToolFilter::new()
+                .with_limit(limit as usize);
+            let filter = if query.is_empty() {
+                filter
+            } else {
+                filter.with_query(&query)
+            };
+            let filter = match server_filter {
+                Some(s) => filter.with_server(s),
+                None => filter,
+            };
+
+            let results = {
+                let reg = tool_registry.read().await;
+                reg.search(&filter)
+            };
+
+            let response_tools: Vec<axon_core::ToolQueryResult> = results
+                .into_iter()
+                .map(|r| axon_core::ToolQueryResult {
+                    tool: r.tool,
+                    score: r.score,
+                    peer_id: hex_to_bytes(&r.peer_id_hex),
+                })
+                .collect();
+
+            let resp = Message::ToolQueryResponse {
+                tools: response_tools,
+            };
+            let _ = Transport::send(conn, &resp).await;
+            metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
+        }
+        Message::ToolQueryResponse { .. } => {
+            // Response to a query we initiated — handled at call site, not here.
+            tracing::debug!("Received ToolQueryResponse from {}", remote);
+        }
         _ => {
             tracing::warn!("Unhandled message type from {}", remote);
         }
@@ -1126,8 +1224,78 @@ async fn send_task(
     Ok(())
 }
 
+async fn query_tools(
+    node_addr: SocketAddr,
+    query: Option<String>,
+    server: Option<String>,
+    limit: u32,
+    json_output: bool,
+) -> anyhow::Result<()> {
+    let identity = Identity::load_or_generate(&Identity::default_path())?;
+    let transport = Transport::bind("0.0.0.0:0".parse()?, &identity).await?;
+
+    println!("Querying tools on {}...\n", node_addr);
+    let conn = transport.connect(node_addr).await?;
+
+    let msg = Message::ToolQuery {
+        query: query.clone().unwrap_or_default(),
+        server_filter: server.clone(),
+        limit,
+    };
+    Transport::send(&conn, &msg).await?;
+
+    let resp = Transport::recv(&conn).await?;
+    match resp {
+        Message::ToolQueryResponse { tools } => {
+            if json_output {
+                println!("{}", serde_json::to_string_pretty(&tools)?);
+            } else if tools.is_empty() {
+                println!("No tools found.");
+                if let Some(q) = &query {
+                    println!("Try a broader query than \"{}\".", q);
+                }
+            } else {
+                println!(
+                    "{:<24} {:<16} {:<8} {:<40}",
+                    "TOOL", "SERVER", "SCORE", "DESCRIPTION"
+                );
+                println!("{}", "-".repeat(88));
+                for result in &tools {
+                    let desc = if result.tool.description.len() > 38 {
+                        format!("{}...", &result.tool.description[..35])
+                    } else {
+                        result.tool.description.clone()
+                    };
+                    println!(
+                        "{:<24} {:<16} {:<8.2} {:<40}",
+                        result.tool.name, result.tool.server_name, result.score, desc
+                    );
+                }
+                println!(
+                    "\n{} tool(s) found. ~{} tokens if loaded into context.",
+                    tools.len(),
+                    tools.iter().map(|t| t.tool.estimated_tokens()).sum::<usize>()
+                );
+            }
+        }
+        other => {
+            println!("Unexpected response from node: {:?}", other);
+        }
+    }
+
+    transport.shutdown().await;
+    Ok(())
+}
+
 fn short_id(id: &[u8]) -> String {
     id.iter().take(4).map(|b| format!("{:02x}", b)).collect()
+}
+
+fn hex_to_bytes(hex: &str) -> Vec<u8> {
+    (0..hex.len())
+        .step_by(2)
+        .filter_map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok())
+        .collect()
 }
 
 fn now_secs() -> u64 {
