@@ -190,6 +190,19 @@ impl TrustRecord {
             now.saturating_sub(o.timestamp)
         })
     }
+
+    /// Get observations recorded within `window_secs` of now.
+    pub fn recent_observations(&self, window_secs: u64) -> Vec<&TrustObservation> {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let cutoff = now.saturating_sub(window_secs);
+        self.observations
+            .iter()
+            .filter(|o| o.timestamp >= cutoff)
+            .collect()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -540,6 +553,18 @@ impl TrustStore {
         peers
     }
 
+    /// Collect recent observations across all peers for gossip sharing.
+    /// Returns (subject_peer_id, observation) pairs for observations within `window_secs`.
+    pub fn recent_observations_all(&self, window_secs: u64) -> Vec<(Vec<u8>, TrustObservation)> {
+        let mut result = Vec::new();
+        for (peer_id, record) in &self.records {
+            for obs in record.recent_observations(window_secs) {
+                result.push((peer_id.clone(), obs.clone()));
+            }
+        }
+        result
+    }
+
     /// Remove a peer's trust record entirely.
     pub fn forget_peer(&mut self, peer_id: &[u8]) -> bool {
         self.records.remove(peer_id).is_some()
@@ -844,6 +869,11 @@ impl PersistentTrustStore {
         self.store.ranked_peers_at(now)
     }
 
+    /// Collect recent observations across all peers for gossip sharing.
+    pub fn recent_observations_all(&self, window_secs: u64) -> Vec<(Vec<u8>, TrustObservation)> {
+        self.store.recent_observations_all(window_secs)
+    }
+
     /// Get the scorer.
     pub fn scorer(&self) -> &TrustScorer {
         self.store.scorer()
@@ -852,6 +882,11 @@ impl PersistentTrustStore {
     /// Get a reference to the underlying in-memory store.
     pub fn inner(&self) -> &TrustStore {
         &self.store
+    }
+
+    /// Get a mutable reference to the underlying in-memory store.
+    pub fn inner_mut(&mut self) -> &mut TrustStore {
+        &mut self.store
     }
 }
 
@@ -1762,5 +1797,113 @@ mod tests {
         let store = PersistentTrustStore::open_temporary(TrustScorer::default()).unwrap();
         let inner = store.inner();
         assert_eq!(inner.peer_count(), 0);
+    }
+
+    #[test]
+    fn persistent_inner_mut_access() {
+        let mut store = PersistentTrustStore::open_temporary(TrustScorer::default()).unwrap();
+        let inner = store.inner_mut();
+        inner.record_observation(
+            &[1, 2, 3],
+            TrustObservation::new(TaskOutcome::Success, 100, 110),
+        );
+        assert_eq!(inner.peer_count(), 1);
+    }
+
+    // -- TrustRecord::recent_observations --
+
+    #[test]
+    fn recent_observations_within_window() {
+        let mut record = TrustRecord::new(vec![1, 2, 3]);
+        let now = now_secs();
+        // Add observation 10 seconds ago
+        record
+            .record(TrustObservation::new(TaskOutcome::Success, 100, 110).with_timestamp(now - 10));
+        // Add observation 100 seconds ago
+        record.record(
+            TrustObservation::new(TaskOutcome::Failure, 200, 300).with_timestamp(now - 100),
+        );
+        // Window of 60 seconds should only include the recent one
+        let recent = record.recent_observations(60);
+        assert_eq!(recent.len(), 1);
+        assert_eq!(recent[0].outcome, TaskOutcome::Success);
+    }
+
+    #[test]
+    fn recent_observations_all_within_window() {
+        let mut record = TrustRecord::new(vec![1, 2, 3]);
+        let now = now_secs();
+        record
+            .record(TrustObservation::new(TaskOutcome::Success, 100, 110).with_timestamp(now - 5));
+        record
+            .record(TrustObservation::new(TaskOutcome::Failure, 200, 300).with_timestamp(now - 10));
+        let recent = record.recent_observations(60);
+        assert_eq!(recent.len(), 2);
+    }
+
+    #[test]
+    fn recent_observations_none_within_window() {
+        let mut record = TrustRecord::new(vec![1, 2, 3]);
+        let now = now_secs();
+        record.record(
+            TrustObservation::new(TaskOutcome::Success, 100, 110).with_timestamp(now - 200),
+        );
+        let recent = record.recent_observations(60);
+        assert!(recent.is_empty());
+    }
+
+    #[test]
+    fn recent_observations_empty_record() {
+        let record = TrustRecord::new(vec![1, 2, 3]);
+        let recent = record.recent_observations(60);
+        assert!(recent.is_empty());
+    }
+
+    // -- TrustStore::recent_observations_all --
+
+    #[test]
+    fn store_recent_observations_all() {
+        let mut store = TrustStore::new(TrustScorer::default());
+        let now = now_secs();
+        store.record_observation(
+            &[1, 1, 1],
+            TrustObservation::new(TaskOutcome::Success, 100, 110).with_timestamp(now - 5),
+        );
+        store.record_observation(
+            &[2, 2, 2],
+            TrustObservation::new(TaskOutcome::Failure, 200, 300).with_timestamp(now - 10),
+        );
+        store.record_observation(
+            &[1, 1, 1],
+            TrustObservation::new(TaskOutcome::Timeout, 50, 0).with_timestamp(now - 200),
+        );
+
+        let recent = store.recent_observations_all(60);
+        assert_eq!(recent.len(), 2); // only the two within 60 seconds
+        assert!(recent.iter().any(|(pid, _)| pid == &vec![1, 1, 1]));
+        assert!(recent.iter().any(|(pid, _)| pid == &vec![2, 2, 2]));
+    }
+
+    #[test]
+    fn store_recent_observations_all_empty() {
+        let store = TrustStore::new(TrustScorer::default());
+        let recent = store.recent_observations_all(60);
+        assert!(recent.is_empty());
+    }
+
+    #[test]
+    fn persistent_recent_observations_all() {
+        let mut store = PersistentTrustStore::open_temporary(TrustScorer::default()).unwrap();
+        let now = now_secs();
+        let _ = store.record_observation(
+            &[1, 1, 1],
+            TrustObservation::new(TaskOutcome::Success, 100, 110).with_timestamp(now - 5),
+        );
+        let _ = store.record_observation(
+            &[2, 2, 2],
+            TrustObservation::new(TaskOutcome::Failure, 200, 300).with_timestamp(now - 10),
+        );
+        let recent = store.recent_observations_all(60);
+        assert_eq!(recent.len(), 2);
     }
 }
