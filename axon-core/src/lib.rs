@@ -10,6 +10,7 @@ pub mod router;
 pub mod runtime;
 pub mod taskqueue;
 pub mod transport;
+pub mod trust;
 
 pub use crdt::{GCounter, LWWRegister, ORSet};
 pub use discovery::PeerTable;
@@ -27,8 +28,13 @@ pub use negotiate::{
 };
 pub use protocol::{
     Capability, Message, PeerInfo, TaskRequest, TaskResponse, TaskStatus, ToolQueryResult,
+    TrustGossipEntry,
 };
 pub use router::{Router, Strategy};
 pub use runtime::{Agent, AgentError, Runtime};
 pub use taskqueue::{QueueError, QueueStats, TaskQueue, TaskQueueConfig, TaskRecord, TaskState};
 pub use transport::{extract_peer_cert_pubkey, Transport};
+pub use trust::{
+    SharedTrustObservation, TaskOutcome, TrustGossipProcessor, TrustObservation, TrustRecord,
+    TrustScore, TrustScorer, TrustStore, TrustWeightedScoring,
+};
