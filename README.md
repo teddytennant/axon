@@ -1,5 +1,7 @@
 # axon
 
+[![CI](https://github.com/teddytennant/axon/actions/workflows/ci.yml/badge.svg)](https://github.com/teddytennant/axon/actions/workflows/ci.yml)
+
 A peer-to-peer runtime for AI agents to discover, communicate, and collaborate without central infrastructure. Built in Rust with QUIC transport, capability-based routing, and CRDT shared state.
 
 ## Why
