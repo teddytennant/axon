@@ -364,6 +364,7 @@ async fn run_node(
     let accept_conns = active_connections.clone();
     let accept_metrics = metrics.clone();
     let accept_queue = task_queue.clone();
+    let accept_fwd_transport = transport.clone();
     let mut accept_shutdown = shutdown_tx.subscribe();
 
     tokio::spawn(async move {
@@ -379,6 +380,7 @@ async fn run_node(
                     let ds = accept_dashboard.clone();
                     let m = accept_metrics.clone();
                     let tq = accept_queue.clone();
+                    let fwd_t = accept_fwd_transport.clone();
                     let remote = conn.remote_address();
 
                     {
@@ -391,7 +393,7 @@ async fn run_node(
                             match Transport::recv(&conn).await {
                                 Ok(msg) => {
                                     m.messages_received.fetch_add(1, Ordering::Relaxed);
-                                    handle_message(msg, &conn, &rt, &pt, &ds, remote, &m, &tq).await;
+                                    handle_message(msg, &conn, &rt, &pt, &ds, remote, &m, &tq, &fwd_t).await;
                                 }
                                 Err(e) => {
                                     info!("Connection from {} closed: {}", remote, e);
@@ -572,6 +574,114 @@ async fn run_node(
         }
     });
 
+    // Spawn background queue drain worker.
+    // Periodically dequeues pending tasks (from retries or crash recovery)
+    // and dispatches them through the runtime. Also runs cleanup.
+    let drain_queue = task_queue.clone();
+    let drain_runtime = runtime.clone();
+    let drain_metrics = metrics.clone();
+    let drain_dashboard = dashboard_state.clone();
+    let mut drain_shutdown = shutdown_tx.subscribe();
+    tokio::spawn(async move {
+        let mut cleanup_counter: u32 = 0;
+        loop {
+            tokio::select! {
+                _ = tokio::time::sleep(tokio::time::Duration::from_secs(2)) => {
+                    // Drain all pending tasks in this tick
+                    loop {
+                        match drain_queue.dequeue() {
+                            Ok(Some(record)) => {
+                                let task_id = record.request.id;
+                                let cap_tag = record.request.capability.tag();
+                                let attempt = record.attempts;
+
+                                info!(
+                                    "Drain worker: dispatching task {} ({}) attempt {}",
+                                    task_id, cap_tag, attempt
+                                );
+
+                                let resp = drain_runtime.dispatch(record.request).await;
+
+                                match &resp.status {
+                                    TaskStatus::Success => {
+                                        drain_metrics.tasks_processed.fetch_add(1, Ordering::Relaxed);
+                                        let _ = drain_queue.complete(task_id, resp.clone());
+                                        info!("Drain worker: task {} completed", task_id);
+                                    }
+                                    TaskStatus::Error(e) => {
+                                        drain_metrics.tasks_processed.fetch_add(1, Ordering::Relaxed);
+                                        drain_metrics.tasks_failed.fetch_add(1, Ordering::Relaxed);
+                                        let retried = drain_queue.fail(task_id, e.clone()).unwrap_or(false);
+                                        if retried {
+                                            info!("Drain worker: task {} failed, re-enqueued for retry", task_id);
+                                        } else {
+                                            info!("Drain worker: task {} failed permanently: {}", task_id, e);
+                                        }
+                                    }
+                                    TaskStatus::Timeout => {
+                                        drain_metrics.tasks_processed.fetch_add(1, Ordering::Relaxed);
+                                        drain_metrics.tasks_failed.fetch_add(1, Ordering::Relaxed);
+                                        let retried = drain_queue.timeout(task_id).unwrap_or(false);
+                                        if retried {
+                                            info!("Drain worker: task {} timed out, re-enqueued", task_id);
+                                        } else {
+                                            info!("Drain worker: task {} timed out permanently", task_id);
+                                        }
+                                    }
+                                    TaskStatus::NoCapability => {
+                                        // No local agent can handle this — mark complete (no retry)
+                                        drain_metrics.tasks_processed.fetch_add(1, Ordering::Relaxed);
+                                        let _ = drain_queue.complete(task_id, resp.clone());
+                                    }
+                                }
+
+                                {
+                                    let status_str = match &resp.status {
+                                        TaskStatus::Success => "Success (drain)".to_string(),
+                                        TaskStatus::Error(e) => format!("Error (drain): {}", e),
+                                        TaskStatus::Timeout => "Timeout (drain)".to_string(),
+                                        TaskStatus::NoCapability => "NoCapability (drain)".to_string(),
+                                    };
+                                    let mut state = drain_dashboard.write().await;
+                                    state.task_log.push(TaskLogEntry {
+                                        id: task_id.to_string(),
+                                        capability: cap_tag,
+                                        status: status_str,
+                                        duration_ms: resp.duration_ms,
+                                        peer: "local (drain)".to_string(),
+                                    });
+                                    if state.task_log.len() > 1000 {
+                                        state.task_log.remove(0);
+                                    }
+                                }
+                            }
+                            Ok(None) => break, // queue empty
+                            Err(e) => {
+                                tracing::warn!("Drain worker: dequeue error: {}", e);
+                                break;
+                            }
+                        }
+                    }
+
+                    // Run cleanup every ~60 seconds (30 ticks × 2s)
+                    cleanup_counter += 1;
+                    if cleanup_counter >= 30 {
+                        cleanup_counter = 0;
+                        match drain_queue.cleanup() {
+                            Ok(n) if n > 0 => info!("Drain worker: cleaned up {} expired records", n),
+                            Err(e) => tracing::warn!("Drain worker: cleanup error: {}", e),
+                            _ => {}
+                        }
+                    }
+                }
+                _ = drain_shutdown.recv() => {
+                    info!("Drain worker shutting down");
+                    break;
+                }
+            }
+        }
+    });
+
     if headless {
         info!("Running in headless mode. Press Ctrl+C to stop.");
         // Wait for SIGINT or SIGTERM
@@ -631,6 +741,7 @@ async fn handle_message(
     remote: SocketAddr,
     metrics: &Arc<NodeMetrics>,
     task_queue: &Arc<TaskQueue>,
+    transport: &Arc<Transport>,
 ) {
     match msg {
         Message::Ping { nonce } => {
@@ -664,7 +775,14 @@ async fn handle_message(
                 tracing::warn!("Failed to enqueue task {}: {}", task_id, e);
             }
 
-            let resp = runtime.dispatch(req).await;
+            let mut resp = runtime.dispatch(req.clone()).await;
+
+            // If no local agent can handle it, try forwarding to a capable peer.
+            if resp.status == TaskStatus::NoCapability {
+                resp = forward_to_peer(
+                    &req, peer_table, transport, dashboard, metrics, remote,
+                ).await.unwrap_or(resp);
+            }
 
             // Update persistent record with result
             match &resp.status {
@@ -714,6 +832,44 @@ async fn handle_message(
             let _ = Transport::send(conn, &Message::TaskResponse(resp)).await;
             metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
         }
+        Message::ForwardedTask(req) => {
+            // Forwarded from another node — dispatch locally, never forward again.
+            let task_id = req.id;
+            let req_id = req.id.to_string();
+            let cap_tag = req.capability.tag();
+
+            info!("Received forwarded task {} ({}) from {}", task_id, cap_tag, remote);
+
+            let resp = runtime.dispatch(req).await;
+            metrics.tasks_processed.fetch_add(1, Ordering::Relaxed);
+            if !matches!(resp.status, TaskStatus::Success) {
+                metrics.tasks_failed.fetch_add(1, Ordering::Relaxed);
+            }
+
+            let status_str = match &resp.status {
+                TaskStatus::Success => "Success (forwarded)".to_string(),
+                TaskStatus::Error(e) => format!("Error (forwarded): {}", e),
+                TaskStatus::Timeout => "Timeout (forwarded)".to_string(),
+                TaskStatus::NoCapability => "NoCapability (forwarded)".to_string(),
+            };
+
+            {
+                let mut state = dashboard.write().await;
+                state.task_log.push(TaskLogEntry {
+                    id: req_id,
+                    capability: cap_tag,
+                    status: status_str,
+                    duration_ms: resp.duration_ms,
+                    peer: remote.to_string(),
+                });
+                if state.task_log.len() > 1000 {
+                    state.task_log.remove(0);
+                }
+            }
+
+            let _ = Transport::send(conn, &Message::TaskResponse(resp)).await;
+            metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
+        }
         Message::Discover { capability } => {
             let pt = peer_table.read().await;
             let peers: Vec<PeerInfo> = if capability.namespace == "*" {
@@ -734,6 +890,94 @@ async fn handle_message(
             tracing::warn!("Unhandled message type from {}", remote);
         }
     }
+}
+
+/// Attempt to forward a task to a capable peer.
+///
+/// Looks up the peer table for peers advertising the required capability,
+/// connects to the best candidate, sends a `ForwardedTask` message, and
+/// returns the response. Returns `None` if no capable peers exist or all
+/// forwarding attempts fail.
+async fn forward_to_peer(
+    req: &axon_core::TaskRequest,
+    peer_table: &Arc<RwLock<PeerTable>>,
+    transport: &Arc<Transport>,
+    dashboard: &Arc<RwLock<DashboardState>>,
+    metrics: &Arc<NodeMetrics>,
+    requester: SocketAddr,
+) -> Option<axon_core::TaskResponse> {
+    let pt = peer_table.read().await;
+    let capable = pt.find_by_capability(&req.capability);
+
+    // Filter out the requester to avoid bouncing the task back
+    let candidates: Vec<_> = capable
+        .into_iter()
+        .filter(|p| p.addr != requester.to_string())
+        .collect();
+
+    if candidates.is_empty() {
+        return None;
+    }
+
+    let cap_tag = req.capability.tag();
+    info!(
+        "Forwarding task {} ({}) — {} candidate peer(s)",
+        req.id, cap_tag, candidates.len()
+    );
+
+    // Try candidates in order until one succeeds
+    for peer in &candidates {
+        let addr: SocketAddr = match peer.addr.parse() {
+            Ok(a) => a,
+            Err(_) => continue,
+        };
+
+        {
+            let mut state = dashboard.write().await;
+            state.add_log(format!(
+                "Forwarding task {} to peer {} at {}",
+                req.id,
+                short_id(&peer.peer_id),
+                addr,
+            ));
+        }
+
+        match transport.connect(addr).await {
+            Ok(fwd_conn) => {
+                let fwd_msg = Message::ForwardedTask(req.clone());
+                if let Err(e) = Transport::send(&fwd_conn, &fwd_msg).await {
+                    tracing::warn!("Forward send to {} failed: {}", addr, e);
+                    continue;
+                }
+                metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
+
+                match Transport::recv(&fwd_conn).await {
+                    Ok(Message::TaskResponse(resp)) => {
+                        info!(
+                            "Forward of task {} to {} returned {:?}",
+                            req.id, addr, resp.status
+                        );
+                        return Some(resp);
+                    }
+                    Ok(other) => {
+                        tracing::warn!(
+                            "Forward to {} returned unexpected message: {:?}",
+                            addr, other
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!("Forward recv from {} failed: {}", addr, e);
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Forward connect to {} failed: {}", addr, e);
+            }
+        }
+    }
+
+    info!("All forwarding attempts for task {} failed", req.id);
+    None
 }
 
 async fn send_task(peer_addr: SocketAddr, namespace: &str, name: &str, data: &[u8]) -> anyhow::Result<()> {
