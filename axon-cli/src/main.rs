@@ -3,15 +3,19 @@ mod config;
 mod providers;
 mod tui;
 
+use axon_core::negotiate::BiddingStrategy;
+use axon_core::trust::TaskOutcome;
 use axon_core::{
-    Capability, DiscoveryEvent, Identity, McpBridge, McpBridgeAgent, MdnsDiscovery, Message,
-    PeerInfo, PeerTable, Runtime, TaskQueue, TaskQueueConfig, TaskStatus, ToolRegistry, Transport,
+    Capability, DiscoveryEvent, EagerBidder, Identity, McpBridge, McpBridgeAgent, MdnsDiscovery,
+    Message, NegotiationState, Negotiator, PeerInfo, PeerTable, PersistentTrustStore, ReceivedBid,
+    Runtime, TaskQueue, TaskQueueConfig, TaskStatus, ToolRegistry, Transport, TrustGossipProcessor,
+    TrustObservation, TrustScorer, TrustWeightedScoring,
 };
 use clap::{Parser, Subcommand};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use tracing::{error, info};
 use uuid::Uuid;
 
@@ -530,6 +534,7 @@ async fn main() -> anyhow::Result<()> {
                 let gossip_pt = peer_table.clone();
                 let gossip_transport = transport.clone();
                 let gossip_conns = active_connections.clone();
+                let gossip_lpid = local_peer_id.clone();
                 tokio::spawn(async move {
                     axon_core::gossip::run_gossip(
                         gossip_pt,
@@ -537,6 +542,8 @@ async fn main() -> anyhow::Result<()> {
                         gossip_conns,
                         axon_core::GossipConfig::default(),
                         local_catalog,
+                        None, // no trust store in mesh gateway mode
+                        gossip_lpid,
                     )
                     .await;
                 });
@@ -860,6 +867,31 @@ async fn run_node(
         info!("Recovered {} tasks from previous session", recovered);
     }
 
+    // Open persistent trust store
+    let trust_path = Identity::default_path()
+        .parent()
+        .unwrap_or(std::path::Path::new("."))
+        .join("trust");
+    let trust_store = Arc::new(Mutex::new(
+        PersistentTrustStore::open(&trust_path, TrustScorer::default())
+            .expect("Failed to open trust store"),
+    ));
+    {
+        let ts = trust_store.lock().await;
+        let peer_count = ts.peer_count();
+        if peer_count > 0 {
+            info!("Loaded trust records for {} peers", peer_count);
+        }
+    }
+
+    // Initialize negotiation state
+    let negotiation_state = Arc::new(Mutex::new(NegotiationState::new()));
+    let negotiator = Arc::new(Negotiator::new(
+        std::time::Duration::from_millis(2000),
+        axon_core::BidScoring::default(),
+    ));
+    let trust_scoring = Arc::new(TrustWeightedScoring::default());
+
     let transport = Transport::bind(listen, &identity).await?;
     let local_addr = transport.local_addr()?;
     info!("Listening on {}", local_addr);
@@ -888,10 +920,20 @@ async fn run_node(
             .await;
     }
 
+    let all_caps = runtime.all_capabilities().await;
+    let bidder_queue_depth = Arc::new(AtomicU64::new(0));
+    let bidder = Arc::new(EagerBidder::new(
+        identity.public_key_bytes(),
+        bidder_queue_depth,
+        100, // max queue depth
+        all_caps.clone(),
+        50, // base latency ms
+    ));
+
     let local_peer = PeerInfo {
         peer_id: identity.public_key_bytes(),
         addr: local_addr.to_string(),
-        capabilities: runtime.all_capabilities().await,
+        capabilities: all_caps,
         last_seen: now_secs(),
     };
 
@@ -952,6 +994,12 @@ async fn run_node(
     let accept_queue = task_queue.clone();
     let accept_fwd_transport = transport.clone();
     let accept_tool_registry = tool_registry.clone();
+    let accept_trust_store = trust_store.clone();
+    let accept_neg_state = negotiation_state.clone();
+    let accept_negotiator = negotiator.clone();
+    let accept_trust_scoring = trust_scoring.clone();
+    let accept_bidder = bidder.clone();
+    let accept_local_peer_id = identity.public_key_bytes();
     let mut accept_shutdown = shutdown_tx.subscribe();
 
     tokio::spawn(async move {
@@ -969,6 +1017,12 @@ async fn run_node(
                     let tq = accept_queue.clone();
                     let fwd_t = accept_fwd_transport.clone();
                     let tr = accept_tool_registry.clone();
+                    let ts = accept_trust_store.clone();
+                    let ns = accept_neg_state.clone();
+                    let neg = accept_negotiator.clone();
+                    let tws = accept_trust_scoring.clone();
+                    let bid = accept_bidder.clone();
+                    let lpid = accept_local_peer_id.clone();
                     let remote = conn.remote_address();
 
                     {
@@ -981,7 +1035,7 @@ async fn run_node(
                             match Transport::recv(&conn).await {
                                 Ok(msg) => {
                                     m.messages_received.fetch_add(1, Ordering::Relaxed);
-                                    handle_message(msg, &conn, &rt, &pt, &ds, remote, &m, &tq, &fwd_t, &tr).await;
+                                    handle_message(msg, &conn, &rt, &pt, &ds, remote, &m, &tq, &fwd_t, &tr, &ts, &ns, &neg, &tws, &bid, &lpid).await;
                                 }
                                 Err(e) => {
                                     info!("Connection from {} closed: {}", remote, e);
@@ -1159,6 +1213,8 @@ async fn run_node(
     let gossip_pt = peer_table.clone();
     let gossip_transport = transport.clone();
     let gossip_conns = active_connections.clone();
+    let gossip_trust = trust_store.clone();
+    let gossip_peer_id = identity.public_key_bytes();
     tokio::spawn(async move {
         axon_core::gossip::run_gossip(
             gossip_pt,
@@ -1166,6 +1222,8 @@ async fn run_node(
             gossip_conns,
             axon_core::GossipConfig::default(),
             local_catalog,
+            Some(gossip_trust),
+            gossip_peer_id,
         )
         .await;
     });
@@ -1402,9 +1460,22 @@ async fn run_node(
     // --- Graceful shutdown sequence ---
     info!("Initiating graceful shutdown...");
 
-    // 0. Flush the task queue to disk
+    // 0. Flush the task queue and trust store to disk
     if let Err(e) = task_queue.flush() {
         error!("Failed to flush task queue: {}", e);
+    }
+    {
+        let ts = trust_store.lock().await;
+        if let Err(e) = ts.flush() {
+            error!("Failed to flush trust store: {}", e);
+        }
+        if let Err(e) = ts.sync() {
+            error!("Failed to sync trust store: {}", e);
+        }
+        let peer_count = ts.peer_count();
+        if peer_count > 0 {
+            info!("Trust store: {} peers saved to disk", peer_count);
+        }
     }
 
     // 1. Signal all background tasks to stop
@@ -1447,6 +1518,12 @@ async fn handle_message(
     task_queue: &Arc<TaskQueue>,
     transport: &Arc<Transport>,
     tool_registry: &Arc<RwLock<ToolRegistry>>,
+    trust_store: &Arc<Mutex<PersistentTrustStore>>,
+    negotiation_state: &Arc<Mutex<NegotiationState>>,
+    negotiator: &Arc<Negotiator>,
+    trust_scoring: &Arc<TrustWeightedScoring>,
+    bidder: &Arc<EagerBidder>,
+    local_peer_id: &[u8],
 ) {
     match msg {
         Message::Ping { nonce } => {
@@ -1509,9 +1586,17 @@ async fn handle_message(
 
             // If no local agent can handle it, try forwarding to a capable peer.
             if resp.status == TaskStatus::NoCapability {
-                resp = forward_to_peer(&req, peer_table, transport, dashboard, metrics, remote)
-                    .await
-                    .unwrap_or(resp);
+                resp = forward_to_peer(
+                    &req,
+                    peer_table,
+                    transport,
+                    dashboard,
+                    metrics,
+                    remote,
+                    trust_store,
+                )
+                .await
+                .unwrap_or(resp);
             }
 
             // Update persistent record with result
@@ -1687,6 +1772,170 @@ async fn handle_message(
             // Response to a query we initiated — handled at call site, not here.
             tracing::debug!("Received ToolQueryResponse from {}", remote);
         }
+        Message::TaskOffer {
+            request_id,
+            capability,
+            payload_hint,
+            bid_deadline_ms: _,
+        } => {
+            // A peer is soliciting bids for a task. Check if we can handle it
+            // and respond with a TaskBid if so.
+            let can_handle = runtime
+                .all_capabilities()
+                .await
+                .iter()
+                .any(|c| c.matches(&capability));
+            if can_handle && bidder.should_bid(&capability, payload_hint) {
+                let bid = bidder.compute_bid(request_id, &capability, payload_hint);
+                let msg = Message::TaskBid {
+                    request_id,
+                    peer_id: local_peer_id.to_vec(),
+                    estimated_latency_ms: bid.estimated_latency_ms,
+                    load_factor: bid.load_factor,
+                    confidence: bid.confidence,
+                };
+                let _ = Transport::send(conn, &msg).await;
+                metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
+                info!(
+                    "Bid on task {} ({}) — latency: {}ms, load: {:.2}, confidence: {:.2}",
+                    request_id,
+                    capability.tag(),
+                    bid.estimated_latency_ms,
+                    bid.load_factor,
+                    bid.confidence,
+                );
+                let mut state = dashboard.write().await;
+                state.add_log(format!(
+                    "Bid on task {} from {}",
+                    short_id(request_id.as_bytes()),
+                    remote,
+                ));
+            }
+        }
+        Message::TaskBid {
+            request_id,
+            peer_id,
+            estimated_latency_ms,
+            load_factor,
+            confidence,
+        } => {
+            // A peer responded to our TaskOffer with a bid.
+            let bid = ReceivedBid::new(
+                request_id,
+                peer_id.clone(),
+                estimated_latency_ms,
+                load_factor,
+                confidence,
+            );
+            let mut ns = negotiation_state.lock().await;
+            let recorded = ns.record_bid(bid);
+            drop(ns);
+            if recorded {
+                info!(
+                    "Received bid from {} for task {} — latency: {}ms, load: {:.2}, conf: {:.2}",
+                    short_id(&peer_id),
+                    request_id,
+                    estimated_latency_ms,
+                    load_factor,
+                    confidence,
+                );
+            }
+
+            // Check if any negotiations are ready for winner selection
+            let mut ns = negotiation_state.lock().await;
+            let ready: Vec<Uuid> = ns.ready_negotiations();
+            for neg_id in ready {
+                if let Some(neg) = ns.complete(&neg_id) {
+                    let bids = &neg.bids;
+                    // Apply trust-weighted scoring to select winner
+                    let scored_bids: Vec<(ReceivedBid, f64)> = bids
+                        .iter()
+                        .map(|b| {
+                            let raw_score = negotiator.score_bid(b);
+                            let ts_lock = trust_store.try_lock();
+                            let weighted = if let Ok(ts) = ts_lock {
+                                let peer_trust = ts.score(&b.peer_id);
+                                trust_scoring.weighted_score(raw_score, &peer_trust)
+                            } else {
+                                raw_score
+                            };
+                            (b.clone(), weighted)
+                        })
+                        .collect();
+
+                    if let Some((winner, _score)) = scored_bids
+                        .iter()
+                        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+                    {
+                        info!(
+                            "Negotiation {} complete — winner: {}",
+                            neg_id,
+                            short_id(&winner.peer_id),
+                        );
+                        // TODO: Send BidAccept to winner, BidReject to losers,
+                        // then forward the actual TaskRequest to the winner.
+                        // This requires storing the original TaskRequest alongside
+                        // the negotiation state — left for the next cycle.
+                    }
+                }
+            }
+        }
+        Message::BidAccept {
+            request_id,
+            winner_peer_id: _,
+        } => {
+            info!("Our bid for task {} was accepted by {}", request_id, remote);
+            let mut state = dashboard.write().await;
+            state.add_log(format!("Bid accepted for task {}", request_id));
+        }
+        Message::BidReject { request_id } => {
+            tracing::debug!("Our bid for task {} was rejected by {}", request_id, remote);
+        }
+        Message::TrustGossip {
+            observer_peer_id,
+            observations,
+        } => {
+            // Process trust observations shared by a peer.
+            let processor = TrustGossipProcessor::new();
+            let mut accepted = 0usize;
+            let total = observations.len();
+
+            let mut store = trust_store.lock().await;
+            for entry in &observations {
+                let outcome = match entry.outcome {
+                    0 => TaskOutcome::Success,
+                    1 => TaskOutcome::Failure,
+                    2 => TaskOutcome::Timeout,
+                    _ => TaskOutcome::Rejected,
+                };
+                let obs = TrustObservation::new(
+                    outcome,
+                    entry.estimated_latency_ms,
+                    entry.actual_latency_ms,
+                )
+                .with_timestamp(entry.timestamp);
+
+                let shared = axon_core::SharedTrustObservation {
+                    subject_peer_id: entry.subject_peer_id.clone(),
+                    observer_peer_id: observer_peer_id.clone(),
+                    observation: obs,
+                };
+
+                if processor.process(store.inner_mut(), &shared) {
+                    accepted += 1;
+                }
+            }
+            drop(store);
+
+            if accepted > 0 {
+                info!(
+                    "Accepted {}/{} trust observations from peer {}",
+                    accepted,
+                    total,
+                    short_id(&observer_peer_id),
+                );
+            }
+        }
         _ => {
             tracing::warn!("Unhandled message type from {}", remote);
         }
@@ -1706,6 +1955,7 @@ async fn forward_to_peer(
     dashboard: &Arc<RwLock<DashboardState>>,
     metrics: &Arc<NodeMetrics>,
     requester: SocketAddr,
+    trust_store: &Arc<Mutex<PersistentTrustStore>>,
 ) -> Option<axon_core::TaskResponse> {
     let pt = peer_table.read().await;
     let capable = pt.find_by_capability(&req.capability);
@@ -1760,6 +2010,15 @@ async fn forward_to_peer(
                             "Forward of task {} to {} returned {:?}",
                             req.id, addr, resp.status
                         );
+                        // Record trust observation for the peer that handled the task
+                        record_trust(
+                            trust_store,
+                            &peer.peer_id,
+                            status_to_outcome(&resp.status),
+                            resp.duration_ms,
+                            0, // no bid estimate in forwarding
+                        )
+                        .await;
                         return Some(resp);
                     }
                     Ok(other) => {
@@ -1768,14 +2027,20 @@ async fn forward_to_peer(
                             addr,
                             other
                         );
+                        // Record as failure — unexpected response
+                        record_trust(trust_store, &peer.peer_id, TaskOutcome::Failure, 0, 0).await;
                     }
                     Err(e) => {
                         tracing::warn!("Forward recv from {} failed: {}", addr, e);
+                        // Record as timeout — connection failed
+                        record_trust(trust_store, &peer.peer_id, TaskOutcome::Timeout, 0, 0).await;
                     }
                 }
             }
             Err(e) => {
                 tracing::warn!("Forward connect to {} failed: {}", addr, e);
+                // Record as timeout — couldn't connect
+                record_trust(trust_store, &peer.peer_id, TaskOutcome::Timeout, 0, 0).await;
             }
         }
     }
@@ -1927,6 +2192,29 @@ fn hex_to_bytes(hex: &str) -> Vec<u8> {
         .step_by(2)
         .filter_map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok())
         .collect()
+}
+
+/// Convert a TaskStatus to a TaskOutcome for trust recording.
+fn status_to_outcome(status: &TaskStatus) -> TaskOutcome {
+    match status {
+        TaskStatus::Success => TaskOutcome::Success,
+        TaskStatus::Error(_) => TaskOutcome::Failure,
+        TaskStatus::Timeout => TaskOutcome::Timeout,
+        TaskStatus::NoCapability => TaskOutcome::Rejected,
+    }
+}
+
+/// Record a trust observation for a peer based on task outcome.
+async fn record_trust(
+    trust_store: &Mutex<PersistentTrustStore>,
+    peer_id: &[u8],
+    outcome: TaskOutcome,
+    duration_ms: u64,
+    estimated_latency_ms: u64,
+) {
+    let obs = TrustObservation::new(outcome, estimated_latency_ms, duration_ms);
+    let mut store = trust_store.lock().await;
+    let _ = store.record_observation(peer_id, obs);
 }
 
 /// Lightweight message handler for the MCP mesh gateway.
