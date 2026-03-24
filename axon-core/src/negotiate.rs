@@ -16,7 +16,7 @@
 //! 5. Winner gets `BidAccept` + the actual `TaskRequest`
 //! 6. Losers get `BidReject`
 
-use crate::protocol::Capability;
+use crate::protocol::{Capability, TaskRequest};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -206,6 +206,8 @@ pub struct ActiveNegotiation {
     pub deadline: Duration,
     /// Number of peers the offer was sent to.
     pub peers_solicited: usize,
+    /// The original task request, stored so we can forward it to the winner.
+    stored_request: Option<TaskRequest>,
 }
 
 impl ActiveNegotiation {
@@ -224,7 +226,39 @@ impl ActiveNegotiation {
             started_at: Instant::now(),
             deadline,
             peers_solicited,
+            stored_request: None,
         }
+    }
+
+    /// Create a new negotiation with the original task request stored.
+    pub fn with_request(
+        request_id: Uuid,
+        capability: Capability,
+        payload_hint: u64,
+        deadline: Duration,
+        peers_solicited: usize,
+        request: TaskRequest,
+    ) -> Self {
+        Self {
+            request_id,
+            capability,
+            payload_hint,
+            bids: Vec::new(),
+            started_at: Instant::now(),
+            deadline,
+            peers_solicited,
+            stored_request: Some(request),
+        }
+    }
+
+    /// Take the stored task request, leaving None in its place.
+    pub fn take_request(&mut self) -> Option<TaskRequest> {
+        self.stored_request.take()
+    }
+
+    /// Whether a task request is stored.
+    pub fn has_request(&self) -> bool {
+        self.stored_request.is_some()
     }
 
     /// Whether the bid deadline has elapsed.
@@ -290,6 +324,30 @@ impl NegotiationState {
                 payload_hint,
                 deadline,
                 peers_solicited,
+            ),
+        );
+        self.active.get_mut(&request_id).unwrap()
+    }
+
+    /// Start a new negotiation with the original task request stored for later dispatch.
+    pub fn start_with_request(
+        &mut self,
+        request_id: Uuid,
+        capability: Capability,
+        payload_hint: u64,
+        deadline: Duration,
+        peers_solicited: usize,
+        request: TaskRequest,
+    ) -> &mut ActiveNegotiation {
+        self.active.insert(
+            request_id,
+            ActiveNegotiation::with_request(
+                request_id,
+                capability,
+                payload_hint,
+                deadline,
+                peers_solicited,
+                request,
             ),
         );
         self.active.get_mut(&request_id).unwrap()
@@ -1098,5 +1156,207 @@ mod tests {
         let bids = [bid1, bid2];
         let winner = negotiator.select_winner(&bids).unwrap();
         assert_eq!(winner.peer_id, vec![2]);
+    }
+
+    // -- ActiveNegotiation with stored request --------------------------------
+
+    fn make_task_request(cap: &Capability) -> TaskRequest {
+        TaskRequest {
+            id: Uuid::new_v4(),
+            capability: cap.clone(),
+            payload: b"test payload".to_vec(),
+            timeout_ms: 5000,
+        }
+    }
+
+    #[test]
+    fn active_negotiation_new_has_no_request() {
+        let cap = Capability::new("llm", "chat", 1);
+        let neg = ActiveNegotiation::new(Uuid::new_v4(), cap, 0, Duration::from_secs(1), 3);
+        assert!(!neg.has_request());
+    }
+
+    #[test]
+    fn active_negotiation_with_request_stores_it() {
+        let cap = Capability::new("llm", "chat", 1);
+        let req = make_task_request(&cap);
+        let req_id = req.id;
+        let neg = ActiveNegotiation::with_request(
+            Uuid::new_v4(),
+            cap,
+            12,
+            Duration::from_secs(1),
+            3,
+            req,
+        );
+        assert!(neg.has_request());
+        assert_eq!(neg.payload_hint, 12);
+        // The stored request preserves identity
+        let stored = neg.stored_request.as_ref().unwrap();
+        assert_eq!(stored.id, req_id);
+        assert_eq!(stored.payload, b"test payload");
+    }
+
+    #[test]
+    fn active_negotiation_take_request_consumes() {
+        let cap = Capability::new("llm", "chat", 1);
+        let req = make_task_request(&cap);
+        let req_id = req.id;
+        let mut neg =
+            ActiveNegotiation::with_request(Uuid::new_v4(), cap, 0, Duration::from_secs(1), 1, req);
+        assert!(neg.has_request());
+        let taken = neg.take_request().unwrap();
+        assert_eq!(taken.id, req_id);
+        assert!(!neg.has_request());
+        assert!(neg.take_request().is_none());
+    }
+
+    // -- NegotiationState with stored request ---------------------------------
+
+    #[test]
+    fn state_start_with_request_stores_and_retrieves() {
+        let mut state = NegotiationState::new();
+        let cap = Capability::new("llm", "chat", 1);
+        let req = make_task_request(&cap);
+        let req_id = req.id;
+        let neg_id = Uuid::new_v4();
+
+        state.start_with_request(neg_id, cap, 0, Duration::from_secs(5), 2, req);
+
+        assert_eq!(state.active_count(), 1);
+        let neg = state.get(&neg_id).unwrap();
+        assert!(neg.has_request());
+        assert_eq!(neg.peers_solicited, 2);
+
+        // Complete and take the request
+        let mut completed = state.complete(&neg_id).unwrap();
+        let taken = completed.take_request().unwrap();
+        assert_eq!(taken.id, req_id);
+        assert_eq!(state.active_count(), 0);
+    }
+
+    #[test]
+    fn state_start_with_request_and_bids_then_dispatch() {
+        let mut state = NegotiationState::new();
+        let cap = Capability::new("llm", "chat", 1);
+        let req = make_task_request(&cap);
+        let neg_id = req.id; // Use task ID as negotiation ID (matches real flow)
+
+        state.start_with_request(neg_id, cap, 12, Duration::from_secs(5), 2, req);
+
+        // Simulate two bids
+        let bid1 = make_bid_for(neg_id, 1, 100, 0.3, 0.9);
+        let bid2 = make_bid_for(neg_id, 2, 200, 0.5, 0.7);
+        assert!(state.record_bid(bid1));
+        assert!(state.record_bid(bid2));
+
+        // All peers responded — negotiation should be ready
+        let ready = state.ready_negotiations();
+        assert_eq!(ready.len(), 1);
+        assert_eq!(ready[0], neg_id);
+
+        // Complete, select winner, and extract request
+        let mut completed = state.complete(&neg_id).unwrap();
+        assert_eq!(completed.bids.len(), 2);
+
+        let negotiator = Negotiator::new(Duration::from_millis(500), BidScoring::LowestLatency);
+        let winner = negotiator.select_winner(&completed.bids).unwrap();
+        assert_eq!(winner.peer_id, vec![1]); // Peer 1 has lower latency
+
+        let task_req = completed.take_request().unwrap();
+        assert_eq!(task_req.payload, b"test payload");
+    }
+
+    #[test]
+    fn state_start_without_request_has_no_request() {
+        let mut state = NegotiationState::new();
+        let cap = Capability::new("llm", "chat", 1);
+        let neg_id = Uuid::new_v4();
+
+        state.start(neg_id, cap, 0, Duration::from_secs(5), 2);
+
+        let mut completed = state.complete(&neg_id).unwrap();
+        assert!(completed.take_request().is_none());
+    }
+
+    #[test]
+    fn negotiation_dispatch_full_flow_with_trust() {
+        use crate::trust::{TrustScore, TrustWeightedScoring};
+
+        let mut state = NegotiationState::new();
+        let cap = Capability::new("llm", "chat", 1);
+        let req = make_task_request(&cap);
+        let neg_id = req.id;
+
+        state.start_with_request(neg_id, cap, 0, Duration::from_secs(5), 3, req);
+
+        // 3 bids: reliable peer, fast peer, flaky peer
+        let bid_reliable = make_bid_for(neg_id, 1, 200, 0.3, 0.9);
+        let bid_fast = make_bid_for(neg_id, 2, 50, 0.2, 0.8);
+        let bid_flaky = make_bid_for(neg_id, 3, 150, 0.1, 0.6);
+        assert!(state.record_bid(bid_reliable));
+        assert!(state.record_bid(bid_fast));
+        assert!(state.record_bid(bid_flaky));
+
+        let mut completed = state.complete(&neg_id).unwrap();
+
+        // Score with trust weighting
+        let negotiator = Negotiator::default();
+        let trust_scoring = TrustWeightedScoring::default();
+
+        // Simulate trust: reliable peer has high trust, fast peer has low trust
+        let reliable_trust = TrustScore {
+            reliability: 0.95,
+            accuracy: 0.9,
+            availability: 0.9,
+            quality: 0.8,
+            overall: 0.9,
+            confidence: 0.8,
+            observation_count: 50,
+        };
+        let fast_trust = TrustScore {
+            reliability: 0.3,
+            accuracy: 0.2,
+            availability: 0.5,
+            quality: 0.3,
+            overall: 0.3,
+            confidence: 0.7,
+            observation_count: 30,
+        };
+
+        let scored: Vec<_> = completed
+            .bids
+            .iter()
+            .map(|b| {
+                let raw = negotiator.score_bid(b);
+                let trust = if b.peer_id == vec![1] {
+                    &reliable_trust
+                } else if b.peer_id == vec![2] {
+                    &fast_trust
+                } else {
+                    // Unknown — neutral trust
+                    &TrustScore::default()
+                };
+                let weighted = trust_scoring.weighted_score(raw, trust);
+                (b.peer_id.clone(), weighted)
+            })
+            .collect();
+
+        // Find winner
+        let winner = scored
+            .iter()
+            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+            .unwrap();
+
+        // Reliable peer should win despite being slower, because trust penalizes the fast peer
+        assert_eq!(
+            winner.0,
+            vec![1],
+            "Reliable peer should win with trust weighting"
+        );
+
+        // Can still extract the task request for dispatch
+        let task_req = completed.take_request().unwrap();
+        assert_eq!(task_req.timeout_ms, 5000);
     }
 }
