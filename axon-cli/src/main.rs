@@ -603,40 +603,124 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+fn trust_store_path() -> std::path::PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join(".axon")
+        .join("trust")
+}
+
 fn handle_trust_command(action: TrustAction) {
-    use axon_core::{TaskOutcome, TrustObservation, TrustScore, TrustScorer, TrustStore};
+    use axon_core::{PersistentTrustStore, TaskOutcome, TrustObservation, TrustScorer, TrustStore};
 
     match action {
         TrustAction::Show { peer, json } => {
-            // In a running node, the TrustStore would be loaded from persistent state.
-            // For now, show the trust model's behavior with synthesized data.
-            eprintln!("Trust store requires a running node. Use 'axon trust demo' to see the trust model in action.");
-            if let Some(peer_hex) = peer {
-                let score = TrustScore::neutral();
-                if json {
-                    println!(
-                        "{{\"peer\":\"{}\",\"overall\":{:.3},\"reliability\":{:.3},\"accuracy\":{:.3},\"availability\":{:.3},\"quality\":{:.3},\"confidence\":{:.3},\"observations\":{}}}",
-                        peer_hex, score.overall, score.reliability, score.accuracy,
-                        score.availability, score.quality, score.confidence, score.observation_count,
-                    );
-                } else {
-                    println!("Peer: {}", peer_hex);
-                    print_trust_score(&score);
+            let path = trust_store_path();
+            match PersistentTrustStore::open(&path, TrustScorer::default()) {
+                Ok(store) => {
+                    if let Some(peer_hex) = peer {
+                        let peer_bytes = hex::decode(&peer_hex).unwrap_or_default();
+                        let score = store.score(&peer_bytes);
+                        if json {
+                            println!(
+                                "{{\"peer\":\"{}\",\"overall\":{:.3},\"reliability\":{:.3},\"accuracy\":{:.3},\"availability\":{:.3},\"quality\":{:.3},\"confidence\":{:.3},\"observations\":{}}}",
+                                peer_hex, score.overall, score.reliability, score.accuracy,
+                                score.availability, score.quality, score.confidence, score.observation_count,
+                            );
+                        } else {
+                            println!("Peer: {}", peer_hex);
+                            print_trust_score(&score);
+                        }
+                    } else {
+                        // Show all peers
+                        let ranked = store.ranked_peers();
+                        if ranked.is_empty() {
+                            println!("No peer trust records. Interact with peers to build trust.");
+                        } else {
+                            println!(
+                                "{:<16} {:>8} {:>8} {:>8} {:>8} {:>6}",
+                                "PEER", "OVERALL", "RELIAB", "ACCUR", "AVAIL", "OBS"
+                            );
+                            for (id, score) in &ranked {
+                                let hex: String =
+                                    id.iter().take(8).map(|b| format!("{:02x}", b)).collect();
+                                println!(
+                                    "{:<16} {:>8.3} {:>8.3} {:>8.3} {:>8.3} {:>6}",
+                                    hex,
+                                    score.overall,
+                                    score.reliability,
+                                    score.accuracy,
+                                    score.availability,
+                                    score.observation_count,
+                                );
+                            }
+                            println!("\n{} peers tracked", ranked.len());
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to open trust store at {}: {}", path.display(), e);
                 }
             }
         }
         TrustAction::History { peer, limit, json } => {
-            eprintln!("Trust store requires a running node. Use 'axon trust demo' to see the trust model in action.");
-            if json {
-                println!(
-                    "{{\"peer\":\"{}\",\"limit\":{},\"observations\":[]}}",
-                    peer, limit
-                );
-            } else {
-                println!(
-                    "Peer: {} — no observations (not connected to running node)",
-                    peer
-                );
+            let path = trust_store_path();
+            match PersistentTrustStore::open(&path, TrustScorer::default()) {
+                Ok(store) => {
+                    let peer_bytes = hex::decode(&peer).unwrap_or_default();
+                    match store.get_record(&peer_bytes) {
+                        Some(record) => {
+                            let observations: Vec<_> =
+                                record.observations.iter().rev().take(limit).collect();
+                            if json {
+                                let obs_json: Vec<String> = observations
+                                    .iter()
+                                    .map(|o| {
+                                        format!(
+                                            "{{\"timestamp\":{},\"outcome\":\"{:?}\",\"estimated_ms\":{},\"actual_ms\":{}}}",
+                                            o.timestamp, o.outcome, o.estimated_latency_ms, o.actual_latency_ms
+                                        )
+                                    })
+                                    .collect();
+                                println!(
+                                    "{{\"peer\":\"{}\",\"total\":{},\"observations\":[{}]}}",
+                                    peer,
+                                    record.observation_count(),
+                                    obs_json.join(",")
+                                );
+                            } else {
+                                println!(
+                                    "Peer: {} — {} observations (showing last {})",
+                                    peer,
+                                    record.observation_count(),
+                                    observations.len()
+                                );
+                                for obs in &observations {
+                                    println!(
+                                        "  [{:>10}] {:?} — est {}ms, actual {}ms",
+                                        obs.timestamp,
+                                        obs.outcome,
+                                        obs.estimated_latency_ms,
+                                        obs.actual_latency_ms
+                                    );
+                                }
+                            }
+                        }
+                        None => {
+                            if json {
+                                println!(
+                                    "{{\"peer\":\"{}\",\"total\":0,\"observations\":[]}}",
+                                    peer
+                                );
+                            } else {
+                                println!("Peer: {} — no observations", peer);
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to open trust store: {}", e);
+                }
             }
         }
         TrustAction::Demo => {
