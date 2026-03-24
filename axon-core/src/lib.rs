@@ -6,6 +6,7 @@ pub mod mdns;
 pub mod protocol;
 pub mod router;
 pub mod runtime;
+pub mod taskqueue;
 pub mod transport;
 
 pub use identity::Identity;
@@ -17,3 +18,4 @@ pub use crdt::{GCounter, LWWRegister, ORSet};
 pub use transport::Transport;
 pub use mdns::{MdnsDiscovery, DiscoveryEvent};
 pub use gossip::GossipConfig;
+pub use taskqueue::{TaskQueue, TaskQueueConfig, TaskRecord, TaskState, QueueStats, QueueError};

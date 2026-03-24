@@ -5,7 +5,7 @@ mod tui;
 
 use axon_core::{
     Identity, Message, PeerInfo, PeerTable, Runtime, Transport, Capability,
-    TaskStatus, MdnsDiscovery, DiscoveryEvent,
+    TaskStatus, MdnsDiscovery, DiscoveryEvent, TaskQueue, TaskQueueConfig,
 };
 use clap::{Parser, Subcommand};
 use std::net::SocketAddr;
@@ -298,6 +298,20 @@ async fn run_node(
     let peer_id_hex = identity.peer_id_hex();
     info!("Starting axon node with Peer ID: {}", peer_id_hex);
 
+    // Open persistent task queue
+    let queue_path = Identity::default_path()
+        .parent()
+        .unwrap_or(std::path::Path::new("."))
+        .join("queue");
+    let task_queue = Arc::new(
+        TaskQueue::open(&queue_path, TaskQueueConfig::default())
+            .expect("Failed to open task queue"),
+    );
+    let recovered = task_queue.recover().unwrap_or(0);
+    if recovered > 0 {
+        info!("Recovered {} tasks from previous session", recovered);
+    }
+
     let transport = Transport::bind(listen, &identity).await?;
     let local_addr = transport.local_addr()?;
     info!("Listening on {}", local_addr);
@@ -330,6 +344,9 @@ async fn run_node(
         state.capabilities = runtime.all_capabilities().await;
         state.add_log(format!("Node started: {}", peer_id_hex));
         state.add_log(format!("Listening on {}", local_addr));
+        if recovered > 0 {
+            state.add_log(format!("Recovered {} tasks from previous session", recovered));
+        }
     }
 
     // Shutdown coordination: a broadcast channel that all tasks listen to.
@@ -346,6 +363,7 @@ async fn run_node(
     let accept_dashboard = dashboard_state.clone();
     let accept_conns = active_connections.clone();
     let accept_metrics = metrics.clone();
+    let accept_queue = task_queue.clone();
     let mut accept_shutdown = shutdown_tx.subscribe();
 
     tokio::spawn(async move {
@@ -360,6 +378,7 @@ async fn run_node(
                     let pt = accept_peer_table.clone();
                     let ds = accept_dashboard.clone();
                     let m = accept_metrics.clone();
+                    let tq = accept_queue.clone();
                     let remote = conn.remote_address();
 
                     {
@@ -372,7 +391,7 @@ async fn run_node(
                             match Transport::recv(&conn).await {
                                 Ok(msg) => {
                                     m.messages_received.fetch_add(1, Ordering::Relaxed);
-                                    handle_message(msg, &conn, &rt, &pt, &ds, remote, &m).await;
+                                    handle_message(msg, &conn, &rt, &pt, &ds, remote, &m, &tq).await;
                                 }
                                 Err(e) => {
                                     info!("Connection from {} closed: {}", remote, e);
@@ -573,6 +592,11 @@ async fn run_node(
     // --- Graceful shutdown sequence ---
     info!("Initiating graceful shutdown...");
 
+    // 0. Flush the task queue to disk
+    if let Err(e) = task_queue.flush() {
+        error!("Failed to flush task queue: {}", e);
+    }
+
     // 1. Signal all background tasks to stop
     let _ = shutdown_tx.send(());
 
@@ -606,6 +630,7 @@ async fn handle_message(
     dashboard: &Arc<RwLock<DashboardState>>,
     remote: SocketAddr,
     metrics: &Arc<NodeMetrics>,
+    task_queue: &Arc<TaskQueue>,
 ) {
     match msg {
         Message::Ping { nonce } => {
@@ -630,17 +655,38 @@ async fn handle_message(
             }
         }
         Message::TaskRequest(req) => {
+            let task_id = req.id;
             let req_id = req.id.to_string();
             let cap_tag = req.capability.tag();
+
+            // Write-ahead: persist task before dispatch
+            if let Err(e) = task_queue.enqueue(req.clone()) {
+                tracing::warn!("Failed to enqueue task {}: {}", task_id, e);
+            }
+
             let resp = runtime.dispatch(req).await;
 
+            // Update persistent record with result
             match &resp.status {
                 TaskStatus::Success => {
                     metrics.tasks_processed.fetch_add(1, Ordering::Relaxed);
+                    let _ = task_queue.complete(task_id, resp.clone());
                 }
-                _ => {
+                TaskStatus::Error(e) => {
                     metrics.tasks_processed.fetch_add(1, Ordering::Relaxed);
                     metrics.tasks_failed.fetch_add(1, Ordering::Relaxed);
+                    let _ = task_queue.fail(task_id, e.clone());
+                }
+                TaskStatus::Timeout => {
+                    metrics.tasks_processed.fetch_add(1, Ordering::Relaxed);
+                    metrics.tasks_failed.fetch_add(1, Ordering::Relaxed);
+                    let _ = task_queue.timeout(task_id);
+                }
+                TaskStatus::NoCapability => {
+                    metrics.tasks_processed.fetch_add(1, Ordering::Relaxed);
+                    metrics.tasks_failed.fetch_add(1, Ordering::Relaxed);
+                    // No retry for NoCapability — clear from queue
+                    let _ = task_queue.complete(task_id, resp.clone());
                 }
             }
 
