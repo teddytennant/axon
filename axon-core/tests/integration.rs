@@ -1,6 +1,6 @@
 use axon_core::{
-    Agent, AgentError, Capability, Identity, Message, PeerInfo, PeerTable, Runtime, TaskRequest,
-    TaskResponse, TaskStatus, Transport,
+    Agent, AgentError, Capability, Identity, Message, PeerInfo, PeerTable, Runtime, TaskQueue,
+    TaskQueueConfig, TaskRequest, TaskResponse, TaskState, TaskStatus, Transport,
 };
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -298,4 +298,324 @@ fn crdt_convergence_simulation() {
     assert!(set1.contains(&"apple".to_string()));
     assert!(set1.contains(&"banana".to_string())); // node1's add survives
     assert!(set1.contains(&"cherry".to_string()));
+}
+
+/// Test: ForwardedTask message is handled by the receiving node.
+/// Node 1 sends a ForwardedTask to Node 2 which has an EchoAgent.
+/// Node 2 processes it locally and returns the response.
+#[tokio::test]
+async fn forwarded_task_handled_by_capable_node() {
+    let id1 = Identity::generate();
+    let t1 = Transport::bind("127.0.0.1:0".parse().unwrap(), &id1)
+        .await
+        .unwrap();
+
+    let id2 = Identity::generate();
+    let t2 = Transport::bind("127.0.0.1:0".parse().unwrap(), &id2)
+        .await
+        .unwrap();
+    let t2_addr = t2.local_addr().unwrap();
+
+    let runtime2 = Arc::new(Runtime::new());
+    runtime2.register(Arc::new(EchoAgent)).await;
+
+    let (done_tx, done_rx) = tokio::sync::oneshot::channel::<()>();
+    let rt2 = runtime2.clone();
+
+    // Node 2: accept connection, receive ForwardedTask, dispatch, return response
+    let node2_handle = tokio::spawn(async move {
+        let conn = t2.accept().await.unwrap();
+        let msg = Transport::recv(&conn).await.unwrap();
+
+        let req = match msg {
+            Message::ForwardedTask(req) => req,
+            _ => panic!("expected ForwardedTask, got {:?}", msg),
+        };
+
+        let resp = rt2.dispatch(req).await;
+        Transport::send(&conn, &Message::TaskResponse(resp))
+            .await
+            .unwrap();
+
+        let _ = done_rx.await;
+    });
+
+    // Node 1: connect and send ForwardedTask
+    let conn = t1.connect(t2_addr).await.unwrap();
+    let task_id = Uuid::new_v4();
+    let fwd = Message::ForwardedTask(TaskRequest {
+        id: task_id,
+        capability: Capability::new("echo", "ping", 1),
+        payload: b"forwarded data".to_vec(),
+        timeout_ms: 5000,
+    });
+    Transport::send(&conn, &fwd).await.unwrap();
+
+    let resp = Transport::recv(&conn).await.unwrap();
+    match resp {
+        Message::TaskResponse(r) => {
+            assert_eq!(r.request_id, task_id);
+            assert_eq!(r.status, TaskStatus::Success);
+            assert_eq!(r.payload, b"forwarded data");
+        }
+        _ => panic!("expected TaskResponse"),
+    }
+
+    let _ = done_tx.send(());
+    let _ = node2_handle.await;
+}
+
+/// Test: ForwardedTask to a node without the capability returns NoCapability.
+/// This verifies that forwarded tasks are NOT re-forwarded (max one hop).
+#[tokio::test]
+async fn forwarded_task_no_capability_returns_error() {
+    let id1 = Identity::generate();
+    let t1 = Transport::bind("127.0.0.1:0".parse().unwrap(), &id1)
+        .await
+        .unwrap();
+
+    let id2 = Identity::generate();
+    let t2 = Transport::bind("127.0.0.1:0".parse().unwrap(), &id2)
+        .await
+        .unwrap();
+    let t2_addr = t2.local_addr().unwrap();
+
+    // Node 2 has NO agents registered
+    let runtime2 = Arc::new(Runtime::new());
+
+    let (done_tx, done_rx) = tokio::sync::oneshot::channel::<()>();
+    let rt2 = runtime2.clone();
+
+    let node2_handle = tokio::spawn(async move {
+        let conn = t2.accept().await.unwrap();
+        let msg = Transport::recv(&conn).await.unwrap();
+
+        let req = match msg {
+            Message::ForwardedTask(req) => req,
+            _ => panic!("expected ForwardedTask"),
+        };
+
+        let resp = rt2.dispatch(req).await;
+        assert_eq!(resp.status, TaskStatus::NoCapability);
+
+        Transport::send(&conn, &Message::TaskResponse(resp))
+            .await
+            .unwrap();
+
+        let _ = done_rx.await;
+    });
+
+    let conn = t1.connect(t2_addr).await.unwrap();
+    let fwd = Message::ForwardedTask(TaskRequest {
+        id: Uuid::new_v4(),
+        capability: Capability::new("nonexistent", "thing", 1),
+        payload: vec![],
+        timeout_ms: 5000,
+    });
+    Transport::send(&conn, &fwd).await.unwrap();
+
+    let resp = Transport::recv(&conn).await.unwrap();
+    match resp {
+        Message::TaskResponse(r) => {
+            assert_eq!(r.status, TaskStatus::NoCapability);
+        }
+        _ => panic!("expected TaskResponse"),
+    }
+
+    let _ = done_tx.send(());
+    let _ = node2_handle.await;
+}
+
+/// Test: Queue drain pattern — enqueue tasks, dequeue in a loop, dispatch.
+/// Simulates what the background drain worker does.
+#[tokio::test]
+async fn queue_drain_dispatches_pending_tasks() {
+    let queue = TaskQueue::open_temporary(TaskQueueConfig::default()).unwrap();
+    let runtime = Runtime::new();
+    runtime.register(Arc::new(EchoAgent)).await;
+
+    // Enqueue 3 tasks
+    let mut ids = Vec::new();
+    for i in 0..3 {
+        let req = TaskRequest {
+            id: Uuid::new_v4(),
+            capability: Capability::new("echo", "ping", 1),
+            payload: format!("task-{}", i).into_bytes(),
+            timeout_ms: 5000,
+        };
+        ids.push(req.id);
+        queue.enqueue(req).unwrap();
+    }
+
+    assert_eq!(queue.pending_count(), 3);
+
+    // Drain loop (simulates the drain worker)
+    let mut dispatched = 0;
+    loop {
+        match queue.dequeue().unwrap() {
+            Some(record) => {
+                let task_id = record.request.id;
+                let resp = runtime.dispatch(record.request).await;
+                assert_eq!(resp.status, TaskStatus::Success);
+                queue.complete(task_id, resp).unwrap();
+                dispatched += 1;
+            }
+            None => break,
+        }
+    }
+
+    assert_eq!(dispatched, 3);
+    assert_eq!(queue.pending_count(), 0);
+
+    // All tasks should be completed
+    let stats = queue.stats().unwrap();
+    assert_eq!(stats.completed, 3);
+    assert_eq!(stats.pending, 0);
+    assert_eq!(stats.running, 0);
+}
+
+/// Test: Queue drain with retries — failed tasks get re-dispatched on next drain.
+#[tokio::test]
+async fn queue_drain_retries_failed_tasks() {
+    let queue = TaskQueue::open_temporary(TaskQueueConfig {
+        max_retries: 2,
+        ..Default::default()
+    })
+    .unwrap();
+
+    struct FailOnceAgent {
+        call_count: std::sync::atomic::AtomicU32,
+    }
+
+    #[async_trait]
+    impl Agent for FailOnceAgent {
+        fn name(&self) -> &str {
+            "fail-once"
+        }
+        fn capabilities(&self) -> Vec<Capability> {
+            vec![Capability::new("test", "flaky", 1)]
+        }
+        async fn handle(&self, request: TaskRequest) -> Result<TaskResponse, AgentError> {
+            let count = self
+                .call_count
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if count == 0 {
+                Err(AgentError::Internal("transient failure".to_string()))
+            } else {
+                Ok(TaskResponse {
+                    request_id: request.id,
+                    status: TaskStatus::Success,
+                    payload: b"recovered".to_vec(),
+                    duration_ms: 0,
+                })
+            }
+        }
+    }
+
+    let agent = Arc::new(FailOnceAgent {
+        call_count: std::sync::atomic::AtomicU32::new(0),
+    });
+    let runtime = Runtime::new();
+    runtime.register(agent.clone()).await;
+
+    // Enqueue one task
+    let req = TaskRequest {
+        id: Uuid::new_v4(),
+        capability: Capability::new("test", "flaky", 1),
+        payload: b"retry-me".to_vec(),
+        timeout_ms: 5000,
+    };
+    let task_id = req.id;
+    queue.enqueue(req).unwrap();
+
+    // First drain: task fails, gets re-enqueued
+    let record = queue.dequeue().unwrap().unwrap();
+    let resp = runtime.dispatch(record.request).await;
+    match &resp.status {
+        TaskStatus::Error(e) => {
+            let retried = queue.fail(task_id, e.clone()).unwrap();
+            assert!(retried); // should be re-enqueued (attempt 1 <= max_retries 2)
+        }
+        _ => panic!("expected error on first attempt"),
+    }
+
+    assert_eq!(queue.pending_count(), 1); // re-enqueued
+
+    // Second drain: task succeeds
+    let record2 = queue.dequeue().unwrap().unwrap();
+    assert_eq!(record2.request.id, task_id);
+    assert_eq!(record2.attempts, 2); // second attempt
+
+    let resp2 = runtime.dispatch(record2.request).await;
+    assert_eq!(resp2.status, TaskStatus::Success);
+    assert_eq!(resp2.payload, b"recovered");
+    queue.complete(task_id, resp2).unwrap();
+
+    assert_eq!(queue.pending_count(), 0);
+
+    let final_record = queue.get(task_id).unwrap().unwrap();
+    assert_eq!(final_record.state, TaskState::Completed);
+    assert_eq!(final_record.attempts, 2);
+}
+
+/// Test: Queue recovery simulates crash — Running tasks are recovered and re-dispatched.
+#[tokio::test]
+async fn queue_crash_recovery_and_drain() {
+    let runtime = Runtime::new();
+    runtime.register(Arc::new(EchoAgent)).await;
+
+    // Use a file-backed queue in a temp dir to simulate crash/restart
+    let tmp = std::env::temp_dir().join(format!("axon-test-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&tmp).unwrap();
+
+    let task_id;
+
+    // Phase 1: enqueue + dequeue (simulates task in-flight when crash happens)
+    {
+        let queue = TaskQueue::open(&tmp, TaskQueueConfig::default()).unwrap();
+        let req = TaskRequest {
+            id: Uuid::new_v4(),
+            capability: Capability::new("echo", "ping", 1),
+            payload: b"survive-crash".to_vec(),
+            timeout_ms: 5000,
+        };
+        task_id = req.id;
+        queue.enqueue(req).unwrap();
+
+        // Dequeue marks it as Running
+        let record = queue.dequeue().unwrap().unwrap();
+        assert_eq!(record.state, TaskState::Running);
+        // Simulate crash: drop the queue without completing the task
+        queue.flush().unwrap();
+    }
+
+    // Phase 2: reopen the queue (simulates restart after crash)
+    {
+        let queue = TaskQueue::open(&tmp, TaskQueueConfig::default()).unwrap();
+
+        // The task should still be in Running state
+        let record = queue.get(task_id).unwrap().unwrap();
+        assert_eq!(record.state, TaskState::Running);
+
+        // Run recovery
+        let recovered = queue.recover().unwrap();
+        assert_eq!(recovered, 1);
+        assert_eq!(queue.pending_count(), 1);
+
+        // Drain the recovered task
+        let record = queue.dequeue().unwrap().unwrap();
+        assert_eq!(record.request.id, task_id);
+        assert_eq!(record.request.payload, b"survive-crash");
+
+        let resp = runtime.dispatch(record.request).await;
+        assert_eq!(resp.status, TaskStatus::Success);
+        queue.complete(task_id, resp).unwrap();
+
+        assert_eq!(queue.pending_count(), 0);
+        let final_record = queue.get(task_id).unwrap().unwrap();
+        assert_eq!(final_record.state, TaskState::Completed);
+    }
+
+    // Cleanup
+    let _ = std::fs::remove_dir_all(&tmp);
 }

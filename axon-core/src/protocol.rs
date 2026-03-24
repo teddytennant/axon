@@ -79,6 +79,10 @@ pub enum Message {
     TaskResponse(TaskResponse),
     StateSync { key: String, data: Vec<u8> },
     Gossip { peers: Vec<PeerInfo> },
+    /// A task forwarded from another node that couldn't handle it locally.
+    /// Receiving nodes process this like TaskRequest but never forward again,
+    /// preventing routing loops. Max one hop.
+    ForwardedTask(TaskRequest),
 }
 
 impl Message {
@@ -232,6 +236,27 @@ mod tests {
         let decoded = Message::decode(&encoded).unwrap();
         match decoded {
             Message::Gossip { peers } => assert_eq!(peers.len(), 2),
+            _ => panic!("wrong message type"),
+        }
+    }
+
+    #[test]
+    fn message_roundtrip_forwarded_task() {
+        let id = Uuid::new_v4();
+        let msg = Message::ForwardedTask(TaskRequest {
+            id,
+            capability: Capability::new("llm", "chat", 1),
+            payload: b"forwarded payload".to_vec(),
+            timeout_ms: 10000,
+        });
+        let encoded = msg.encode().unwrap();
+        let decoded = Message::decode(&encoded).unwrap();
+        match decoded {
+            Message::ForwardedTask(req) => {
+                assert_eq!(req.id, id);
+                assert_eq!(req.capability.namespace, "llm");
+                assert_eq!(req.payload, b"forwarded payload");
+            }
             _ => panic!("wrong message type"),
         }
     }
