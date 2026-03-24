@@ -598,7 +598,9 @@ async fn run_node(
                                         let _ = Transport::send(&conn, &announce).await;
                                         // Share our MCP tools with the new peer
                                         axon_core::gossip::send_tool_catalog(
-                                            &conn, &mdns_id, &mdns_tools,
+                                            &conn,
+                                            &mdns_id,
+                                            &mdns_tools,
                                         )
                                         .await;
                                     }

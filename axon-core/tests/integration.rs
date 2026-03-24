@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use axon_core::{
-    Agent, AgentError, Capability, Identity, Message, PeerInfo, PeerTable, Runtime, TaskQueue,
-    TaskQueueConfig, TaskRequest, TaskResponse, TaskState, TaskStatus, Transport,
+    Agent, AgentError, Capability, Identity, McpBridge, McpBridgeAgent, McpServerConfig, Message,
+    PeerInfo, PeerTable, Runtime, TaskQueue, TaskQueueConfig, TaskRequest, TaskResponse, TaskState,
+    TaskStatus, ToolRegistry, Transport,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -687,6 +688,287 @@ async fn tls_cert_mismatch_rejected() {
     // or identity handshake.
     let result = t1.connect_verified(t2_addr, &id3.public_key_bytes()).await;
     assert!(result.is_err());
+}
+
+// === MCP End-to-End Integration Tests ===
+//
+// These tests spawn the axon-test-mcp-server binary and verify the full
+// MCP pipeline: spawn → initialize → discover tools → registry → bridge → tool call.
+
+/// Find the test MCP server binary.
+/// It's built as part of the workspace, so it's in the same target dir.
+fn test_mcp_server_path() -> String {
+    // The test binary is adjacent to the test runner in the target directory.
+    // For `cargo test -p axon-core`, the binary is at `target/debug/axon-test-mcp-server`.
+    let mut path = std::env::current_exe().unwrap();
+    path.pop(); // remove test binary name
+    path.pop(); // remove `deps/`
+    path.push("axon-test-mcp-server");
+    if path.exists() {
+        return path.to_string_lossy().to_string();
+    }
+
+    // Fallback: check in workspace target/debug
+    let workspace_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("target/debug/axon-test-mcp-server");
+    if workspace_path.exists() {
+        return workspace_path.to_string_lossy().to_string();
+    }
+
+    panic!(
+        "Could not find axon-test-mcp-server binary. \
+         Build it first: cargo build -p axon-test-mcp-server\n\
+         Checked: {:?} and {:?}",
+        path, workspace_path
+    );
+}
+
+/// Test: MCP client can spawn, initialize, and discover tools from a real MCP server.
+#[tokio::test]
+async fn mcp_client_full_lifecycle() {
+    let server_path = test_mcp_server_path();
+    let config = McpServerConfig::new("test-server", &server_path).with_timeout(5);
+    let client = axon_core::McpClient::spawn(config).await.unwrap();
+
+    // Initialize the MCP handshake
+    let init_result = client.initialize().await.unwrap();
+    assert_eq!(
+        init_result
+            .get("serverInfo")
+            .and_then(|s| s.get("name"))
+            .and_then(|v| v.as_str()),
+        Some("axon-test-mcp-server")
+    );
+
+    // Discover tools
+    let tools = client.discover_tools().await.unwrap();
+    assert_eq!(tools.len(), 2);
+
+    let tool_names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
+    assert!(tool_names.contains(&"echo"));
+    assert!(tool_names.contains(&"add"));
+
+    // Call echo tool
+    let echo_result = client
+        .call_tool("echo", serde_json::json!({"text": "hello from axon"}))
+        .await
+        .unwrap();
+    let echo_text = echo_result
+        .get("content")
+        .and_then(|c| c.as_array())
+        .and_then(|a| a.first())
+        .and_then(|v| v.get("text"))
+        .and_then(|v| v.as_str())
+        .unwrap();
+    assert_eq!(echo_text, "hello from axon");
+
+    // Call add tool
+    let add_result = client
+        .call_tool("add", serde_json::json!({"a": 17, "b": 25}))
+        .await
+        .unwrap();
+    let sum_text = add_result
+        .get("content")
+        .and_then(|c| c.as_array())
+        .and_then(|a| a.first())
+        .and_then(|v| v.get("text"))
+        .and_then(|v| v.as_str())
+        .unwrap();
+    assert_eq!(sum_text, "42");
+
+    // Call unknown tool — should get an error
+    let unknown_result = client.call_tool("nonexistent", serde_json::json!({})).await;
+    assert!(unknown_result.is_err());
+
+    // Verify cached tools
+    let cached = client.cached_tools().await;
+    assert_eq!(cached.len(), 2);
+
+    // Clean shutdown
+    client.shutdown().await;
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert!(!client.is_alive().await);
+}
+
+/// Test: MCP bridge connects to a real server, discovers tools, and proxies tool calls.
+#[tokio::test]
+async fn mcp_bridge_end_to_end() {
+    let server_path = test_mcp_server_path();
+    let bridge = McpBridge::new();
+
+    // Connect to the test server
+    let config = McpServerConfig::new("test-server", &server_path).with_timeout(5);
+    let tools = bridge.connect_server(config).await.unwrap();
+
+    assert_eq!(tools.len(), 2);
+    assert_eq!(bridge.server_count().await, 1);
+    assert!(bridge
+        .server_names()
+        .await
+        .contains(&"test-server".to_string()));
+
+    // Verify capabilities are exposed
+    let caps = bridge.capabilities().await;
+    assert_eq!(caps.len(), 2);
+    assert!(caps
+        .iter()
+        .any(|c| c.namespace == "mcp.test-server" && c.name == "echo"));
+    assert!(caps
+        .iter()
+        .any(|c| c.namespace == "mcp.test-server" && c.name == "add"));
+
+    // Call tools through the bridge
+    let echo_result = bridge
+        .call_tool(
+            "test-server",
+            "echo",
+            serde_json::json!({"text": "bridge test"}),
+        )
+        .await
+        .unwrap();
+    let echo_text = echo_result
+        .get("content")
+        .and_then(|c| c.as_array())
+        .and_then(|a| a.first())
+        .and_then(|v| v.get("text"))
+        .and_then(|v| v.as_str())
+        .unwrap();
+    assert_eq!(echo_text, "bridge test");
+
+    let add_result = bridge
+        .call_tool(
+            "test-server",
+            "add",
+            serde_json::json!({"a": 100, "b": 200}),
+        )
+        .await
+        .unwrap();
+    let sum_text = add_result
+        .get("content")
+        .and_then(|c| c.as_array())
+        .and_then(|a| a.first())
+        .and_then(|v| v.get("text"))
+        .and_then(|v| v.as_str())
+        .unwrap();
+    assert_eq!(sum_text, "300");
+
+    // Disconnect
+    bridge.disconnect_server("test-server").await;
+    assert_eq!(bridge.server_count().await, 0);
+    assert!(bridge.all_tools().await.is_empty());
+}
+
+/// Test: MCP bridge agent routes tool calls through the axon runtime.
+/// This is the full pipeline: TaskRequest → McpBridgeAgent → McpBridge → MCP server.
+#[tokio::test]
+async fn mcp_bridge_agent_full_pipeline() {
+    let server_path = test_mcp_server_path();
+    let bridge = Arc::new(McpBridge::new());
+
+    let config = McpServerConfig::new("calc", &server_path).with_timeout(5);
+    bridge.connect_server(config).await.unwrap();
+
+    // Create the bridge agent and register it with the runtime
+    let agent = McpBridgeAgent::new(bridge.clone());
+    let runtime = Runtime::new();
+    runtime.register(Arc::new(agent)).await;
+
+    // Dispatch a task through the runtime — this should be routed to the bridge agent
+    let task = TaskRequest {
+        id: Uuid::new_v4(),
+        capability: Capability::new("mcp.calc", "add", 1),
+        payload: serde_json::to_vec(&serde_json::json!({"a": 7, "b": 3})).unwrap(),
+        timeout_ms: 5000,
+    };
+
+    let response = runtime.dispatch(task).await;
+    assert_eq!(response.status, TaskStatus::Success);
+
+    // Parse the response payload
+    let result: serde_json::Value = serde_json::from_slice(&response.payload).unwrap();
+    let sum_text = result
+        .get("content")
+        .and_then(|c| c.as_array())
+        .and_then(|a| a.first())
+        .and_then(|v| v.get("text"))
+        .and_then(|v| v.as_str())
+        .unwrap();
+    assert_eq!(sum_text, "10");
+
+    bridge.shutdown().await;
+}
+
+/// Test: MCP tools are registered in the ToolRegistry and searchable.
+#[tokio::test]
+async fn mcp_tool_registry_integration() {
+    let server_path = test_mcp_server_path();
+    let bridge = McpBridge::new();
+
+    let config = McpServerConfig::new("math-tools", &server_path).with_timeout(5);
+    let tools = bridge.connect_server(config).await.unwrap();
+
+    // Register tools in the ToolRegistry
+    let peer_id = vec![1, 2, 3, 4];
+    let mut registry = ToolRegistry::new();
+    registry.register_peer_tools(&peer_id, tools);
+
+    // Search for relevant tools
+    let filter = axon_core::ToolFilter::new()
+        .with_query("add numbers")
+        .with_limit(10);
+    let results = registry.search(&filter);
+    assert!(!results.is_empty());
+    assert!(results.iter().any(|r| r.tool.name == "add"));
+
+    let filter = axon_core::ToolFilter::new()
+        .with_query("echo text")
+        .with_limit(10);
+    let results = registry.search(&filter);
+    assert!(!results.is_empty());
+    assert!(results.iter().any(|r| r.tool.name == "echo"));
+
+    // Get all unique tools
+    let unique = registry.unique_tools();
+    assert_eq!(unique.len(), 2);
+
+    bridge.shutdown().await;
+}
+
+/// Test: Multiple MCP servers can be connected simultaneously via connect_all.
+#[tokio::test]
+async fn mcp_bridge_multi_server() {
+    let server_path = test_mcp_server_path();
+    let bridge = McpBridge::new();
+
+    // Connect two instances of the same server (different names)
+    let configs = vec![
+        McpServerConfig::new("server-a", &server_path).with_timeout(5),
+        McpServerConfig::new("server-b", &server_path).with_timeout(5),
+    ];
+
+    let tools = bridge.connect_all(configs).await;
+    assert_eq!(tools.len(), 4); // 2 tools × 2 servers
+    assert_eq!(bridge.server_count().await, 2);
+
+    // Both servers should be independently callable
+    let result_a = bridge
+        .call_tool("server-a", "echo", serde_json::json!({"text": "from A"}))
+        .await
+        .unwrap();
+    let result_b = bridge
+        .call_tool("server-b", "echo", serde_json::json!({"text": "from B"}))
+        .await
+        .unwrap();
+
+    let text_a = result_a["content"][0]["text"].as_str().unwrap();
+    let text_b = result_b["content"][0]["text"].as_str().unwrap();
+    assert_eq!(text_a, "from A");
+    assert_eq!(text_b, "from B");
+
+    bridge.shutdown().await;
+    assert_eq!(bridge.server_count().await, 0);
 }
 
 /// Test: extract_ed25519_pubkey_from_cert round-trips through a real cert.
