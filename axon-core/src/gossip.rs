@@ -38,11 +38,7 @@ pub struct LocalToolCatalog {
 }
 
 /// Send a ToolCatalog message to a single connection.
-pub async fn send_tool_catalog(
-    conn: &Connection,
-    peer_id: &[u8],
-    tools: &[McpToolSchema],
-) {
+pub async fn send_tool_catalog(conn: &Connection, peer_id: &[u8], tools: &[McpToolSchema]) {
     if tools.is_empty() {
         return;
     }

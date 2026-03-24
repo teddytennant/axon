@@ -12,9 +12,7 @@ pub mod transport;
 
 pub use crdt::{GCounter, LWWRegister, ORSet};
 pub use discovery::PeerTable;
-pub use gossip::{
-    broadcast_tool_catalog, send_tool_catalog, GossipConfig, LocalToolCatalog,
-};
+pub use gossip::{broadcast_tool_catalog, send_tool_catalog, GossipConfig, LocalToolCatalog};
 pub use identity::Identity;
 pub use mcp::{
     McpBridge, McpBridgeAgent, McpClient, McpClientError, McpServerConfig, McpToolSchema,
