@@ -46,8 +46,8 @@ impl Default for NodeSection {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmSection {
-    /// Provider: ollama, openai, anthropic, gemini, xai, openrouter, mistral, groq,
-    /// together, deepseek, fireworks, cohere, perplexity, custom
+    /// Provider: ollama, xai, openrouter, custom
+    /// Use openrouter for Anthropic, OpenAI, Gemini, Mistral, DeepSeek, etc.
     #[serde(default = "default_provider")]
     pub provider: String,
     /// LLM endpoint URL (defaults per provider)
@@ -188,8 +188,8 @@ pub fn generate_example_config() -> anyhow::Result<PathBuf> {
     let contents = toml::to_string_pretty(&example)?;
     let header = "# Axon node configuration\n\
                   # CLI flags override these values.\n\
-                  # API keys: prefer env vars (OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY,\n\
-                  #   XAI_API_KEY, MISTRAL_API_KEY, GROQ_API_KEY, TOGETHER_API_KEY, etc.)\n\
+                  # API keys: prefer env vars (XAI_API_KEY, OPENROUTER_API_KEY)\n\
+                  # Use openrouter for access to Anthropic, OpenAI, Gemini, Mistral, DeepSeek, etc.\n\
                   #\n\
                   # MCP server example:\n\
                   # [[mcp.servers]]\n\
@@ -224,17 +224,17 @@ peers = ["10.0.0.1:4242", "10.0.0.2:4242"]
 headless = true
 
 [llm]
-provider = "openai"
-endpoint = "https://api.openai.com/v1"
-api_key = "sk-test"
-model = "gpt-4o"
+provider = "xai"
+endpoint = "https://api.x.ai/v1"
+api_key = "xai-test"
+model = "grok-4.20"
 "#;
         let config: NodeConfig = toml::from_str(toml).unwrap();
         assert_eq!(config.node.listen.to_string(), "127.0.0.1:5555");
         assert_eq!(config.node.peers.len(), 2);
         assert!(config.node.headless);
-        assert_eq!(config.llm.provider, "openai");
-        assert_eq!(config.llm.model, "gpt-4o");
+        assert_eq!(config.llm.provider, "xai");
+        assert_eq!(config.llm.model, "grok-4.20");
     }
 
     #[test]
