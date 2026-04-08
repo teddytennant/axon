@@ -72,7 +72,7 @@ enum Commands {
         #[arg(long)]
         headless: bool,
 
-        /// LLM provider: ollama, openai, xai, openrouter, custom
+        /// LLM provider: ollama, openai, anthropic, gemini, xai, openrouter, mistral, groq, together, deepseek, fireworks, cohere, perplexity, custom
         #[arg(long, default_value = "ollama")]
         provider: ProviderKind,
 
@@ -80,7 +80,7 @@ enum Commands {
         #[arg(long, default_value = "")]
         llm_endpoint: String,
 
-        /// API key for the LLM provider (or set env: OPENAI_API_KEY, XAI_API_KEY, OPENROUTER_API_KEY)
+        /// API key for the LLM provider (or set env: OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, XAI_API_KEY, etc.)
         #[arg(long, default_value = "")]
         api_key: String,
 

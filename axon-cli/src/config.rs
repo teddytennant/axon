@@ -46,7 +46,8 @@ impl Default for NodeSection {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmSection {
-    /// Provider: ollama, openai, xai, openrouter, custom
+    /// Provider: ollama, openai, anthropic, gemini, xai, openrouter, mistral, groq,
+    /// together, deepseek, fireworks, cohere, perplexity, custom
     #[serde(default = "default_provider")]
     pub provider: String,
     /// LLM endpoint URL (defaults per provider)
@@ -187,7 +188,8 @@ pub fn generate_example_config() -> anyhow::Result<PathBuf> {
     let contents = toml::to_string_pretty(&example)?;
     let header = "# Axon node configuration\n\
                   # CLI flags override these values.\n\
-                  # API keys: prefer env vars (OPENAI_API_KEY, XAI_API_KEY, etc.)\n\
+                  # API keys: prefer env vars (OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY,\n\
+                  #   XAI_API_KEY, MISTRAL_API_KEY, GROQ_API_KEY, TOGETHER_API_KEY, etc.)\n\
                   #\n\
                   # MCP server example:\n\
                   # [[mcp.servers]]\n\
