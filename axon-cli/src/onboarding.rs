@@ -580,12 +580,11 @@ fn render(frame: &mut Frame, state: &WizardState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(2),  // top margin
-            Constraint::Length(5),  // logo
+            Constraint::Length(1),  // top margin
+            Constraint::Length(3),  // logo (compact)
             Constraint::Length(1),  // progress bar
-            Constraint::Length(1),  // spacer
-            Constraint::Min(10),   // content
-            Constraint::Length(2), // status bar
+            Constraint::Min(6),    // content
+            Constraint::Length(1),  // status bar
         ])
         .horizontal_margin(4)
         .split(area);
@@ -594,27 +593,23 @@ fn render(frame: &mut Frame, state: &WizardState) {
     render_progress(frame, state, chunks[2]);
 
     match state.step {
-        Step::Welcome => render_welcome(frame, chunks[4]),
-        Step::Provider => render_provider_select(frame, state, chunks[4]),
-        Step::ApiKey => render_api_key(frame, state, chunks[4]),
-        Step::Models => render_model_select(frame, state, chunks[4]),
-        Step::Done => render_done(frame, state, chunks[4]),
+        Step::Welcome => render_welcome(frame, chunks[3]),
+        Step::Provider => render_provider_select(frame, state, chunks[3]),
+        Step::ApiKey => render_api_key(frame, state, chunks[3]),
+        Step::Models => render_model_select(frame, state, chunks[3]),
+        Step::Done => render_done(frame, state, chunks[3]),
     }
 
-    render_help_bar(frame, state, chunks[5]);
+    render_help_bar(frame, state, chunks[4]);
 }
 
 fn render_logo(frame: &mut Frame, area: Rect) {
     let logo = vec![
         Line::from(vec![
-            Span::styled("    ▲ ", Style::default().fg(BRAND_CYAN).bold()),
+            Span::styled("  ▲ ", Style::default().fg(BRAND_CYAN).bold()),
             Span::styled("A X O N", Style::default().fg(BRAND_CYAN).bold()),
+            Span::styled("  ·  Decentralized AI Agent Mesh", Style::default().fg(BRAND_DIM)),
         ]),
-        Line::from(""),
-        Line::from(Span::styled(
-            "    Decentralized AI Agent Mesh",
-            Style::default().fg(BRAND_DIM),
-        )),
     ];
     frame.render_widget(Paragraph::new(logo), area);
 }
@@ -656,36 +651,26 @@ fn render_welcome(frame: &mut Frame, area: Rect) {
         )),
         Line::from(""),
         Line::from(Span::styled(
-            "  Axon is a decentralized mesh network for AI agents.",
+            "  Decentralized mesh network for AI agents — discover peers,",
             Style::default().fg(BRAND_DIM),
         )),
         Line::from(Span::styled(
-            "  Agents discover each other, negotiate tasks, build trust,",
-            Style::default().fg(BRAND_DIM),
-        )),
-        Line::from(Span::styled(
-            "  and collaborate across the mesh.",
+            "  negotiate tasks, build trust, and collaborate.",
             Style::default().fg(BRAND_DIM),
         )),
         Line::from(""),
         Line::from(Span::styled(
-            "  This wizard will help you configure your node:",
+            "  This wizard will configure your node:",
             Style::default().fg(Color::White),
         )),
-        Line::from(""),
         Line::from(vec![
             Span::styled("    1. ", Style::default().fg(BRAND_CYAN).bold()),
-            Span::styled("Choose an LLM provider", Style::default().fg(Color::White)),
-        ]),
-        Line::from(vec![
-            Span::styled("    2. ", Style::default().fg(BRAND_CYAN).bold()),
-            Span::styled("Enter your API key", Style::default().fg(Color::White)),
-        ]),
-        Line::from(vec![
-            Span::styled("    3. ", Style::default().fg(BRAND_CYAN).bold()),
+            Span::styled("Choose an LLM provider  ", Style::default().fg(Color::White)),
+            Span::styled("2. ", Style::default().fg(BRAND_CYAN).bold()),
+            Span::styled("Enter API key  ", Style::default().fg(Color::White)),
+            Span::styled("3. ", Style::default().fg(BRAND_CYAN).bold()),
             Span::styled("Pick a model", Style::default().fg(Color::White)),
         ]),
-        Line::from(""),
         Line::from(""),
         Line::from(Span::styled(
             "  Press Enter to get started.",
@@ -697,7 +682,7 @@ fn render_welcome(frame: &mut Frame, area: Rect) {
         .borders(Borders::ALL)
         .border_style(Style::default().fg(BRAND_DIM))
         .style(Style::default().bg(SURFACE))
-        .padding(Padding::horizontal(2));
+        .padding(Padding::horizontal(1));
 
     frame.render_widget(Paragraph::new(content).block(block), area);
 }
@@ -714,22 +699,19 @@ fn render_provider_select(frame: &mut Frame, state: &WizardState, area: Rect) {
 
     for (i, provider) in PROVIDERS.iter().enumerate() {
         let is_selected = i == state.provider_cursor;
-        let marker = if is_selected { "▸ " } else { "  " };
+        let marker = if is_selected { "▸" } else { " " };
         let marker_color = if is_selected { BRAND_CYAN } else { BRAND_DIM };
 
         lines.push(Line::from(vec![
-            Span::styled(format!("  {}", marker), Style::default().fg(marker_color)),
+            Span::styled(format!("  {} ", marker), Style::default().fg(marker_color)),
             Span::styled(
-                provider.label,
+                format!("{:<18}", provider.label),
                 if is_selected {
                     Style::default().fg(BRAND_CYAN).bold()
                 } else {
                     Style::default().fg(Color::White)
                 },
             ),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("      ", Style::default()),
             Span::styled(
                 provider.desc,
                 Style::default().fg(if is_selected {
@@ -739,7 +721,6 @@ fn render_provider_select(frame: &mut Frame, state: &WizardState, area: Rect) {
                 }),
             ),
         ]));
-        lines.push(Line::from(""));
     }
 
     let block = Block::default()
@@ -750,7 +731,7 @@ fn render_provider_select(frame: &mut Frame, state: &WizardState, area: Rect) {
             Style::default().fg(BRAND_CYAN).bold(),
         ))
         .style(Style::default().bg(SURFACE))
-        .padding(Padding::horizontal(2));
+        .padding(Padding::horizontal(1));
 
     frame.render_widget(Paragraph::new(lines).block(block), area);
 }
