@@ -16,13 +16,13 @@ use std::time::Duration;
 // Theme (matches dashboard)
 // ---------------------------------------------------------------------------
 
-const BRAND_CYAN: Color = Color::Rgb(140, 140, 150);
-const BRAND_GREEN: Color = Color::Rgb(120, 170, 130);
-const BRAND_YELLOW: Color = Color::Rgb(180, 160, 80);
-const BRAND_RED: Color = Color::Rgb(180, 80, 80);
-const BRAND_DIM: Color = Color::Rgb(80, 80, 88);
+const BRAND_CYAN: Color = Color::Rgb(110, 110, 118);
+const BRAND_GREEN: Color = Color::Rgb(95, 140, 105);
+const BRAND_YELLOW: Color = Color::Rgb(150, 135, 70);
+const BRAND_RED: Color = Color::Rgb(150, 70, 70);
+const BRAND_DIM: Color = Color::Rgb(70, 70, 78);
 const BRAND_BG: Color = Color::Reset;
-const ACCENT_BLUE: Color = Color::Rgb(120, 140, 180);
+const ACCENT_BLUE: Color = Color::Rgb(100, 115, 150);
 const SURFACE: Color = Color::Reset;
 
 // ---------------------------------------------------------------------------

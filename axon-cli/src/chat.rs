@@ -19,9 +19,9 @@ use tokio::sync::oneshot;
 // Theme — no opaque backgrounds, inherit terminal transparency
 // ---------------------------------------------------------------------------
 
-const ACCENT: Color = Color::Rgb(140, 140, 150);
-const DIM: Color = Color::Rgb(80, 80, 88);
-const FAINT: Color = Color::Rgb(50, 50, 56);
+const ACCENT: Color = Color::Rgb(110, 110, 118);
+const DIM: Color = Color::Rgb(70, 70, 78);
+const FAINT: Color = Color::Rgb(45, 45, 50);
 const SPINNER: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 // ---------------------------------------------------------------------------
@@ -605,13 +605,13 @@ fn render_messages(frame: &mut Frame, state: &mut ChatState, area: Rect) {
                 lines.push(Line::from(Span::styled("  you", Style::default().fg(ACCENT).bold())));
                 for l in msg.content.lines() {
                     for wrapped in wrap(l, w.saturating_sub(6)) {
-                        lines.push(Line::from(Span::styled(format!("  {}", wrapped), Style::default().fg(Color::Rgb(200, 200, 205)))));
+                        lines.push(Line::from(Span::styled(format!("  {}", wrapped), Style::default().fg(Color::Rgb(170, 170, 178)))));
                     }
                 }
             }
             Role::Assistant => {
                 lines.push(Line::from(""));
-                let mut label = vec![Span::styled("  axon", Style::default().fg(Color::Rgb(160, 160, 170)).bold())];
+                let mut label = vec![Span::styled("  axon", Style::default().fg(Color::Rgb(130, 130, 138)).bold())];
                 if let Some(ms) = msg.duration_ms {
                     let t = if ms >= 1000 { format!("{:.1}s", ms as f64 / 1000.0) } else { format!("{}ms", ms) };
                     label.push(Span::styled(format!("  {}", t), Style::default().fg(FAINT)));
@@ -622,7 +622,7 @@ fn render_messages(frame: &mut Frame, state: &mut ChatState, area: Rect) {
                 lines.push(Line::from(label));
                 for l in msg.content.lines() {
                     for wrapped in wrap(l, w.saturating_sub(6)) {
-                        lines.push(Line::from(Span::styled(format!("  {}", wrapped), Style::default().fg(Color::Rgb(175, 175, 182)))));
+                        lines.push(Line::from(Span::styled(format!("  {}", wrapped), Style::default().fg(Color::Rgb(145, 145, 152)))));
                     }
                 }
             }
@@ -723,7 +723,7 @@ fn render_help(frame: &mut Frame, area: Rect) {
 
     let lines = vec![
         Line::from(""),
-        Line::from(Span::styled("  commands", Style::default().fg(Color::Rgb(200, 200, 205)).bold())),
+        Line::from(Span::styled("  commands", Style::default().fg(Color::Rgb(170, 170, 178)).bold())),
         Line::from(""),
         help_line("/model, /m", "pick a model (interactive)"),
         help_line("/model <id>", "switch model directly"),
@@ -732,7 +732,7 @@ fn render_help(frame: &mut Frame, area: Rect) {
         help_line("/clear", "clear conversation"),
         help_line("/quit", "exit"),
         Line::from(""),
-        Line::from(Span::styled("  keys", Style::default().fg(Color::Rgb(200, 200, 205)).bold())),
+        Line::from(Span::styled("  keys", Style::default().fg(Color::Rgb(170, 170, 178)).bold())),
         Line::from(""),
         help_line("enter", "send"),
         help_line("up/down", "history"),
@@ -812,12 +812,12 @@ fn render_model_picker(frame: &mut Frame, state: &ChatState, area: Rect) {
             Span::styled(format!(" {} ", marker), Style::default().fg(if sel { ACCENT } else { FAINT })),
             Span::styled(
                 &model.id,
-                if sel { Style::default().fg(ACCENT).bold() } else { Style::default().fg(Color::Rgb(200, 200, 205)) },
+                if sel { Style::default().fg(ACCENT).bold() } else { Style::default().fg(Color::Rgb(170, 170, 178)) },
             ),
         ];
 
         if is_current {
-            spans.push(Span::styled(" ●", Style::default().fg(Color::Rgb(160, 160, 170))));
+            spans.push(Span::styled(" ●", Style::default().fg(Color::Rgb(130, 130, 138))));
         }
 
         if let Some(ctx) = model.context_length {
