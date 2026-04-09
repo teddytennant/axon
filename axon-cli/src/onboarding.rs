@@ -21,9 +21,9 @@ const BRAND_GREEN: Color = Color::Rgb(80, 220, 120);
 const BRAND_YELLOW: Color = Color::Rgb(240, 200, 60);
 const BRAND_RED: Color = Color::Rgb(240, 80, 80);
 const BRAND_DIM: Color = Color::Rgb(100, 100, 110);
-const BRAND_BG: Color = Color::Rgb(15, 15, 20);
+const BRAND_BG: Color = Color::Reset;
 const ACCENT_BLUE: Color = Color::Rgb(80, 140, 240);
-const SURFACE: Color = Color::Rgb(25, 25, 35);
+const SURFACE: Color = Color::Reset;
 
 // ---------------------------------------------------------------------------
 // Wizard steps
