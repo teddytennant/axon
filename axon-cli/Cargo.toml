@@ -24,3 +24,4 @@ serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 dirs = "6"
 hex = "0.4"
+atty = "0.2"

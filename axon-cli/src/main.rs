@@ -1,5 +1,6 @@
 mod agents;
 mod config;
+mod onboarding;
 mod providers;
 mod tui;
 
@@ -182,6 +183,30 @@ enum Commands {
         #[command(subcommand)]
         action: TrustAction,
     },
+
+    /// Interactive setup wizard — configure provider, API key, and model
+    Setup,
+
+    /// Authenticate with an LLM provider (save API key to config)
+    Auth {
+        /// Provider to authenticate: openrouter, xai, ollama, custom
+        provider: ProviderKind,
+    },
+
+    /// List available models for the configured (or specified) provider
+    Models {
+        /// Provider to list models for (defaults to configured provider)
+        #[arg(short, long)]
+        provider: Option<ProviderKind>,
+
+        /// Filter models by name/description
+        #[arg(short, long)]
+        filter: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -225,6 +250,22 @@ async fn main() -> anyhow::Result<()> {
             model,
             health_port,
         } => {
+            // First-run detection: if no config exists, offer setup
+            if !config::config_exists() && !headless && atty::is(atty::Stream::Stdin) {
+                eprintln!("\x1b[36m▲ AXON\x1b[0m  No configuration found. Running setup wizard...\n");
+                match onboarding::run_onboarding().await {
+                    Ok(true) => {
+                        eprintln!("\n\x1b[32m✓\x1b[0m Setup complete. Starting node...\n");
+                    }
+                    Ok(false) => {
+                        eprintln!("Setup skipped. Using defaults.");
+                    }
+                    Err(e) => {
+                        eprintln!("Setup error: {}. Using defaults.", e);
+                    }
+                }
+            }
+
             // Load config file, then overlay CLI flags
             let file_config = config::load_config();
 
@@ -606,6 +647,111 @@ async fn main() -> anyhow::Result<()> {
         Commands::Trust { action } => {
             handle_trust_command(action);
         }
+        Commands::Setup => {
+            match onboarding::run_onboarding().await {
+                Ok(true) => {
+                    println!("\n\x1b[32m✓\x1b[0m Configuration saved. Run \x1b[36maxon start\x1b[0m to launch your node.");
+                }
+                Ok(false) => {
+                    println!("\nSetup cancelled.");
+                }
+                Err(e) => {
+                    eprintln!("Setup error: {}", e);
+                }
+            }
+        }
+        Commands::Auth { provider } => {
+            match onboarding::run_auth(&provider).await {
+                Ok(true) => {
+                    println!(
+                        "\n\x1b[32m✓\x1b[0m {} configuration saved.",
+                        provider
+                    );
+                }
+                Ok(false) => {
+                    println!("\nAuth cancelled.");
+                }
+                Err(e) => {
+                    eprintln!("Auth error: {}", e);
+                }
+            }
+        }
+        Commands::Models {
+            provider,
+            filter,
+            json,
+        } => {
+            let file_config = config::load_config();
+            let kind = provider.unwrap_or_else(|| {
+                file_config
+                    .llm
+                    .provider
+                    .parse()
+                    .unwrap_or(ProviderKind::Ollama)
+            });
+
+            let endpoint = if file_config.llm.endpoint.is_empty() {
+                providers::default_endpoint(&kind).to_string()
+            } else {
+                file_config.llm.endpoint.clone()
+            };
+
+            let api_key = if file_config.llm.api_key.is_empty() {
+                providers::resolve_api_key("", &kind)
+            } else {
+                file_config.llm.api_key.clone()
+            };
+
+            eprintln!("Fetching models for {}...", kind);
+            match providers::fetch_models(&kind, &endpoint, &api_key).await {
+                Ok(models) => {
+                    let models: Vec<_> = if let Some(ref q) = filter {
+                        let q = q.to_lowercase();
+                        models
+                            .into_iter()
+                            .filter(|m| {
+                                m.id.to_lowercase().contains(&q)
+                                    || m.name.to_lowercase().contains(&q)
+                            })
+                            .collect()
+                    } else {
+                        models
+                    };
+
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&models).unwrap_or_default());
+                    } else {
+                        if models.is_empty() {
+                            println!("No models found.");
+                        } else {
+                            println!(
+                                "\n{:<45} {:<30} {:>10}",
+                                "MODEL ID", "NAME", "CONTEXT"
+                            );
+                            println!("{}", "─".repeat(87));
+                            for m in &models {
+                                let ctx = m
+                                    .context_length
+                                    .map(|c| {
+                                        if c >= 1_000_000 {
+                                            format!("{}M", c / 1_000_000)
+                                        } else {
+                                            format!("{}K", c / 1_000)
+                                        }
+                                    })
+                                    .unwrap_or_else(|| "—".into());
+                                println!("{:<45} {:<30} {:>10}", m.id, m.name, ctx);
+                            }
+                            println!("\n{} models total.", models.len());
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to fetch models: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
     }
 
     Ok(())
@@ -963,13 +1109,35 @@ async fn run_node(
             ));
         }
         let mcp_tool_count = mcp_bridge.all_tools().await.len();
+        let mcp_server_count = mcp_bridge.server_count().await;
         if mcp_tool_count > 0 {
             state.add_log(format!(
                 "MCP bridge: {} tools from {} server(s)",
                 mcp_tool_count,
-                mcp_bridge.server_count().await,
+                mcp_server_count,
             ));
         }
+
+        // Populate settings tab
+        let settings_config = config::load_config();
+        state.provider_name = settings_config.llm.provider.clone();
+        state.model_name = if settings_config.llm.model.is_empty() {
+            providers::default_model(
+                &settings_config
+                    .llm
+                    .provider
+                    .parse()
+                    .unwrap_or(ProviderKind::Ollama),
+            )
+            .to_string()
+        } else {
+            settings_config.llm.model.clone()
+        };
+        state.config_path = config::config_path()
+            .map(|p| p.display().to_string())
+            .unwrap_or_default();
+        state.mcp_server_count = mcp_server_count;
+        state.mcp_tool_count = mcp_tool_count;
     }
 
     // Register MCP tools in the local tool registry

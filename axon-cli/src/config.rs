@@ -158,6 +158,29 @@ pub fn load_config() -> NodeConfig {
     }
 }
 
+/// Save a config to the default path.
+pub fn save_config(config: &NodeConfig) -> anyhow::Result<PathBuf> {
+    let path =
+        config_path().ok_or_else(|| anyhow::anyhow!("Could not determine config directory"))?;
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let contents = toml::to_string_pretty(config)?;
+    let header = "# Axon node configuration\n\
+                  # Managed by axon CLI — edit freely or re-run `axon setup`\n\
+                  # API keys: prefer env vars (XAI_API_KEY, OPENROUTER_API_KEY)\n\n";
+
+    std::fs::write(&path, format!("{}{}", header, contents))?;
+    Ok(path)
+}
+
+/// Returns true if a config file exists at the default path.
+pub fn config_exists() -> bool {
+    config_path().map(|p| p.exists()).unwrap_or(false)
+}
+
 /// Generate an example config file at the default path.
 pub fn generate_example_config() -> anyhow::Result<PathBuf> {
     let path =

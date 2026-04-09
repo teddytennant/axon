@@ -28,11 +28,19 @@ pub enum Tab {
     Tasks,
     State,
     Logs,
+    Settings,
 }
 
 impl Tab {
     pub fn all() -> Vec<Tab> {
-        vec![Tab::Mesh, Tab::Agents, Tab::Tasks, Tab::State, Tab::Logs]
+        vec![
+            Tab::Mesh,
+            Tab::Agents,
+            Tab::Tasks,
+            Tab::State,
+            Tab::Logs,
+            Tab::Settings,
+        ]
     }
 
     pub fn title(&self) -> &str {
@@ -42,16 +50,18 @@ impl Tab {
             Tab::Tasks => "Tasks",
             Tab::State => "State",
             Tab::Logs => "Logs",
+            Tab::Settings => "Settings",
         }
     }
 
     pub fn icon(&self) -> &str {
         match self {
-            Tab::Mesh => "\u{25c6}",    // diamond
-            Tab::Agents => "\u{2726}",  // four-pointed star
-            Tab::Tasks => "\u{25b6}",   // play triangle
-            Tab::State => "\u{2637}",   // trigram
-            Tab::Logs => "\u{2261}",    // triple bar
+            Tab::Mesh => "\u{25c6}",     // diamond
+            Tab::Agents => "\u{2726}",   // four-pointed star
+            Tab::Tasks => "\u{25b6}",    // play triangle
+            Tab::State => "\u{2637}",    // trigram
+            Tab::Logs => "\u{2261}",     // triple bar
+            Tab::Settings => "\u{2699}", // gear
         }
     }
 
@@ -62,6 +72,7 @@ impl Tab {
             Tab::Tasks => 2,
             Tab::State => 3,
             Tab::Logs => 4,
+            Tab::Settings => 5,
         }
     }
 
@@ -72,8 +83,13 @@ impl Tab {
             2 => Tab::Tasks,
             3 => Tab::State,
             4 => Tab::Logs,
+            5 => Tab::Settings,
             _ => Tab::Mesh,
         }
+    }
+
+    pub fn count() -> usize {
+        6
     }
 }
 
@@ -196,6 +212,13 @@ pub struct DashboardState {
 
     // Task throughput history (tasks completed per second, last 60 samples)
     pub throughput_history: VecDeque<u64>,
+
+    // Settings tab info
+    pub provider_name: String,
+    pub model_name: String,
+    pub config_path: String,
+    pub mcp_server_count: usize,
+    pub mcp_tool_count: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -226,6 +249,11 @@ impl DashboardState {
             crdt_sets: Vec::new(),
             peer_trust: Vec::new(),
             throughput_history: VecDeque::new(),
+            provider_name: String::new(),
+            model_name: String::new(),
+            config_path: String::new(),
+            mcp_server_count: 0,
+            mcp_tool_count: 0,
         }
     }
 
@@ -307,12 +335,12 @@ impl Dashboard {
             KeyCode::Char('q') => return true,
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => return true,
             KeyCode::Tab => {
-                let idx = (self.active_tab.index() + 1) % 5;
+                let idx = (self.active_tab.index() + 1) % Tab::count();
                 self.active_tab = Tab::from_index(idx);
                 self.scroll_offset = 0;
             }
             KeyCode::BackTab => {
-                let idx = (self.active_tab.index() + 4) % 5;
+                let idx = (self.active_tab.index() + Tab::count() - 1) % Tab::count();
                 self.active_tab = Tab::from_index(idx);
                 self.scroll_offset = 0;
             }
@@ -349,6 +377,10 @@ impl Dashboard {
             }
             KeyCode::Char('5') => {
                 self.active_tab = Tab::Logs;
+                self.scroll_offset = 0;
+            }
+            KeyCode::Char('6') => {
+                self.active_tab = Tab::Settings;
                 self.scroll_offset = 0;
             }
             _ => {}
@@ -391,6 +423,7 @@ impl Dashboard {
             Tab::Tasks => Self::render_tasks(frame, state, chunks[2], scroll),
             Tab::State => Self::render_state(frame, state, chunks[2], scroll),
             Tab::Logs => Self::render_logs(frame, state, chunks[2], scroll, log_filter),
+            Tab::Settings => Self::render_settings(frame, state, chunks[2]),
         }
 
         Self::render_status_bar(frame, active_tab, log_filter, chunks[3]);
@@ -518,7 +551,7 @@ impl Dashboard {
             Span::styled(" j/k", Style::default().fg(BRAND_CYAN).bold()),
             Span::styled(" scroll ", Style::default().fg(BRAND_DIM)),
             Span::styled("\u{2502}", Style::default().fg(BRAND_DIM)),
-            Span::styled(" 1-5", Style::default().fg(BRAND_CYAN).bold()),
+            Span::styled(" 1-6", Style::default().fg(BRAND_CYAN).bold()),
             Span::styled(" jump ", Style::default().fg(BRAND_DIM)),
             Span::styled("\u{2502}", Style::default().fg(BRAND_DIM)),
             Span::styled(" g/G", Style::default().fg(BRAND_CYAN).bold()),
@@ -1430,6 +1463,224 @@ impl Dashboard {
                 &mut scrollbar_state,
             );
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Settings tab
+    // -----------------------------------------------------------------------
+
+    fn render_settings(frame: &mut Frame, state: &DashboardState, area: Rect) {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(10), // Node info card
+                Constraint::Length(9),  // LLM config card
+                Constraint::Min(0),    // MCP / hints
+            ])
+            .split(area);
+
+        // --- Node Info Card ---
+        let peer_short = if state.peer_id.len() >= 16 {
+            &state.peer_id[..16]
+        } else {
+            &state.peer_id
+        };
+
+        let node_lines = vec![
+            Line::from(vec![
+                Span::styled("  Peer ID:    ", Style::default().fg(BRAND_DIM)),
+                Span::styled(peer_short, Style::default().fg(Color::White).bold()),
+                Span::styled(
+                    if state.peer_id.len() > 16 { "..." } else { "" },
+                    Style::default().fg(BRAND_DIM),
+                ),
+            ]),
+            Line::from(vec![
+                Span::styled("  Listen:     ", Style::default().fg(BRAND_DIM)),
+                Span::styled(&state.listen_addr, Style::default().fg(Color::White)),
+            ]),
+            Line::from(vec![
+                Span::styled("  Uptime:     ", Style::default().fg(BRAND_DIM)),
+                Span::styled(
+                    format_uptime(state.uptime_secs),
+                    Style::default().fg(BRAND_GREEN),
+                ),
+            ]),
+            Line::from(vec![
+                Span::styled("  Peers:      ", Style::default().fg(BRAND_DIM)),
+                Span::styled(
+                    format!("{}", state.peers.len()),
+                    Style::default().fg(BRAND_GREEN).bold(),
+                ),
+            ]),
+            Line::from(vec![
+                Span::styled("  Agents:     ", Style::default().fg(BRAND_DIM)),
+                Span::styled(
+                    format!("{}", state.agent_names.len()),
+                    Style::default().fg(ACCENT_BLUE),
+                ),
+                Span::styled(
+                    format!(
+                        "  ({})",
+                        state.agent_names.join(", ")
+                    ),
+                    Style::default().fg(BRAND_DIM),
+                ),
+            ]),
+            Line::from(vec![
+                Span::styled("  Config:     ", Style::default().fg(BRAND_DIM)),
+                Span::styled(
+                    if state.config_path.is_empty() {
+                        "~/.config/axon/config.toml"
+                    } else {
+                        &state.config_path
+                    },
+                    Style::default().fg(BRAND_DIM),
+                ),
+            ]),
+        ];
+
+        let node_block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(BRAND_DIM))
+            .title(Span::styled(
+                " Node Info ",
+                Style::default().fg(BRAND_CYAN).bold(),
+            ))
+            .style(Style::default().bg(SURFACE))
+            .padding(Padding::vertical(1));
+
+        frame.render_widget(Paragraph::new(node_lines).block(node_block), chunks[0]);
+
+        // --- LLM Config Card ---
+        let provider_display = if state.provider_name.is_empty() {
+            "not configured"
+        } else {
+            &state.provider_name
+        };
+
+        let model_display = if state.model_name.is_empty() {
+            "default"
+        } else {
+            &state.model_name
+        };
+
+        let llm_lines = vec![
+            Line::from(vec![
+                Span::styled("  Provider:   ", Style::default().fg(BRAND_DIM)),
+                Span::styled(
+                    provider_display,
+                    Style::default().fg(BRAND_CYAN).bold(),
+                ),
+            ]),
+            Line::from(vec![
+                Span::styled("  Model:      ", Style::default().fg(BRAND_DIM)),
+                Span::styled(model_display, Style::default().fg(ACCENT_BLUE).bold()),
+            ]),
+            Line::from(vec![
+                Span::styled("  API Key:    ", Style::default().fg(BRAND_DIM)),
+                Span::styled(
+                    "configured",
+                    Style::default().fg(BRAND_GREEN),
+                ),
+            ]),
+            Line::from(""),
+            Line::from(Span::styled(
+                "  Run `axon auth <provider>` or `axon setup` to reconfigure",
+                Style::default().fg(BRAND_DIM),
+            )),
+        ];
+
+        let llm_block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(BRAND_DIM))
+            .title(Span::styled(
+                " LLM Configuration ",
+                Style::default().fg(BRAND_CYAN).bold(),
+            ))
+            .style(Style::default().bg(SURFACE))
+            .padding(Padding::vertical(1));
+
+        frame.render_widget(Paragraph::new(llm_lines).block(llm_block), chunks[1]);
+
+        // --- MCP & Commands Card ---
+        let mcp_lines = vec![
+            Line::from(vec![
+                Span::styled("  MCP Servers:  ", Style::default().fg(BRAND_DIM)),
+                Span::styled(
+                    format!("{}", state.mcp_server_count),
+                    Style::default().fg(Color::White).bold(),
+                ),
+                Span::styled("   Tools: ", Style::default().fg(BRAND_DIM)),
+                Span::styled(
+                    format!("{}", state.mcp_tool_count),
+                    Style::default().fg(ACCENT_BLUE),
+                ),
+            ]),
+            Line::from(""),
+            Line::from(Span::styled(
+                "  Quick Reference:",
+                Style::default().fg(Color::White).bold(),
+            )),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("    axon setup       ", Style::default().fg(BRAND_CYAN)),
+                Span::styled(
+                    "Re-run setup wizard",
+                    Style::default().fg(BRAND_DIM),
+                ),
+            ]),
+            Line::from(vec![
+                Span::styled("    axon auth <p>    ", Style::default().fg(BRAND_CYAN)),
+                Span::styled(
+                    "Change provider/API key",
+                    Style::default().fg(BRAND_DIM),
+                ),
+            ]),
+            Line::from(vec![
+                Span::styled("    axon models      ", Style::default().fg(BRAND_CYAN)),
+                Span::styled(
+                    "Browse available models",
+                    Style::default().fg(BRAND_DIM),
+                ),
+            ]),
+            Line::from(vec![
+                Span::styled("    axon serve-mcp   ", Style::default().fg(BRAND_CYAN)),
+                Span::styled(
+                    "MCP gateway for AI tools",
+                    Style::default().fg(BRAND_DIM),
+                ),
+            ]),
+            Line::from(vec![
+                Span::styled("    axon trust show  ", Style::default().fg(BRAND_CYAN)),
+                Span::styled(
+                    "View peer trust scores",
+                    Style::default().fg(BRAND_DIM),
+                ),
+            ]),
+            Line::from(vec![
+                Span::styled("    axon init        ", Style::default().fg(BRAND_CYAN)),
+                Span::styled(
+                    "Generate example config",
+                    Style::default().fg(BRAND_DIM),
+                ),
+            ]),
+        ];
+
+        let mcp_block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(BRAND_DIM))
+            .title(Span::styled(
+                " MCP & Commands ",
+                Style::default().fg(BRAND_CYAN).bold(),
+            ))
+            .style(Style::default().bg(SURFACE))
+            .padding(Padding::vertical(1));
+
+        frame.render_widget(
+            Paragraph::new(mcp_lines).block(mcp_block).wrap(Wrap { trim: false }),
+            chunks[2],
+        );
     }
 
     // -----------------------------------------------------------------------

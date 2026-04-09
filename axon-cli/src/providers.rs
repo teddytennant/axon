@@ -349,6 +349,207 @@ pub fn default_endpoint(kind: &ProviderKind) -> &'static str {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Model listing
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelInfo {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub context_length: Option<u64>,
+}
+
+/// Fetch available models for a provider.
+pub async fn fetch_models(
+    kind: &ProviderKind,
+    endpoint: &str,
+    api_key: &str,
+) -> Result<Vec<ModelInfo>, ProviderError> {
+    match kind {
+        ProviderKind::Ollama => fetch_ollama_models(endpoint).await,
+        ProviderKind::OpenRouter => fetch_openrouter_models(api_key).await,
+        ProviderKind::Xai => Ok(xai_models()),
+        ProviderKind::Custom => Ok(vec![ModelInfo {
+            id: "default".into(),
+            name: "Custom Model".into(),
+            description: "Specify model name manually".into(),
+            context_length: None,
+        }]),
+    }
+}
+
+async fn fetch_ollama_models(endpoint: &str) -> Result<Vec<ModelInfo>, ProviderError> {
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!("{}/api/tags", endpoint))
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        return Err(ProviderError::Api(format!(
+            "Ollama API returned {}",
+            resp.status()
+        )));
+    }
+
+    let json: serde_json::Value = resp.json().await?;
+    let models = json["models"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .map(|m| {
+                    let name = m["name"].as_str().unwrap_or("unknown").to_string();
+                    let size = m["size"]
+                        .as_u64()
+                        .map(|s| format!("{:.1}GB", s as f64 / 1e9))
+                        .unwrap_or_default();
+                    let family = m["details"]["family"]
+                        .as_str()
+                        .unwrap_or("")
+                        .to_string();
+                    let params = m["details"]["parameter_size"]
+                        .as_str()
+                        .unwrap_or("")
+                        .to_string();
+                    let desc = [family, params, size]
+                        .iter()
+                        .filter(|s| !s.is_empty())
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(" · ");
+                    ModelInfo {
+                        id: name.clone(),
+                        name,
+                        description: desc,
+                        context_length: None,
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(models)
+}
+
+async fn fetch_openrouter_models(api_key: &str) -> Result<Vec<ModelInfo>, ProviderError> {
+    let client = reqwest::Client::new();
+    let mut req = client
+        .get("https://openrouter.ai/api/v1/models")
+        .timeout(std::time::Duration::from_secs(10));
+    if !api_key.is_empty() {
+        req = req.bearer_auth(api_key);
+    }
+    let resp = req.send().await?;
+
+    if !resp.status().is_success() {
+        return Err(ProviderError::Api(format!(
+            "OpenRouter API returned {}",
+            resp.status()
+        )));
+    }
+
+    let json: serde_json::Value = resp.json().await?;
+    let mut models: Vec<ModelInfo> = json["data"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .map(|m| {
+                    let id = m["id"].as_str().unwrap_or("").to_string();
+                    let name = m["name"].as_str().unwrap_or(&id).to_string();
+                    let ctx = m["context_length"].as_u64();
+                    let desc = m["description"]
+                        .as_str()
+                        .unwrap_or("")
+                        .chars()
+                        .take(80)
+                        .collect::<String>();
+                    ModelInfo {
+                        id,
+                        name,
+                        description: desc,
+                        context_length: ctx,
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // Sort: popular models first
+    let popular_prefixes = [
+        "anthropic/",
+        "openai/",
+        "google/",
+        "x-ai/",
+        "meta-llama/",
+        "deepseek/",
+        "mistralai/",
+    ];
+    models.sort_by(|a, b| {
+        let a_pop = popular_prefixes.iter().any(|p| a.id.starts_with(p));
+        let b_pop = popular_prefixes.iter().any(|p| b.id.starts_with(p));
+        b_pop.cmp(&a_pop).then(a.id.cmp(&b.id))
+    });
+
+    Ok(models)
+}
+
+fn xai_models() -> Vec<ModelInfo> {
+    vec![
+        ModelInfo {
+            id: "grok-4.20".into(),
+            name: "Grok 4.20".into(),
+            description: "Latest flagship model".into(),
+            context_length: Some(131072),
+        },
+        ModelInfo {
+            id: "grok-4.20-mini".into(),
+            name: "Grok 4.20 Mini".into(),
+            description: "Smaller, faster model".into(),
+            context_length: Some(131072),
+        },
+        ModelInfo {
+            id: "grok-3-beta".into(),
+            name: "Grok 3 Beta".into(),
+            description: "Previous generation".into(),
+            context_length: Some(131072),
+        },
+    ]
+}
+
+/// Validate an API key by making a lightweight request.
+#[allow(dead_code)]
+pub async fn validate_api_key(
+    kind: &ProviderKind,
+    api_key: &str,
+) -> Result<bool, ProviderError> {
+    match kind {
+        ProviderKind::Ollama => Ok(true), // no key needed
+        ProviderKind::OpenRouter => {
+            let client = reqwest::Client::new();
+            let resp = client
+                .get("https://openrouter.ai/api/v1/models")
+                .bearer_auth(api_key)
+                .timeout(std::time::Duration::from_secs(5))
+                .send()
+                .await?;
+            Ok(resp.status().is_success())
+        }
+        ProviderKind::Xai => {
+            let client = reqwest::Client::new();
+            let resp = client
+                .get("https://api.x.ai/v1/models")
+                .bearer_auth(api_key)
+                .timeout(std::time::Duration::from_secs(5))
+                .send()
+                .await?;
+            Ok(resp.status().is_success())
+        }
+        ProviderKind::Custom => Ok(!api_key.is_empty()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
