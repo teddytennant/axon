@@ -1,4 +1,5 @@
 mod agents;
+mod chat;
 mod config;
 mod onboarding;
 mod providers;
@@ -218,9 +219,9 @@ enum Commands {
         peer: Option<SocketAddr>,
     },
 
-    /// Interactive chat REPL with the LLM agent
+    /// Interactive chat TUI with the LLM agent — slash commands, model switching, conversation history
     Chat {
-        /// Send to a remote node instead of local
+        /// Send to a remote node instead of local (uses basic REPL mode)
         #[arg(short, long)]
         peer: Option<SocketAddr>,
     },
@@ -834,11 +835,11 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Chat { peer } => {
             if let Some(peer_addr) = peer {
-                // Remote chat: relay through a running node
+                // Remote chat: relay through a running node (basic REPL)
                 run_chat_remote(peer_addr).await?;
             } else {
-                // Local chat: direct LLM calls
-                run_chat_local().await?;
+                // Local chat: full TUI experience
+                chat::run_chat().await?;
             }
         }
     }
@@ -2635,79 +2636,6 @@ async fn forward_to_peer(
 
     info!("All forwarding attempts for task {} failed", req.id);
     None
-}
-
-async fn run_chat_local() -> anyhow::Result<()> {
-    let file_config = config::load_config();
-    let kind: ProviderKind = file_config
-        .llm
-        .provider
-        .parse()
-        .unwrap_or(ProviderKind::Ollama);
-
-    let api_key = if file_config.llm.api_key.is_empty() {
-        providers::resolve_api_key("", &kind)
-    } else {
-        file_config.llm.api_key.clone()
-    };
-
-    let endpoint = if file_config.llm.endpoint.is_empty() {
-        providers::default_endpoint(&kind).to_string()
-    } else {
-        file_config.llm.endpoint.clone()
-    };
-
-    let model = if file_config.llm.model.is_empty() {
-        providers::default_model(&kind).to_string()
-    } else {
-        file_config.llm.model.clone()
-    };
-
-    let llm = providers::build_provider(&kind, &endpoint, &api_key, &model)?;
-
-    println!(
-        "\x1b[36m▲ AXON Chat\x1b[0m · {} · {}\n\
-         Type your message and press Enter. Empty line or Ctrl-C to quit.\n",
-        kind, model
-    );
-
-    let stdin = std::io::stdin();
-    let mut input = String::new();
-
-    loop {
-        eprint!("\x1b[36m>\x1b[0m ");
-        input.clear();
-        if stdin.read_line(&mut input)? == 0 || input.trim().is_empty() {
-            break;
-        }
-
-        let prompt = input.trim().to_string();
-
-        match llm
-            .complete(providers::CompletionRequest {
-                prompt,
-                max_tokens: None,
-                temperature: None,
-            })
-            .await
-        {
-            Ok(resp) => {
-                println!("\n{}\n", resp.text);
-                if let Some(usage) = resp.usage {
-                    eprintln!(
-                        "\x1b[2m({} + {} tokens)\x1b[0m\n",
-                        usage.prompt_tokens, usage.completion_tokens
-                    );
-                }
-            }
-            Err(e) => {
-                eprintln!("\x1b[31mError: {}\x1b[0m\n", e);
-            }
-        }
-    }
-
-    println!("\nBye!");
-    Ok(())
 }
 
 async fn run_chat_remote(peer_addr: SocketAddr) -> anyhow::Result<()> {
