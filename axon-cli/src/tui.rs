@@ -269,13 +269,13 @@ impl DashboardState {
 // Theme constants
 // ---------------------------------------------------------------------------
 
-const BRAND_CYAN: Color = Color::Rgb(0, 200, 200);
-const BRAND_GREEN: Color = Color::Rgb(80, 220, 120);
-const BRAND_YELLOW: Color = Color::Rgb(240, 200, 60);
-const BRAND_RED: Color = Color::Rgb(240, 80, 80);
-const BRAND_DIM: Color = Color::Rgb(100, 100, 110);
+const BRAND_CYAN: Color = Color::Rgb(140, 140, 150);
+const BRAND_GREEN: Color = Color::Rgb(120, 170, 130);
+const BRAND_YELLOW: Color = Color::Rgb(180, 160, 80);
+const BRAND_RED: Color = Color::Rgb(180, 80, 80);
+const BRAND_DIM: Color = Color::Rgb(80, 80, 88);
 const BRAND_BG: Color = Color::Reset;
-const ACCENT_BLUE: Color = Color::Rgb(80, 140, 240);
+const ACCENT_BLUE: Color = Color::Rgb(120, 140, 180);
 const SURFACE: Color = Color::Reset;
 
 // ---------------------------------------------------------------------------
@@ -963,7 +963,7 @@ impl Dashboard {
             // Separator
             lines.push(Line::from(Span::styled(
                 "      \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}",
-                Style::default().fg(Color::Rgb(55, 55, 65)),
+                Style::default().fg(Color::Rgb(50, 50, 56)),
             )));
         }
 
@@ -1357,7 +1357,7 @@ impl Dashboard {
             )));
             lines.push(Line::from(Span::styled(
                 "  \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}",
-                Style::default().fg(Color::Rgb(55, 55, 65)),
+                Style::default().fg(Color::Rgb(50, 50, 56)),
             )));
             for (key, val) in &state.crdt_counters {
                 lines.push(Line::from(vec![
@@ -1381,7 +1381,7 @@ impl Dashboard {
             )));
             lines.push(Line::from(Span::styled(
                 "  \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}",
-                Style::default().fg(Color::Rgb(55, 55, 65)),
+                Style::default().fg(Color::Rgb(50, 50, 56)),
             )));
             for (key, val) in &state.crdt_registers {
                 lines.push(Line::from(vec![
@@ -1405,7 +1405,7 @@ impl Dashboard {
             )));
             lines.push(Line::from(Span::styled(
                 "  \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}",
-                Style::default().fg(Color::Rgb(55, 55, 65)),
+                Style::default().fg(Color::Rgb(50, 50, 56)),
             )));
             for (key, members) in &state.crdt_sets {
                 lines.push(Line::from(vec![

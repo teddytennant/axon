@@ -19,10 +19,9 @@ use tokio::sync::oneshot;
 // Theme — no opaque backgrounds, inherit terminal transparency
 // ---------------------------------------------------------------------------
 
-const CYAN: Color = Color::Rgb(0, 200, 200);
-const GREEN: Color = Color::Rgb(80, 220, 120);
-const DIM: Color = Color::Rgb(90, 90, 100);
-const FAINT: Color = Color::Rgb(55, 55, 65);
+const ACCENT: Color = Color::Rgb(140, 140, 150);
+const DIM: Color = Color::Rgb(80, 80, 88);
+const FAINT: Color = Color::Rgb(50, 50, 56);
 const SPINNER: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 // ---------------------------------------------------------------------------
@@ -587,7 +586,7 @@ fn render_header(frame: &mut Frame, state: &ChatState, area: Rect) {
     let pad = w.saturating_sub(left.len()).saturating_sub(right.len());
 
     let line = Line::from(vec![
-        Span::styled(left, Style::default().fg(CYAN).bold()),
+        Span::styled(left, Style::default().fg(ACCENT).bold()),
         Span::styled("─".repeat(pad), Style::default().fg(FAINT)),
         Span::styled(right, Style::default().fg(DIM)),
     ]);
@@ -603,16 +602,16 @@ fn render_messages(frame: &mut Frame, state: &mut ChatState, area: Rect) {
         match msg.role {
             Role::User => {
                 lines.push(Line::from(""));
-                lines.push(Line::from(Span::styled("  you", Style::default().fg(CYAN).bold())));
+                lines.push(Line::from(Span::styled("  you", Style::default().fg(ACCENT).bold())));
                 for l in msg.content.lines() {
                     for wrapped in wrap(l, w.saturating_sub(6)) {
-                        lines.push(Line::from(Span::styled(format!("  {}", wrapped), Style::default().fg(Color::White))));
+                        lines.push(Line::from(Span::styled(format!("  {}", wrapped), Style::default().fg(Color::Rgb(200, 200, 205)))));
                     }
                 }
             }
             Role::Assistant => {
                 lines.push(Line::from(""));
-                let mut label = vec![Span::styled("  axon", Style::default().fg(GREEN).bold())];
+                let mut label = vec![Span::styled("  axon", Style::default().fg(Color::Rgb(160, 160, 170)).bold())];
                 if let Some(ms) = msg.duration_ms {
                     let t = if ms >= 1000 { format!("{:.1}s", ms as f64 / 1000.0) } else { format!("{}ms", ms) };
                     label.push(Span::styled(format!("  {}", t), Style::default().fg(FAINT)));
@@ -623,7 +622,7 @@ fn render_messages(frame: &mut Frame, state: &mut ChatState, area: Rect) {
                 lines.push(Line::from(label));
                 for l in msg.content.lines() {
                     for wrapped in wrap(l, w.saturating_sub(6)) {
-                        lines.push(Line::from(Span::styled(format!("  {}", wrapped), Style::default().fg(Color::Rgb(200, 200, 210)))));
+                        lines.push(Line::from(Span::styled(format!("  {}", wrapped), Style::default().fg(Color::Rgb(175, 175, 182)))));
                     }
                 }
             }
@@ -645,7 +644,7 @@ fn render_messages(frame: &mut Frame, state: &mut ChatState, area: Rect) {
         let elapsed = state.pending_start.map(|s| s.elapsed().as_secs()).unwrap_or(0);
         let t = if elapsed > 0 { format!("  {}s", elapsed) } else { String::new() };
         lines.push(Line::from(vec![
-            Span::styled(format!("  {} ", SPINNER[f]), Style::default().fg(CYAN)),
+            Span::styled(format!("  {} ", SPINNER[f]), Style::default().fg(ACCENT)),
             Span::styled("thinking", Style::default().fg(DIM).italic()),
             Span::styled(t, Style::default().fg(FAINT)),
         ]));
@@ -674,7 +673,7 @@ fn render_messages(frame: &mut Frame, state: &mut ChatState, area: Rect) {
 
 fn render_input(frame: &mut Frame, state: &ChatState, area: Rect) {
     let waiting = state.pending.is_some();
-    let (icon, ic) = if waiting { ("◌ ", FAINT) } else { ("❯ ", CYAN) };
+    let (icon, ic) = if waiting { ("◌ ", FAINT) } else { ("❯ ", ACCENT) };
     let text = if waiting {
         "waiting...".to_string()
     } else if state.input.is_empty() {
@@ -720,11 +719,11 @@ fn render_help(frame: &mut Frame, area: Rect) {
     let popup = centered(area, w, h);
 
     // Clear the popup area
-    frame.render_widget(Block::default().style(Style::default().bg(Color::Rgb(15, 15, 20))), popup);
+    frame.render_widget(Block::default().style(Style::default().bg(Color::Rgb(18, 18, 22))), popup);
 
     let lines = vec![
         Line::from(""),
-        Line::from(Span::styled("  commands", Style::default().fg(Color::White).bold())),
+        Line::from(Span::styled("  commands", Style::default().fg(Color::Rgb(200, 200, 205)).bold())),
         Line::from(""),
         help_line("/model, /m", "pick a model (interactive)"),
         help_line("/model <id>", "switch model directly"),
@@ -733,7 +732,7 @@ fn render_help(frame: &mut Frame, area: Rect) {
         help_line("/clear", "clear conversation"),
         help_line("/quit", "exit"),
         Line::from(""),
-        Line::from(Span::styled("  keys", Style::default().fg(Color::White).bold())),
+        Line::from(Span::styled("  keys", Style::default().fg(Color::Rgb(200, 200, 205)).bold())),
         Line::from(""),
         help_line("enter", "send"),
         help_line("up/down", "history"),
@@ -746,7 +745,7 @@ fn render_help(frame: &mut Frame, area: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(FAINT))
-        .style(Style::default().bg(Color::Rgb(15, 15, 20)));
+        .style(Style::default().bg(Color::Rgb(18, 18, 22)));
     frame.render_widget(Paragraph::new(lines).block(block), popup);
 }
 
@@ -761,7 +760,7 @@ fn render_model_picker(frame: &mut Frame, state: &ChatState, area: Rect) {
     let popup = centered(area, w, h);
 
     // Background for popup
-    frame.render_widget(Block::default().style(Style::default().bg(Color::Rgb(15, 15, 20))), popup);
+    frame.render_widget(Block::default().style(Style::default().bg(Color::Rgb(18, 18, 22))), popup);
 
     if picker.loading {
         let lines = vec![
@@ -771,8 +770,8 @@ fn render_model_picker(frame: &mut Frame, state: &ChatState, area: Rect) {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(FAINT))
-            .title(Span::styled(" model ", Style::default().fg(CYAN)))
-            .style(Style::default().bg(Color::Rgb(15, 15, 20)));
+            .title(Span::styled(" model ", Style::default().fg(ACCENT)))
+            .style(Style::default().bg(Color::Rgb(18, 18, 22)));
         frame.render_widget(Paragraph::new(lines).block(block), popup);
         return;
     }
@@ -793,7 +792,7 @@ fn render_model_picker(frame: &mut Frame, state: &ChatState, area: Rect) {
     if !picker.filter.is_empty() {
         lines.push(Line::from(vec![
             Span::styled("  /", Style::default().fg(FAINT)),
-            Span::styled(&picker.filter, Style::default().fg(CYAN)),
+            Span::styled(&picker.filter, Style::default().fg(ACCENT)),
         ]));
     } else {
         lines.push(Line::from(Span::styled("  type to filter", Style::default().fg(FAINT).italic())));
@@ -801,7 +800,7 @@ fn render_model_picker(frame: &mut Frame, state: &ChatState, area: Rect) {
     lines.push(Line::from(""));
 
     if let Some(err) = &picker.error {
-        lines.push(Line::from(Span::styled(format!("  {}", err), Style::default().fg(Color::Rgb(240, 80, 80)))));
+        lines.push(Line::from(Span::styled(format!("  {}", err), Style::default().fg(Color::Rgb(180, 80, 80)))));
     }
 
     for (i, (_, model)) in filtered.iter().enumerate().skip(scroll).take(inner_h) {
@@ -810,15 +809,15 @@ fn render_model_picker(frame: &mut Frame, state: &ChatState, area: Rect) {
         let is_current = model.id == state.model;
 
         let mut spans = vec![
-            Span::styled(format!(" {} ", marker), Style::default().fg(if sel { CYAN } else { FAINT })),
+            Span::styled(format!(" {} ", marker), Style::default().fg(if sel { ACCENT } else { FAINT })),
             Span::styled(
                 &model.id,
-                if sel { Style::default().fg(CYAN).bold() } else { Style::default().fg(Color::White) },
+                if sel { Style::default().fg(ACCENT).bold() } else { Style::default().fg(Color::Rgb(200, 200, 205)) },
             ),
         ];
 
         if is_current {
-            spans.push(Span::styled(" ●", Style::default().fg(GREEN)));
+            spans.push(Span::styled(" ●", Style::default().fg(Color::Rgb(160, 160, 170))));
         }
 
         if let Some(ctx) = model.context_length {
@@ -833,9 +832,9 @@ fn render_model_picker(frame: &mut Frame, state: &ChatState, area: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(FAINT))
-        .title(Span::styled(title, Style::default().fg(CYAN)))
+        .title(Span::styled(title, Style::default().fg(ACCENT)))
         .title_bottom(Line::from(Span::styled(" ↑↓ navigate  enter select  esc close ", Style::default().fg(FAINT))))
-        .style(Style::default().bg(Color::Rgb(15, 15, 20)));
+        .style(Style::default().bg(Color::Rgb(18, 18, 22)));
     frame.render_widget(Paragraph::new(lines).block(block), popup);
 }
 
@@ -845,7 +844,7 @@ fn render_model_picker(frame: &mut Frame, state: &ChatState, area: Rect) {
 
 fn help_line<'a>(cmd: &'a str, desc: &'a str) -> Line<'a> {
     Line::from(vec![
-        Span::styled(format!("  {:<18}", cmd), Style::default().fg(CYAN)),
+        Span::styled(format!("  {:<18}", cmd), Style::default().fg(ACCENT)),
         Span::styled(desc, Style::default().fg(DIM)),
     ])
 }
