@@ -55,11 +55,13 @@ export function App() {
           position="bottom-right"
           toastOptions={{
             style: {
-              background: '#0c0c0c',
-              border: '1px solid #1a1a1a',
-              color: '#ccc',
+              background: '#0a0a0a',
+              border: '1px solid #1e1e1e',
+              color: '#b5b5b5',
               fontFamily: 'JetBrains Mono, monospace',
               fontSize: '11px',
+              borderRadius: '8px',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
             },
           }}
         />

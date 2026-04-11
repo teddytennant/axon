@@ -31,17 +31,17 @@ export function Sidebar() {
   }, [navigate]);
 
   return (
-    <aside className="flex w-10 shrink-0 flex-col border-r border-[#111] bg-[#000]">
-      {/* Logo mark */}
+    <aside className="flex w-11 shrink-0 flex-col border-r border-[#181818] bg-[#000]">
+      {/* Logo */}
       <div
-        className="flex h-[30px] items-center justify-center border-b border-[#111] shrink-0"
+        className="flex h-8 shrink-0 items-center justify-center border-b border-[#181818]"
         data-tauri-drag-region
       >
-        <span className="select-none font-mono text-[8px] font-bold tracking-[0.3em] text-[#222]">A</span>
+        <span className="select-none text-[8px] font-bold tracking-[0.35em] text-[#252525]">A</span>
       </div>
 
-      {/* Nav icons */}
-      <nav className="flex flex-1 flex-col py-1">
+      {/* Nav */}
+      <nav className="flex flex-1 flex-col py-2">
         {navItems.map(({ to, icon: Icon, label, key }) => (
           <NavLink
             key={to}
@@ -50,21 +50,21 @@ export function Sidebar() {
             title={`${label}  ${key}`}
             className={({ isActive }) =>
               [
-                'relative flex h-9 items-center justify-center transition-colors',
+                'relative flex h-9 items-center justify-center transition-colors duration-100',
                 isActive
                   ? 'text-white'
-                  : 'text-[#2a2a2a] hover:text-[#666]',
+                  : 'text-[#2c2c2c] hover:text-[#5a5a5a]',
               ].join(' ')
             }
           >
             {({ isActive }) => (
               <>
                 {isActive && (
-                  <span className="absolute left-0 inset-y-[6px] w-[2px] rounded-r bg-white" />
+                  <span className="absolute left-0 inset-y-[10px] w-[2px] rounded-r-full bg-white opacity-90" />
                 )}
                 <Icon
-                  size={12}
-                  strokeWidth={isActive ? 2 : 1.5}
+                  size={14}
+                  strokeWidth={isActive ? 1.75 : 1.5}
                   className="shrink-0"
                 />
               </>

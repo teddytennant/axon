@@ -76,21 +76,24 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-full flex-col bg-[#000]">
-      {/* messages */}
-      <div ref={scrollRef} className="flex-1 overflow-auto px-4 py-4">
+      {/* Messages */}
+      <div ref={scrollRef} className="flex-1 overflow-auto">
         {msgs.length === 0 ? (
-          <div className="flex h-full items-center justify-center">
-            <p className="text-[11px] text-[#2a2a2a]">start typing  ·  /help</p>
+          <div className="flex h-full flex-col items-center justify-center gap-4">
+            <div className="text-center">
+              <p className="text-[11px] text-[#222] tracking-wider">axon / chat</p>
+              <p className="mt-1.5 text-[10px] text-[#1c1c1c]">/help for commands · enter to send</p>
+            </div>
           </div>
         ) : (
-          <div className="mx-auto flex max-w-xl flex-col gap-3">
+          <div className="mx-auto flex max-w-2xl flex-col gap-0.5 py-6 px-5">
             {msgs.map((m, i) => <Bubble key={i} msg={m} />)}
             {busy && (
-              <div className="flex gap-1 pl-3">
-                {[0, 150, 300].map(d => (
+              <div className="flex gap-[5px] px-4 py-3">
+                {[0, 140, 280].map(d => (
                   <span
                     key={d}
-                    className="h-[3px] w-[3px] rounded-full bg-[#444] animate-[pulse-dot_1s_ease-in-out_infinite]"
+                    className="h-[3px] w-[3px] rounded-full bg-[#3a3a3a] animate-[pulse-dot_1.2s_ease-in-out_infinite]"
                     style={{ animationDelay: `${d}ms` }}
                   />
                 ))}
@@ -100,16 +103,17 @@ export default function ChatPage() {
         )}
       </div>
 
-      {/* input */}
-      <div className="border-t border-[#1a1a1a] bg-[#000] p-3">
-        <div className="mx-auto flex max-w-xl items-end gap-2">
+      {/* Input */}
+      <div className="border-t border-[#181818] bg-[#000] px-4 py-3">
+        <div className="mx-auto flex max-w-2xl items-end gap-2">
           <button
             onClick={() => setMsgs([])}
-            className="flex h-7 w-7 items-center justify-center text-[#2a2a2a] hover:text-[#666] transition-colors"
-            title="Clear"
+            className="mb-[7px] flex h-7 w-7 shrink-0 items-center justify-center rounded text-[#252525] transition-colors hover:text-[#555]"
+            title="Clear chat"
           >
-            <Trash2 size={12} />
+            <Trash2 size={13} />
           </button>
+
           <textarea
             ref={textareaRef}
             value={input}
@@ -117,26 +121,29 @@ export default function ChatPage() {
             onKeyDown={(e: KeyboardEvent<HTMLTextAreaElement>) => {
               if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); }
             }}
-            placeholder="message"
+            placeholder="message…"
             rows={1}
-            className="flex-1 resize-none rounded border border-[#1f1f1f] bg-[#111] px-3 py-[7px] text-[11px] text-[#eee] placeholder-[#2a2a2a] outline-none focus:border-[#333] transition-colors"
+            className="flex-1 resize-none rounded-lg border border-[#1e1e1e] bg-[#0a0a0a] px-3 py-[7px] text-[12px] text-[#ddd] placeholder-[#282828] outline-none transition-colors focus:border-[#2e2e2e] focus:bg-[#0d0d0d]"
+            style={{ userSelect: 'text' }}
           />
+
           <button
             onClick={() => void send()}
             disabled={!input.trim() || busy}
             className={clsx(
-              'flex h-7 w-7 items-center justify-center rounded transition-colors',
+              'mb-[7px] flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-all',
               input.trim() && !busy
-                ? 'bg-white text-black hover:bg-[#ddd]'
-                : 'text-[#2a2a2a]',
+                ? 'bg-white text-black hover:bg-[#e8e8e8] active:scale-95'
+                : 'text-[#222]',
             )}
             title="Send  ↵"
           >
-            <Send size={11} />
+            <Send size={12} />
           </button>
         </div>
+
         {config?.llm.model && (
-          <p className="mx-auto mt-1.5 max-w-xl text-[9px] text-[#222]">{config.llm.model}</p>
+          <p className="mx-auto mt-1.5 max-w-2xl text-[9px] text-[#1e1e1e] pl-9">{config.llm.model}</p>
         )}
       </div>
     </div>
@@ -163,18 +170,18 @@ function parseContent(content: string) {
 function CodeBlock({ code, lang }: { code: string; lang?: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="my-1.5 overflow-hidden rounded border border-[#1f1f1f]">
-      <div className="flex items-center justify-between bg-[#111] px-3 py-1 border-b border-[#1a1a1a]">
-        <span className="text-[9px] text-[#333]">{lang || 'code'}</span>
+    <div className="my-2 overflow-hidden rounded-lg border border-[#1e1e1e]">
+      <div className="flex items-center justify-between border-b border-[#181818] bg-[#0a0a0a] px-3 py-1.5">
+        <span className="text-[9px] text-[#3a3a3a] tracking-wider">{lang || 'code'}</span>
         <button
           onClick={() => { navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-          className="text-[#333] hover:text-[#888] transition-colors"
+          className="text-[#2e2e2e] transition-colors hover:text-[#777]"
         >
-          {copied ? <Check size={10} className="text-[#22c55e]" /> : <Copy size={10} />}
+          {copied ? <Check size={11} className="text-[#22c55e]" /> : <Copy size={11} />}
         </button>
       </div>
-      <pre className="overflow-x-auto bg-[#0d0d0d] px-3 py-2.5">
-        <code className="text-[10px] leading-relaxed text-[#ccc]">{code}</code>
+      <pre className="overflow-x-auto bg-[#060606] px-4 py-3">
+        <code className="text-[11px] leading-relaxed text-[#bbb]">{code}</code>
       </pre>
     </div>
   );
@@ -183,8 +190,8 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
 function Bubble({ msg: m }: { msg: Msg }) {
   if (m.role === 'system') {
     return (
-      <div className="flex justify-center">
-        <span className="text-[9px] text-[#333]">{m.content}</span>
+      <div className="flex justify-center py-2">
+        <span className="text-[9px] text-[#2a2a2a] tracking-wider">{m.content}</span>
       </div>
     );
   }
@@ -193,21 +200,24 @@ function Bubble({ msg: m }: { msg: Msg }) {
   const segs   = parseContent(m.content);
 
   return (
-    <div className={clsx('flex items-start gap-2', isUser && 'flex-row-reverse')}>
+    <div className={clsx('group flex gap-3 px-1 py-2', isUser && 'flex-row-reverse')}>
+      {/* Role label */}
       <span className={clsx(
-        'mt-0.5 shrink-0 text-[9px] tabular-nums',
-        isUser ? 'text-[#333]' : 'text-[#2a2a2a]',
+        'mt-1 shrink-0 text-[9px] leading-none tracking-wider',
+        isUser ? 'text-[#2e2e2e]' : 'text-[#222]',
       )}>
         {isUser ? 'you' : 'ai'}
       </span>
+
+      {/* Content */}
       <div className={clsx(
-        'max-w-[85%] rounded px-3 py-2 text-[11px] leading-relaxed',
+        'max-w-[88%] text-[12px] leading-relaxed',
         isUser
-          ? 'bg-[#161616] border border-[#222] text-[#eee]'
-          : 'bg-transparent text-[#ccc]',
+          ? 'rounded-xl rounded-tr-sm border border-[#1e1e1e] bg-[#0d0d0d] px-3.5 py-2.5 text-[#ddd]'
+          : 'px-0.5 text-[#b5b5b5]',
       )}>
         {!isUser && m.model && (
-          <p className="mb-1 text-[9px] text-[#2a2a2a]">{m.model}</p>
+          <p className="mb-1.5 text-[9px] text-[#252525] tracking-wider">{m.model}</p>
         )}
         {segs.map((s, i) =>
           s.type === 'code'

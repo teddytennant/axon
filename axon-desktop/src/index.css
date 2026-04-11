@@ -2,25 +2,37 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg:       #000000;
-  --color-surface:  #080808;
-  --color-surface2: #101010;
-  --color-border:   #181818;
-  --color-border2:  #242424;
-  --color-text:     #e8e8e8;
-  --color-muted:    #444444;
-  --color-dim:      #242424;
-  --color-green:    #22c55e;
-  --color-amber:    #f59e0b;
-  --color-red:      #ef4444;
+  /* ── Backgrounds ──────────────────────────────── */
+  --color-bg:        #000000;
+  --color-base:      #050505;
+  --color-surface:   #0a0a0a;
+  --color-surface2:  #111111;
+  --color-surface3:  #191919;
+
+  /* ── Borders ──────────────────────────────────── */
+  --color-border:    #1c1c1c;
+  --color-border2:   #282828;
+  --color-border3:   #363636;
+
+  /* ── Text ─────────────────────────────────────── */
+  --color-dim:       #262626;
+  --color-muted:     #444444;
+  --color-secondary: #737373;
+  --color-text:      #c2c2c2;
+  --color-bright:    #e8e8e8;
+  --color-white:     #ffffff;
+
+  /* ── Semantic (status only) ───────────────────── */
+  --color-green:     #22c55e;
+  --color-amber:     #f59e0b;
+  --color-red:       #ef4444;
 
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  --font-ui:   system-ui, -apple-system, sans-serif;
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #181818 transparent;
+  scrollbar-color: #222 transparent;
   box-sizing: border-box;
 }
 
@@ -31,46 +43,72 @@ html, body, #root {
   width: 100%;
   overflow: hidden;
   font-family: var(--font-mono);
-  background: var(--color-bg);
-  color: var(--color-text);
+  background: #000;
+  color: #c2c2c2;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   user-select: none;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
+  letter-spacing: -0.01em;
 }
 
 ::selection {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.12);
 }
 
 :focus-visible {
-  outline: 1px solid rgba(255, 255, 255, 0.15);
+  outline: 1px solid rgba(255, 255, 255, 0.2);
   outline-offset: 2px;
   border-radius: 2px;
 }
 
+/* ── Animations ────────────────────────────────── */
 @keyframes fade-up {
-  from { opacity: 0; transform: translateY(3px); }
+  from { opacity: 0; transform: translateY(5px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 @keyframes fade-in {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
+@keyframes slide-down {
+  from { opacity: 0; transform: translateY(-10px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }
-  50%       { opacity: 0.2; }
+  50%       { opacity: 0.12; }
 }
 @keyframes edge-flow {
   from { stroke-dashoffset: 20; }
   to   { stroke-dashoffset: 0; }
 }
+@keyframes shimmer {
+  0%   { background-position: -400% 0; }
+  100% { background-position:  400% 0; }
+}
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+  50%       { opacity: 0.8; box-shadow: 0 0 0 3px rgba(34, 197, 94, 0); }
+}
 
-.animate-fade-up { animation: fade-up 0.1s ease-out both; }
-.animate-fade-in { animation: fade-in 0.08s ease-out both; }
+.animate-fade-up    { animation: fade-up    0.12s ease-out both; }
+.animate-fade-in    { animation: fade-in    0.08s ease-out both; }
+.animate-slide-down { animation: slide-down 0.14s cubic-bezier(0.16, 1, 0.3, 1) both; }
 
-/* Tauri window drag regions */
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    #0d0d0d 25%,
+    #161616 50%,
+    #0d0d0d 75%
+  );
+  background-size: 400% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+}
+
+/* ── Tauri drag regions ───────────────────────── */
 [data-tauri-drag-region] { -webkit-app-region: drag; cursor: default; }
 [data-tauri-drag-region] button,
 [data-tauri-drag-region] a,

@@ -408,12 +408,12 @@ export default function GraphPage() {
         {nodes.length === 0 && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none">
             <div className="text-center">
-              <p className="font-mono text-sm text-[#2a2a2a]">
+              <p className="font-mono text-[12px] text-[#222] tracking-wider">
                 {isConnected ? 'no agents or peers' : 'connecting to axon…'}
               </p>
               {!isConnected && (
-                <p className="mt-1 font-mono text-[10px] text-[#1e1e1e]">
-                  make sure axon is running on localhost:3000
+                <p className="mt-1.5 font-mono text-[10px] text-[#181818]">
+                  axon start --web-port 3000
                 </p>
               )}
             </div>
@@ -584,13 +584,13 @@ export default function GraphPage() {
           {[
             { label: '+', fn: () => setVp(p => ({ ...p, scale: Math.min(p.scale * 1.2, 8) })), title: 'Zoom in' },
             { label: '−', fn: () => setVp(p => ({ ...p, scale: Math.max(p.scale / 1.2, 0.08) })), title: 'Zoom out' },
-            { label: '⌂', fn: fitView, title: 'Fit view  f' },
+            { label: '⌂', fn: fitView, title: 'Fit view' },
           ].map(({ label, fn, title }) => (
             <button
               key={label}
               onClick={e => { e.stopPropagation(); fn(); }}
               title={title}
-              className="flex h-6 w-6 items-center justify-center rounded border border-[#161616] bg-[#000] font-mono text-[10px] text-[#333] transition-colors hover:border-[#222] hover:text-[#666]"
+              className="flex h-6 w-6 items-center justify-center rounded-md border border-[#1c1c1c] bg-[#000]/80 font-mono text-[11px] text-[#2e2e2e] transition-colors hover:border-[#2a2a2a] hover:text-[#666] backdrop-blur-sm"
             >
               {label}
             </button>
@@ -601,10 +601,10 @@ export default function GraphPage() {
         <div className="absolute top-3 left-3 z-10 flex items-center gap-3">
           <div className="flex items-center gap-1.5">
             <span className={clsx(
-              'h-[4px] w-[4px] rounded-full',
-              isConnected ? 'bg-[#22c55e]' : 'bg-[#333]',
+              'h-[4px] w-[4px] rounded-full transition-colors duration-500',
+              isConnected ? 'bg-[#22c55e]' : 'bg-[#2e2e2e]',
             )} />
-            <span className="font-mono text-[9px] text-[#2a2a2a]">
+            <span className="font-mono text-[9px] text-[#282828] tracking-wider">
               {isConnected ? 'live' : 'offline'}
             </span>
           </div>
@@ -619,12 +619,12 @@ export default function GraphPage() {
         <div className="absolute bottom-3 left-3 z-10 flex items-center gap-3">
           <LegendDot color="#22c55e" label="idle" />
           <LegendDot color="#f59e0b" label="busy" />
-          <LegendDot color="#333" label="peer" />
+          <LegendDot color="#383838" label="peer" />
         </div>
 
         {/* Scale — bottom right */}
-        <div className="absolute bottom-3 right-3 z-10 flex items-center gap-1">
-          <span className="font-mono text-[8px] text-[#1e1e1e]">{Math.round(vp.scale * 100)}%</span>
+        <div className="absolute bottom-3 right-3 z-10">
+          <span className="font-mono text-[8px] text-[#1c1c1c]">{Math.round(vp.scale * 100)}%</span>
         </div>
 
         {/* Hover tooltip — appears near cursor, not edge of screen */}
@@ -679,15 +679,17 @@ function HoverTooltip({
         className="absolute z-20 pointer-events-none animate-fade-in"
         style={{ left, top: screenY - 40, width: tooltipWidth }}
       >
-        <div className="rounded border border-[#181818] bg-[#080808]/98 px-3 py-2 shadow-xl">
-          <div className="mb-1 flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
-            <span className="truncate text-[11px] font-semibold text-[#aaaaaa]">{a.name}</span>
+        <div className="rounded-lg border border-[#1e1e1e] bg-[#070707] px-3 py-2.5 shadow-2xl">
+          <div className="mb-1.5 flex items-center gap-2">
+            <span className="h-[5px] w-[5px] shrink-0 rounded-full" style={{ backgroundColor: color }} />
+            <span className="truncate text-[11px] font-medium text-[#c8c8c8]">{a.name}</span>
           </div>
           {a.provider_type && (
-            <p className="font-mono text-[9px] text-[#3a3a3a]">{a.provider_type} · {a.model_name}</p>
+            <p className="font-mono text-[9px] text-[#333]">{a.provider_type} · {a.model_name}</p>
           )}
-          <p className="mt-1 font-mono text-[9px] text-[#3a3a3a]">{a.capabilities.slice(0, 3).join(' · ')}</p>
+          {a.capabilities.length > 0 && (
+            <p className="mt-1 font-mono text-[9px] text-[#2e2e2e]">{a.capabilities.slice(0, 3).join(' · ')}</p>
+          )}
         </div>
       </div>
     );
@@ -700,10 +702,10 @@ function HoverTooltip({
         className="absolute z-20 pointer-events-none animate-fade-in"
         style={{ left, top: screenY - 30, width: tooltipWidth }}
       >
-        <div className="rounded border border-[#181818] bg-[#080808]/98 px-3 py-2 shadow-xl">
-          <p className="font-mono text-[9px] text-[#555555]">{p.peer_id.slice(0, 20)}…</p>
-          <p className="mt-0.5 font-mono text-[8px] text-[#3a3a3a]">{p.addr}</p>
-          <p className="mt-0.5 text-[8px] text-[#2a2a2a]">{p.last_seen_ago}</p>
+        <div className="rounded-lg border border-[#1e1e1e] bg-[#070707] px-3 py-2.5 shadow-2xl">
+          <p className="font-mono text-[9px] text-[#555]">{p.peer_id.slice(0, 20)}…</p>
+          <p className="mt-1 font-mono text-[8px] text-[#2e2e2e]">{p.addr}</p>
+          <p className="mt-0.5 text-[8px] text-[#242424]">{p.last_seen_ago}</p>
         </div>
       </div>
     );
@@ -755,24 +757,24 @@ function DetailPanel({ node, tasks, trust, onClose }: {
             </Sec>
           )}
           <Sec label="Metrics">
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-1.5">
               {[
                 { l: 'Tasks', v: String(a.tasks_handled) },
                 { l: 'Success', v: successRate != null ? `${successRate}%` : '—' },
                 { l: 'Avg ms', v: a.avg_latency_ms > 0 ? String(a.avg_latency_ms) : '—' },
               ].map(({ l, v }) => (
-                <div key={l} className="rounded-lg border border-[#141414] bg-[#0a0a0a] p-2.5">
-                  <p className="text-[8px] uppercase tracking-widest text-[#2a2a2a]">{l}</p>
-                  <p className="mt-0.5 font-mono text-sm text-[#cccccc]">{v}</p>
+                <div key={l} className="rounded-md border border-[#151515] bg-[#080808] p-2.5">
+                  <p className="text-[8px] uppercase tracking-[0.12em] text-[#252525]">{l}</p>
+                  <p className="mt-0.5 font-mono text-[13px] font-light text-[#888]">{v}</p>
                 </div>
               ))}
             </div>
           </Sec>
           {a.capabilities.length > 0 && (
             <Sec label="Capabilities">
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-1">
                 {a.capabilities.map(c => (
-                  <span key={c} className="rounded-md border border-[#141414] bg-[#0a0a0a] px-2 py-0.5 font-mono text-[10px] text-[#555555]">{c}</span>
+                  <span key={c} className="rounded-md border border-[#181818] bg-[#0a0a0a] px-2 py-0.5 font-mono text-[9px] text-[#484848]">{c}</span>
                 ))}
               </div>
             </Sec>
@@ -835,9 +837,9 @@ function DetailPanel({ node, tasks, trust, onClose }: {
           )}
           {p.capabilities.length > 0 && (
             <Sec label="Capabilities">
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-1">
                 {p.capabilities.map(c => (
-                  <span key={c} className="rounded-md border border-[#141414] bg-[#0a0a0a] px-2 py-0.5 font-mono text-[10px] text-[#555555]">{c}</span>
+                  <span key={c} className="rounded-md border border-[#181818] bg-[#0a0a0a] px-2 py-0.5 font-mono text-[9px] text-[#484848]">{c}</span>
                 ))}
               </div>
             </Sec>
@@ -859,10 +861,10 @@ function Panel({ children, accentColor, onClose }: {
 }) {
   return (
     <div
-      className="flex w-[280px] shrink-0 flex-col overflow-hidden border-l border-[#1c1c1c] bg-[#000] animate-fade-in"
+      className="flex w-72 shrink-0 flex-col overflow-hidden border-l border-[#1c1c1c] bg-[#000] animate-fade-in"
       onClick={e => e.stopPropagation()}
     >
-      <div className="h-px" style={{ background: `linear-gradient(90deg, ${accentColor}40, transparent)` }} />
+      <div className="h-px" style={{ background: `linear-gradient(90deg, ${accentColor}50, transparent)` }} />
       {children}
     </div>
   );
@@ -872,8 +874,11 @@ function PanelHeader({ children, onClose }: { children: React.ReactNode; onClose
   return (
     <div className="flex items-center justify-between border-b border-[#141414] px-4 py-3">
       <div className="min-w-0 flex-1">{children}</div>
-      <button onClick={onClose} className="ml-2 shrink-0 text-[#2a2a2a] transition-colors hover:text-[#888]">
-        <X size={14} />
+      <button
+        onClick={onClose}
+        className="ml-2 shrink-0 flex h-6 w-6 items-center justify-center rounded-md text-[#252525] transition-colors hover:bg-[#141414] hover:text-[#777]"
+      >
+        <X size={12} />
       </button>
     </div>
   );
@@ -882,7 +887,7 @@ function PanelHeader({ children, onClose }: { children: React.ReactNode; onClose
 function Sec({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="mb-2 text-[8px] uppercase tracking-widest text-[#2a2a2a]">{label}</p>
+      <p className="mb-2 text-[8px] font-medium uppercase tracking-[0.18em] text-[#252525]">{label}</p>
       {children}
     </div>
   );
@@ -890,29 +895,39 @@ function Sec({ label, children }: { label: string; children: React.ReactNode }) 
 
 function TrustBar({ score }: { score: number }) {
   const pct = Math.round(score * 100);
-  const color = score >= 0.6 ? '#22c55e' : score >= 0.4 ? '#f59e0b' : '#ef4444';
+  const lightness = Math.round(18 + pct * 0.5);
+  const color = `hsl(0 0% ${lightness}%)`;
   return (
-    <div className="flex items-center gap-2">
-      <div className="relative flex-1 h-1.5 bg-[#111] overflow-hidden">
-        <div className="absolute left-0 top-0 h-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
+    <div className="flex items-center gap-2.5">
+      <div className="relative h-[2px] flex-1 rounded-full bg-[#151515]">
+        <div
+          className="absolute inset-y-0 left-0 rounded-full transition-all duration-500"
+          style={{ width: `${pct}%`, background: color }}
+        />
       </div>
-      <span className="font-mono text-[10px]" style={{ color }}>{pct}%</span>
+      <span className="w-8 text-right font-mono text-[10px] text-[#444]">{pct}%</span>
     </div>
   );
 }
 
 function TaskRow({ task }: { task: TaskLogEntry }) {
-  const color = { completed: '#22c55e', running: '#ffffff', failed: '#ef4444', pending: '#555555', cancelled: '#f59e0b' }[task.status] ?? '#3a3a3a';
+  const color = {
+    completed: '#22c55e',
+    running:   '#c8c8c8',
+    failed:    '#ef4444',
+    pending:   '#444',
+    cancelled: '#f59e0b',
+  }[task.status] ?? '#383838';
   const dur = task.duration_ms > 0
     ? task.duration_ms < 1000 ? `${task.duration_ms}ms` : `${(task.duration_ms / 1000).toFixed(1)}s`
     : '—';
   return (
-    <div className="flex items-center justify-between gap-2 rounded-lg bg-[#0a0a0a] px-2.5 py-1.5">
+    <div className="flex items-center justify-between gap-2 rounded-md border border-[#111] bg-[#080808] px-3 py-2">
       <div className="flex min-w-0 items-center gap-2">
-        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-        <span className="truncate font-mono text-[10px] text-[#555555]">{task.capability}</span>
+        <span className="h-[4px] w-[4px] shrink-0 rounded-full" style={{ backgroundColor: color }} />
+        <span className="truncate font-mono text-[10px] text-[#484848]">{task.capability}</span>
       </div>
-      <span className="shrink-0 font-mono text-[9px] text-[#2a2a2a]">{dur}</span>
+      <span className="shrink-0 font-mono text-[9px] text-[#282828]">{dur}</span>
     </div>
   );
 }
@@ -921,10 +936,10 @@ function LegendDot({ color, label }: { color: string; label: string }) {
   return (
     <div className="flex items-center gap-1.5">
       <div
-        className="h-2 w-2 rounded-full border"
-        style={{ backgroundColor: `${color}18`, borderColor: `${color}60` }}
+        className="h-[7px] w-[7px] rounded-full border"
+        style={{ backgroundColor: `${color}15`, borderColor: `${color}55` }}
       />
-      <span className="font-mono text-[8px] text-[#2a2a2a]">{label}</span>
+      <span className="font-mono text-[8px] tracking-wider text-[#242424]">{label}</span>
     </div>
   );
 }
