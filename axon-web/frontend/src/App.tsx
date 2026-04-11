@@ -10,6 +10,7 @@ import TrustPage from "./pages/trust";
 import ToolsPage from "./pages/tools";
 import SettingsPage from "./pages/settings";
 import LogsPage from "./pages/logs";
+import GraphPage from "./pages/graph";
 
 export function App() {
   return (
@@ -26,6 +27,7 @@ export function App() {
           <Route path="tools" element={<ToolsPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="logs" element={<LogsPage />} />
+          <Route path="graph" element={<GraphPage />} />
         </Route>
       </Routes>
     </BrowserRouter>
