@@ -20,7 +20,7 @@ jobs:
         with:
           node-version: 20
       - name: Build frontend
-        run: cd axon-web/frontend && npm ci && npm run build
+        run: cd axon-web/frontend && npm install && npm run build
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install system dependencies
@@ -37,7 +37,7 @@ jobs:
         with:
           node-version: 20
       - name: Build frontend
-        run: cd axon-web/frontend && npm ci && npm run build
+        run: cd axon-web/frontend && npm install && npm run build
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install system dependencies
@@ -54,7 +54,7 @@ jobs:
         with:
           node-version: 20
       - name: Build frontend
-        run: cd axon-web/frontend && npm ci && npm run build
+        run: cd axon-web/frontend && npm install && npm run build
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
