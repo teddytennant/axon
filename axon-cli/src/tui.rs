@@ -147,6 +147,7 @@ impl LogFilter {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct WorkflowSnapshot {
     pub id: String,
     pub pattern: String,
@@ -159,6 +160,7 @@ pub struct WorkflowSnapshot {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct StepSnapshot {
     pub capability: String,
     pub status: String,

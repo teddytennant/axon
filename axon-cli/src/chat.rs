@@ -256,6 +256,7 @@ impl ModelPicker {
 // Background jobs
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)]
 struct BackgroundJob {
     id: usize,
     capability: String,
@@ -984,7 +985,7 @@ async fn handle_command(name: &str, arg: &str, state: &mut ChatState, raw: &str)
                 || !providers::resolve_api_key("", &state.provider_kind).is_empty();
             let id_path = axon_core::Identity::default_path();
             let has_id = id_path.exists();
-            let lines = vec![
+            let lines = [
                 format!("provider:  {}", state.provider_kind),
                 format!("model:     {}", state.model),
                 format!("endpoint:  {}", state.endpoint),
