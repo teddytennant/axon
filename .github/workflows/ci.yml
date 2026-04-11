@@ -42,6 +42,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev
+      - name: Build test MCP server
+        run: cargo build -p axon-test-mcp-server
       - name: cargo test
         run: cargo test --workspace
 
