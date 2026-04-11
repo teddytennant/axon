@@ -1,6 +1,6 @@
 use axum::http::{header, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
-use rust_embed::Embed;
+use rust_embed::{Embed, RustEmbed};
 
 #[derive(Embed)]
 #[folder = "frontend/dist"]
