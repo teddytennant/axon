@@ -41,10 +41,16 @@ struct CmdDef {
 }
 
 const COMMANDS: &[CmdDef] = &[
-    // Orchestration
-    CmdDef { name: "agents",   aliases: &["a"],           args: "",             desc: "list local agents and capabilities",   category: "mesh" },
+    // Agent orchestration
+    CmdDef { name: "run",      aliases: &["r"],           args: "<cap> [data]", desc: "run an agent task, show result",        category: "agents" },
+    CmdDef { name: "spawn",    aliases: &["s"],           args: "<cap> [data]", desc: "launch background agent task",          category: "agents" },
+    CmdDef { name: "jobs",     aliases: &["j"],           args: "",             desc: "list running and completed jobs",       category: "agents" },
+    CmdDef { name: "kill",     aliases: &[],              args: "<id>",         desc: "cancel a background job",               category: "agents" },
+    CmdDef { name: "agents",   aliases: &["a"],           args: "",             desc: "list available agents",                 category: "agents" },
+    CmdDef { name: "auto",     aliases: &[],              args: "",             desc: "toggle auto-agent (LLM launches agents)",      category: "agents" },
+    CmdDef { name: "task",     aliases: &["t"],           args: "<cap> [data]", desc: "alias for /run",                        category: "agents" },
+    // Mesh
     CmdDef { name: "peers",    aliases: &[],              args: "",             desc: "show connected mesh peers",             category: "mesh" },
-    CmdDef { name: "task",     aliases: &["t"],           args: "<cap> [data]", desc: "dispatch a task to the mesh",           category: "mesh" },
     CmdDef { name: "tools",    aliases: &[],              args: "",             desc: "list available MCP tools",              category: "mesh" },
     CmdDef { name: "status",   aliases: &[],              args: "",             desc: "show node and mesh status",             category: "mesh" },
     CmdDef { name: "trust",    aliases: &[],              args: "[peer]",       desc: "show peer trust scores",                category: "mesh" },
@@ -121,6 +127,19 @@ impl ModelPicker {
 }
 
 // ---------------------------------------------------------------------------
+// Background jobs
+// ---------------------------------------------------------------------------
+
+struct BackgroundJob {
+    id: usize,
+    capability: String,
+    payload: String,
+    started: Instant,
+    rx: Option<oneshot::Receiver<Result<String, String>>>,
+    result: Option<Result<String, String>>,
+}
+
+// ---------------------------------------------------------------------------
 // Chat state
 // ---------------------------------------------------------------------------
 
@@ -151,6 +170,11 @@ struct ChatState {
     // Autocomplete
     ac_cursor: usize,
 
+    // Background jobs
+    jobs: Vec<BackgroundJob>,
+    next_job_id: usize,
+    auto_agent: bool,
+
     cmd_history: Vec<String>,
     cmd_history_idx: Option<usize>,
 }
@@ -158,6 +182,24 @@ struct ChatState {
 impl ChatState {
     fn build_prompt(&self, user_msg: &str) -> String {
         let mut prompt = String::new();
+
+        if self.auto_agent {
+            prompt.push_str(
+                "System: You are an AI orchestrator in the Axon mesh. You have access to agents you can launch.\n\
+                 Available agents:\n\
+                 - echo.ping <message> — echoes back the message\n\
+                 - system.info — returns hostname, OS, and architecture\n\
+                 - llm.chat <prompt> — sends a prompt to another LLM instance\n\n\
+                 To launch an agent, include [[run:<capability>:<payload>]] in your response.\n\
+                 Examples:\n\
+                 - [[run:system.info:]] to get system information\n\
+                 - [[run:echo.ping:hello world]] to echo a message\n\
+                 - [[run:llm.chat:summarize quantum computing in one paragraph]] to delegate to another LLM\n\n\
+                 You can launch multiple agents in one response. Results will be shown to the user.\n\
+                 Only launch agents when it would genuinely help answer the question.\n\n"
+            );
+        }
+
         if !self.system_prompt.is_empty() {
             prompt.push_str(&format!("System: {}\n\n", self.system_prompt));
         }
@@ -224,6 +266,9 @@ pub async fn run_chat() -> anyhow::Result<()> {
         show_help: false,
         model_picker: None,
         ac_cursor: 0,
+        jobs: Vec::new(),
+        next_job_id: 1,
+        auto_agent: false,
         cmd_history: Vec::new(),
         cmd_history_idx: None,
     };
@@ -260,9 +305,19 @@ async fn event_loop(
                                 state.total_prompt_tokens += p as u64;
                                 state.total_completion_tokens += c as u64;
                             }
+                            let text = resp.text.trim().to_string();
+
+                            // Auto-agent: parse [[run:cap:payload]] and spawn background jobs
+                            if state.auto_agent {
+                                let calls = extract_agent_calls(&text);
+                                for (cap, payload) in &calls {
+                                    spawn_job(state, cap, payload);
+                                }
+                            }
+
                             state.messages.push(ChatMessage {
                                 role: Role::Assistant,
-                                content: resp.text.trim().to_string(),
+                                content: text,
                                 duration_ms: Some(elapsed),
                                 tokens,
                             });
@@ -295,9 +350,13 @@ async fn event_loop(
             }
         }
 
+        // Poll background jobs
+        poll_jobs(state);
+
         terminal.draw(|frame| render(frame, state))?;
 
-        let poll_ms = if state.pending.is_some() { 80 } else { 150 };
+        let has_active = state.pending.is_some() || state.jobs.iter().any(|j| j.rx.is_some());
+        let poll_ms = if has_active { 80 } else { 150 };
         if event::poll(Duration::from_millis(poll_ms))? {
             if let Event::Key(key) = event::read()? {
                 if handle_key(key, state).await { break; }
@@ -520,60 +579,97 @@ async fn handle_command(name: &str, arg: &str, state: &mut ChatState, raw: &str)
             }
         }
 
-        // --- Orchestration commands ---
+        // --- Agent orchestration ---
+        "run" => {
+            if arg.is_empty() {
+                state.sys_msg("usage: /run <capability> [payload]\n  /run system.info\n  /run echo.ping hello\n  /run llm.chat explain QUIC".into());
+            } else {
+                let (cap, payload) = parse_cap_payload(arg);
+                let result = execute_agent(&cap, &payload, state).await;
+                match result {
+                    Ok(output) => state.sys_msg(format!("{} → {}", cap, output)),
+                    Err(e) => state.sys_msg(format!("{} failed: {}", cap, e)),
+                }
+            }
+        }
+        "spawn" => {
+            if arg.is_empty() {
+                state.sys_msg("usage: /spawn <capability> [payload]\nlaunches agent in background, results shown when done".into());
+            } else {
+                let (cap, payload) = parse_cap_payload(arg);
+                spawn_job(state, &cap, &payload);
+            }
+        }
+        "jobs" => {
+            if state.jobs.is_empty() {
+                state.sys_msg("no jobs".into());
+            } else {
+                let mut lines = Vec::new();
+                for job in &state.jobs {
+                    let elapsed = job.started.elapsed().as_secs();
+                    let status = if job.rx.is_some() {
+                        format!("running {}s", elapsed)
+                    } else {
+                        match &job.result {
+                            Some(Ok(_)) => "done".into(),
+                            Some(Err(e)) => format!("failed: {}", e),
+                            None => "cancelled".into(),
+                        }
+                    };
+                    lines.push(format!("  #{:<3} {:<20} {}", job.id, job.capability, status));
+                }
+                state.sys_msg(lines.join("\n"));
+            }
+        }
+        "kill" => {
+            if let Ok(id) = arg.trim_start_matches('#').parse::<usize>() {
+                if let Some(job) = state.jobs.iter_mut().find(|j| j.id == id) {
+                    job.rx = None;
+                    job.result = Some(Err("killed".into()));
+                    state.sys_msg(format!("job #{} killed", id));
+                } else {
+                    state.sys_msg(format!("no job #{}", id));
+                }
+            } else {
+                state.sys_msg("usage: /kill <job-id>".into());
+            }
+        }
         "agents" => {
             let cfg = config::load_config();
-            let mut lines = vec!["local agents:".to_string()];
-            lines.push(format!("  echo       echo.ping        built-in"));
-            lines.push(format!("  sysinfo    system.info      built-in"));
-            lines.push(format!("  llm        llm.chat         {} · {}", state.provider_kind, state.model));
+            let auto_label = if state.auto_agent { "on" } else { "off" };
+            let mut lines = vec![
+                format!("agents:                                  auto-agent: {}", auto_label),
+                format!("  echo.ping        echo back a message            /run echo.ping hello"),
+                format!("  system.info      hostname, os, arch             /run system.info"),
+                format!("  llm.chat         prompt the LLM                 /run llm.chat <prompt>"),
+            ];
             let mcp_count = cfg.mcp.servers.len();
             if mcp_count > 0 {
-                lines.push(format!("  mcp        mcp.*            {} server(s)", mcp_count));
+                lines.push(format!("  mcp.*            {} MCP server(s)               (via axon start)", mcp_count));
             }
             lines.push(String::new());
-            lines.push("dispatch tasks with /task <namespace.name> [payload]".to_string());
+            lines.push("/run  — execute and wait     /spawn — launch in background".into());
+            lines.push("/auto — let the LLM launch agents autonomously".into());
             state.sys_msg(lines.join("\n"));
         }
-        "peers" => {
-            state.sys_msg("peer discovery requires a running node\nstart one with: axon start".into());
+        "auto" => {
+            state.auto_agent = !state.auto_agent;
+            if state.auto_agent {
+                state.sys_msg("auto-agent on — the LLM can now launch agents via [[run:cap:payload]]".into());
+            } else {
+                state.sys_msg("auto-agent off".into());
+            }
         }
+        // Keep /task as alias for /run
         "task" => {
             if arg.is_empty() {
-                state.sys_msg("usage: /task <namespace.name> [payload]\nexamples:\n  /task echo.ping hello\n  /task system.info\n  /task llm.chat explain QUIC".into());
+                state.sys_msg("use /run or /spawn — see /agents for available capabilities".into());
             } else {
-                // Parse namespace.name and optional payload
-                let mut parts = arg.splitn(2, ' ');
-                let cap_str = parts.next().unwrap_or("");
-                let payload = parts.next().unwrap_or("").to_string();
-
-                let cap_parts: Vec<&str> = cap_str.splitn(2, '.').collect();
-                if cap_parts.len() != 2 {
-                    state.sys_msg("capability must be namespace.name (e.g., echo.ping)".into());
-                } else {
-                    let ns = cap_parts[0];
-                    let name = cap_parts[1];
-
-                    // Dispatch locally via the LLM if it's llm.chat, otherwise echo/sysinfo
-                    match (ns, name) {
-                        ("llm", "chat") => {
-                            if payload.is_empty() { state.sys_msg("llm.chat requires a payload".into()); }
-                            else { send_message(state, &payload); }
-                        }
-                        ("echo", "ping") => {
-                            let p = if payload.is_empty() { "pong".to_string() } else { payload };
-                            state.sys_msg(format!("echo.ping → {}", p));
-                        }
-                        ("system", "info") => {
-                            let hostname = std::env::var("HOSTNAME")
-                                .or_else(|_| std::fs::read_to_string("/etc/hostname").map(|s| s.trim().to_string()))
-                                .unwrap_or_else(|_| "unknown".into());
-                            state.sys_msg(format!("system.info →\n  host: {}\n  os: {}\n  arch: {}", hostname, std::env::consts::OS, std::env::consts::ARCH));
-                        }
-                        _ => {
-                            state.sys_msg(format!("no local agent for {}.{}\nfor mesh dispatch, use: axon send -p <addr> -n {} -c {}", ns, name, ns, name));
-                        }
-                    }
+                let (cap, payload) = parse_cap_payload(arg);
+                let result = execute_agent(&cap, &payload, state).await;
+                match result {
+                    Ok(output) => state.sys_msg(format!("{} → {}", cap, output)),
+                    Err(e) => state.sys_msg(format!("{} failed: {}", cap, e)),
                 }
             }
         }
@@ -626,6 +722,167 @@ async fn handle_command(name: &str, arg: &str, state: &mut ChatState, raw: &str)
         state.system_prompt = raw[8..].trim().to_string();
     }
     false
+}
+
+// ---------------------------------------------------------------------------
+// Agent execution
+// ---------------------------------------------------------------------------
+
+fn parse_cap_payload(arg: &str) -> (String, String) {
+    let mut parts = arg.splitn(2, ' ');
+    let cap = parts.next().unwrap_or("").to_string();
+    let payload = parts.next().unwrap_or("").to_string();
+    (cap, payload)
+}
+
+async fn execute_agent(cap: &str, payload: &str, state: &ChatState) -> Result<String, String> {
+    let parts: Vec<&str> = cap.splitn(2, '.').collect();
+    if parts.len() != 2 {
+        return Err(format!("capability must be namespace.name, got: {}", cap));
+    }
+    let (ns, name) = (parts[0], parts[1]);
+
+    match (ns, name) {
+        ("echo", "ping") => {
+            Ok(if payload.is_empty() { "pong".into() } else { payload.to_string() })
+        }
+        ("system", "info") => {
+            let hostname = std::env::var("HOSTNAME")
+                .or_else(|_| std::fs::read_to_string("/etc/hostname").map(|s| s.trim().to_string()))
+                .unwrap_or_else(|_| "unknown".into());
+            Ok(format!("host: {}  os: {}  arch: {}", hostname, std::env::consts::OS, std::env::consts::ARCH))
+        }
+        ("llm", "chat") => {
+            if payload.is_empty() {
+                return Err("llm.chat requires a payload".into());
+            }
+            let provider = build_provider(&state.provider_kind, &state.endpoint, &state.api_key, &state.model)
+                .map_err(|e| format!("{}", e))?;
+            let resp = provider.complete(CompletionRequest {
+                prompt: payload.to_string(),
+                max_tokens: None,
+                temperature: None,
+            }).await.map_err(|e| format!("{}", e))?;
+            Ok(resp.text.trim().to_string())
+        }
+        _ => Err(format!("no agent for {}", cap)),
+    }
+}
+
+fn spawn_job(state: &mut ChatState, cap: &str, payload: &str) {
+    let id = state.next_job_id;
+    state.next_job_id += 1;
+
+    let (tx, rx) = oneshot::channel();
+    let cap_owned = cap.to_string();
+    let payload_owned = payload.to_string();
+    let pk = state.provider_kind.clone();
+    let ep = state.endpoint.clone();
+    let key = state.api_key.clone();
+    let mdl = state.model.clone();
+
+    tokio::spawn(async move {
+        let parts: Vec<&str> = cap_owned.splitn(2, '.').collect();
+        let result = if parts.len() != 2 {
+            Err(format!("invalid capability: {}", cap_owned))
+        } else {
+            match (parts[0], parts[1]) {
+                ("echo", "ping") => Ok(if payload_owned.is_empty() { "pong".into() } else { payload_owned }),
+                ("system", "info") => {
+                    let h = std::env::var("HOSTNAME")
+                        .or_else(|_| std::fs::read_to_string("/etc/hostname").map(|s| s.trim().to_string()))
+                        .unwrap_or_else(|_| "unknown".into());
+                    Ok(format!("host: {}  os: {}  arch: {}", h, std::env::consts::OS, std::env::consts::ARCH))
+                }
+                ("llm", "chat") => {
+                    match build_provider(&pk, &ep, &key, &mdl) {
+                        Ok(p) => p.complete(CompletionRequest { prompt: payload_owned, max_tokens: None, temperature: None })
+                            .await.map(|r| r.text.trim().to_string()).map_err(|e| format!("{}", e)),
+                        Err(e) => Err(format!("{}", e)),
+                    }
+                }
+                _ => Err(format!("no agent for {}", cap_owned)),
+            }
+        };
+        let _ = tx.send(result);
+    });
+
+    state.jobs.push(BackgroundJob {
+        id,
+        capability: cap.to_string(),
+        payload: payload.to_string(),
+        started: Instant::now(),
+        rx: Some(rx),
+        result: None,
+    });
+
+    state.sys_msg(format!("job #{} spawned: {}", id, cap));
+}
+
+fn poll_jobs(state: &mut ChatState) {
+    for job in &mut state.jobs {
+        if let Some(mut rx) = job.rx.take() {
+            match rx.try_recv() {
+                Ok(result) => {
+                    let elapsed = job.started.elapsed();
+                    let time_str = if elapsed.as_secs() > 0 {
+                        format!("{:.1}s", elapsed.as_secs_f64())
+                    } else {
+                        format!("{}ms", elapsed.as_millis())
+                    };
+                    match &result {
+                        Ok(output) => {
+                            state.messages.push(ChatMessage {
+                                role: Role::System,
+                                content: format!("job #{} ({}) done in {}\n  {}", job.id, job.capability, time_str, output),
+                                duration_ms: Some(elapsed.as_millis() as u64),
+                                tokens: None,
+                            });
+                        }
+                        Err(e) => {
+                            state.messages.push(ChatMessage {
+                                role: Role::System,
+                                content: format!("job #{} ({}) failed in {}: {}", job.id, job.capability, time_str, e),
+                                duration_ms: Some(elapsed.as_millis() as u64),
+                                tokens: None,
+                            });
+                        }
+                    }
+                    job.result = Some(result);
+                    state.auto_scroll = true;
+                }
+                Err(oneshot::error::TryRecvError::Empty) => {
+                    job.rx = Some(rx); // still running
+                }
+                Err(oneshot::error::TryRecvError::Closed) => {
+                    job.result = Some(Err("task dropped".into()));
+                }
+            }
+        }
+    }
+}
+
+/// Parse LLM response for [[run:capability:payload]] markers and execute them.
+fn extract_agent_calls(text: &str) -> Vec<(String, String)> {
+    let mut calls = Vec::new();
+    let mut remaining = text;
+    while let Some(start) = remaining.find("[[run:") {
+        let after = &remaining[start + 6..];
+        if let Some(end) = after.find("]]") {
+            let inner = &after[..end];
+            // Split on first : to get cap:payload
+            let mut parts = inner.splitn(2, ':');
+            let cap = parts.next().unwrap_or("").trim().to_string();
+            let payload = parts.next().unwrap_or("").trim().to_string();
+            if !cap.is_empty() {
+                calls.push((cap, payload));
+            }
+            remaining = &after[end + 2..];
+        } else {
+            break;
+        }
+    }
+    calls
 }
 
 fn send_message(state: &mut ChatState, user_msg: &str) {
@@ -835,15 +1092,22 @@ fn render_autocomplete(frame: &mut Frame, state: &ChatState, input_area: Rect) {
 
 fn render_status_bar(frame: &mut Frame, state: &ChatState, area: Rect) {
     let n = state.messages.iter().filter(|m| matches!(m.role, Role::User)).count();
-    let spans = vec![
+    let running = state.jobs.iter().filter(|j| j.rx.is_some()).count();
+    let mut spans = vec![
         Span::styled(" enter", Style::default().fg(DIM)),
         Span::styled(" send  ", Style::default().fg(FAINT)),
         Span::styled("tab", Style::default().fg(DIM)),
         Span::styled(" complete  ", Style::default().fg(FAINT)),
         Span::styled("esc", Style::default().fg(DIM)),
         Span::styled(" quit  ", Style::default().fg(FAINT)),
-        Span::styled(format!("{}msg", n), Style::default().fg(FAINT)),
     ];
+    if running > 0 {
+        spans.push(Span::styled(format!("{}job ", running), Style::default().fg(ACCENT)));
+    }
+    if state.auto_agent {
+        spans.push(Span::styled("auto ", Style::default().fg(ACCENT)));
+    }
+    spans.push(Span::styled(format!("{}msg", n), Style::default().fg(FAINT)));
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 

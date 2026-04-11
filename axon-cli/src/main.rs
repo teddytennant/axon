@@ -93,6 +93,10 @@ enum Commands {
         /// Enable health check TCP endpoint on this port (e.g., 4243)
         #[arg(long)]
         health_port: Option<u16>,
+
+        /// Enable web UI on this port (e.g., 3000) — serves the dashboard at http://localhost:<port>
+        #[arg(long)]
+        web_port: Option<u16>,
     },
 
     /// Show node status
@@ -267,6 +271,7 @@ async fn main() -> anyhow::Result<()> {
             api_key,
             model,
             health_port,
+            web_port,
         } => {
             // First-run detection: if no config exists, offer setup
             if !config::config_exists() && !headless && atty::is(atty::Stream::Stdin) {
@@ -349,6 +354,7 @@ async fn main() -> anyhow::Result<()> {
             )?;
 
             let effective_health_port = health_port.or(file_config.node.health_port);
+            let effective_web_port = web_port.or(file_config.node.web_port);
 
             let mcp_configs: Vec<_> = file_config
                 .mcp
@@ -363,6 +369,7 @@ async fn main() -> anyhow::Result<()> {
                 effective_headless,
                 llm_provider,
                 effective_health_port,
+                effective_web_port,
                 mcp_configs,
             )
             .await?;
@@ -1084,6 +1091,7 @@ async fn run_node(
     headless: bool,
     llm_provider: Box<dyn providers::LlmProvider>,
     health_port: Option<u16>,
+    web_port: Option<u16>,
     mcp_configs: Vec<axon_core::McpServerConfig>,
 ) -> anyhow::Result<()> {
     let identity = Identity::load_or_generate(&Identity::default_path())?;
@@ -1245,6 +1253,47 @@ async fn run_node(
     let transport = Arc::new(transport);
     let active_connections: Arc<RwLock<Vec<(String, quinn::Connection)>>> =
         Arc::new(RwLock::new(Vec::new()));
+
+    // --- Web UI ---
+    let web_state = Arc::new(RwLock::new(axon_web::WebState::new(
+        peer_id_hex.clone(),
+        local_addr.to_string(),
+    )));
+    {
+        let mut ws = web_state.write().await;
+        let web_cfg = config::load_config();
+        ws.provider_name = web_cfg.llm.provider.clone();
+        ws.model_name = if web_cfg.llm.model.is_empty() {
+            providers::default_model(
+                &web_cfg.llm.provider.parse().unwrap_or(ProviderKind::Ollama),
+            )
+            .to_string()
+        } else {
+            web_cfg.llm.model.clone()
+        };
+        ws.config_path = config::config_path()
+            .map(|p| p.display().to_string())
+            .unwrap_or_default();
+    }
+    if let Some(wp) = web_port {
+        let shared_web = Arc::new(axon_web::SharedWebState {
+            peer_table: peer_table.clone(),
+            tool_registry: tool_registry.clone(),
+            trust_store: trust_store.clone(),
+            task_queue: task_queue.clone(),
+            runtime: runtime.clone(),
+            mcp_bridge: mcp_bridge.clone(),
+            local_peer_id: identity.public_key_bytes(),
+            web_state: web_state.clone(),
+        });
+        tokio::spawn(async move {
+            axon_web::start_web_server(shared_web, wp).await;
+        });
+        dashboard_state.write().await.add_log(format!(
+            "Web UI available at http://localhost:{}",
+            wp
+        ));
+    }
 
     // Spawn connection acceptor
     let accept_transport = transport.clone();
@@ -1497,6 +1546,7 @@ async fn run_node(
     let sync_ds = dashboard_state.clone();
     let sync_conns = active_connections.clone();
     let sync_metrics = metrics.clone();
+    let sync_web = web_state.clone();
     let mut sync_shutdown = shutdown_tx.subscribe();
     tokio::spawn(async move {
         loop {
@@ -1511,6 +1561,16 @@ async fn run_node(
                     state.tasks_total = sync_metrics.tasks_processed.load(Ordering::Relaxed);
                     state.tasks_failed = sync_metrics.tasks_failed.load(Ordering::Relaxed);
                     drop(state);
+
+                    // Sync web state
+                    {
+                        let mut ws = sync_web.write().await;
+                        ws.uptime_secs = sync_metrics.uptime_secs();
+                        ws.tasks_total = sync_metrics.tasks_processed.load(Ordering::Relaxed);
+                        ws.tasks_failed = sync_metrics.tasks_failed.load(Ordering::Relaxed);
+                        ws.messages_received = sync_metrics.messages_received.load(Ordering::Relaxed);
+                        ws.messages_sent = sync_metrics.messages_sent.load(Ordering::Relaxed);
+                    }
 
                     // Prune closed connections to prevent memory leaks.
                     let mut conns = sync_conns.write().await;

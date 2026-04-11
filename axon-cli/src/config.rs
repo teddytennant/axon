@@ -31,6 +31,9 @@ pub struct NodeSection {
     /// TCP port for health check endpoint (disabled if unset)
     #[serde(default)]
     pub health_port: Option<u16>,
+    /// TCP port for the web UI dashboard (disabled if unset)
+    #[serde(default)]
+    pub web_port: Option<u16>,
 }
 
 impl Default for NodeSection {
@@ -40,6 +43,7 @@ impl Default for NodeSection {
             peers: Vec::new(),
             headless: false,
             health_port: None,
+            web_port: None,
         }
     }
 }
@@ -196,6 +200,7 @@ pub fn generate_example_config() -> anyhow::Result<PathBuf> {
             peers: Vec::new(),
             headless: false,
             health_port: None,
+            web_port: None,
         },
         llm: LlmSection {
             provider: "ollama".to_string(),

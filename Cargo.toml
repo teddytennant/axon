@@ -1,5 +1,5 @@
 [workspace]
-members = ["axon-core", "axon-cli", "axon-sdk", "axon-test-mcp-server"]
+members = ["axon-core", "axon-cli", "axon-sdk", "axon-web", "axon-test-mcp-server"]
 resolver = "2"
 
 [workspace.package]

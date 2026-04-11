@@ -29,6 +29,7 @@ pub enum Tab {
     State,
     Logs,
     Settings,
+    Workflows,
 }
 
 impl Tab {
@@ -40,6 +41,7 @@ impl Tab {
             Tab::State,
             Tab::Logs,
             Tab::Settings,
+            Tab::Workflows,
         ]
     }
 
@@ -51,17 +53,19 @@ impl Tab {
             Tab::State => "State",
             Tab::Logs => "Logs",
             Tab::Settings => "Settings",
+            Tab::Workflows => "Workflows",
         }
     }
 
     pub fn icon(&self) -> &str {
         match self {
-            Tab::Mesh => "\u{25c6}",     // diamond
-            Tab::Agents => "\u{2726}",   // four-pointed star
-            Tab::Tasks => "\u{25b6}",    // play triangle
-            Tab::State => "\u{2637}",    // trigram
-            Tab::Logs => "\u{2261}",     // triple bar
-            Tab::Settings => "\u{2699}", // gear
+            Tab::Mesh => "\u{25c6}",      // diamond
+            Tab::Agents => "\u{2726}",    // four-pointed star
+            Tab::Tasks => "\u{25b6}",     // play triangle
+            Tab::State => "\u{2637}",     // trigram
+            Tab::Logs => "\u{2261}",      // triple bar
+            Tab::Settings => "\u{2699}",  // gear
+            Tab::Workflows => "\u{27a4}", // arrow
         }
     }
 
@@ -73,6 +77,7 @@ impl Tab {
             Tab::State => 3,
             Tab::Logs => 4,
             Tab::Settings => 5,
+            Tab::Workflows => 6,
         }
     }
 
@@ -84,12 +89,13 @@ impl Tab {
             3 => Tab::State,
             4 => Tab::Logs,
             5 => Tab::Settings,
+            6 => Tab::Workflows,
             _ => Tab::Mesh,
         }
     }
 
     pub fn count() -> usize {
-        6
+        7
     }
 }
 
@@ -137,6 +143,30 @@ impl LogFilter {
 }
 
 // ---------------------------------------------------------------------------
+// Workflow snapshots for the Workflows tab
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+pub struct WorkflowSnapshot {
+    pub id: String,
+    pub pattern: String,
+    pub steps_completed: usize,
+    pub steps_total: usize,
+    pub status: String,
+    pub duration_ms: u64,
+    pub started_at: String,
+    pub steps: Vec<StepSnapshot>,
+}
+
+#[derive(Debug, Clone)]
+pub struct StepSnapshot {
+    pub capability: String,
+    pub status: String,
+    pub latency_ms: u64,
+    pub payload_bytes: usize,
+}
+
+// ---------------------------------------------------------------------------
 // Agent info for rich agent cards
 // ---------------------------------------------------------------------------
 
@@ -150,6 +180,8 @@ pub struct AgentInfo {
     pub tasks_handled: u64,
     pub tasks_succeeded: u64,
     pub avg_latency_ms: u64,
+    pub lifecycle_state: String,
+    pub last_heartbeat_secs_ago: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -219,6 +251,14 @@ pub struct DashboardState {
     pub config_path: String,
     pub mcp_server_count: usize,
     pub mcp_tool_count: usize,
+
+    // Workflows tab: active + recently completed workflow snapshots
+    pub active_workflows: Vec<WorkflowSnapshot>,
+    pub completed_workflows: VecDeque<WorkflowSnapshot>,
+
+    // Blackboard entries: (key, value_preview, timestamp_ms)
+    // Populated from Blackboard::snapshot() on each sync tick.
+    pub blackboard_entries: Vec<(String, String, u64)>,
 }
 
 #[derive(Debug, Clone)]
@@ -254,6 +294,9 @@ impl DashboardState {
             config_path: String::new(),
             mcp_server_count: 0,
             mcp_tool_count: 0,
+            active_workflows: Vec::new(),
+            completed_workflows: VecDeque::new(),
+            blackboard_entries: Vec::new(),
         }
     }
 
@@ -383,6 +426,10 @@ impl Dashboard {
                 self.active_tab = Tab::Settings;
                 self.scroll_offset = 0;
             }
+            KeyCode::Char('7') => {
+                self.active_tab = Tab::Workflows;
+                self.scroll_offset = 0;
+            }
             _ => {}
         }
         false
@@ -424,6 +471,7 @@ impl Dashboard {
             Tab::State => Self::render_state(frame, state, chunks[2], scroll),
             Tab::Logs => Self::render_logs(frame, state, chunks[2], scroll, log_filter),
             Tab::Settings => Self::render_settings(frame, state, chunks[2]),
+            Tab::Workflows => Self::render_workflows(frame, state, chunks[2], scroll),
         }
 
         Self::render_status_bar(frame, active_tab, log_filter, chunks[3]);
@@ -944,7 +992,17 @@ impl Dashboard {
                 Span::styled(caps_str, Style::default().fg(BRAND_CYAN)),
             ]));
 
-            // Line 3: stats
+            // Line 3: stats + lifecycle
+            let lifecycle_color = match agent.lifecycle_state.as_str() {
+                "Running" => BRAND_GREEN,
+                "Paused" => BRAND_YELLOW,
+                "Stopped" => BRAND_RED,
+                _ => BRAND_DIM,
+            };
+            let heartbeat_str = match agent.last_heartbeat_secs_ago {
+                Some(s) => format!("{}s ago", s),
+                None => "--".to_string(),
+            };
             lines.push(Line::from(vec![
                 Span::styled("       tasks: ", Style::default().fg(BRAND_DIM)),
                 Span::styled(
@@ -958,6 +1016,22 @@ impl Dashboard {
                     format!("{}ms", agent.avg_latency_ms),
                     Style::default().fg(Color::White),
                 ),
+                if !agent.lifecycle_state.is_empty() {
+                    Span::styled(
+                        format!("  \u{2502} {} ", agent.lifecycle_state),
+                        Style::default().fg(lifecycle_color).bold(),
+                    )
+                } else {
+                    Span::raw("")
+                },
+                if agent.last_heartbeat_secs_ago.is_some() {
+                    Span::styled(
+                        format!(" hb: {}", heartbeat_str),
+                        Style::default().fg(BRAND_DIM),
+                    )
+                } else {
+                    Span::raw("")
+                },
             ]));
 
             // Separator
@@ -1311,7 +1385,8 @@ impl Dashboard {
     fn render_state(frame: &mut Frame, state: &DashboardState, area: Rect, scroll: usize) {
         let has_data = !state.crdt_counters.is_empty()
             || !state.crdt_registers.is_empty()
-            || !state.crdt_sets.is_empty();
+            || !state.crdt_sets.is_empty()
+            || !state.blackboard_entries.is_empty();
 
         if !has_data {
             let msg = Paragraph::new(vec![
@@ -1431,6 +1506,32 @@ impl Dashboard {
             }
         }
 
+        // Blackboard entries (bb: prefix from orchestrate)
+        if !state.blackboard_entries.is_empty() {
+            lines.push(Line::from(""));
+            lines.push(Line::from(Span::styled(
+                "  \u{25b8} Blackboard",
+                Style::default().fg(BRAND_CYAN).bold(),
+            )));
+            lines.push(Line::from(Span::styled(
+                "  \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}",
+                Style::default().fg(Color::Rgb(50, 50, 56)),
+            )));
+            for (key, preview, ts_ms) in &state.blackboard_entries {
+                let ts_secs = ts_ms / 1000;
+                lines.push(Line::from(vec![
+                    Span::styled("    ", Style::default()),
+                    Span::styled(key, Style::default().fg(Color::White)),
+                    Span::styled(" \u{2190} ", Style::default().fg(BRAND_DIM)),
+                    Span::styled(preview, Style::default().fg(BRAND_YELLOW)),
+                    Span::styled(
+                        format!("  ({}s)", ts_secs),
+                        Style::default().fg(BRAND_DIM),
+                    ),
+                ]));
+            }
+        }
+
         let total_lines = lines.len();
         let visible = area.height.saturating_sub(2) as usize;
         let scroll = scroll.min(total_lines.saturating_sub(visible));
@@ -1441,10 +1542,11 @@ impl Dashboard {
             .border_style(Style::default().fg(BRAND_DIM))
             .title(Span::styled(
                 format!(
-                    " Shared State ({} counters, {} registers, {} sets) ",
+                    " Shared State ({} counters, {} registers, {} sets, {} bb) ",
                     state.crdt_counters.len(),
                     state.crdt_registers.len(),
-                    state.crdt_sets.len()
+                    state.crdt_sets.len(),
+                    state.blackboard_entries.len(),
                 ),
                 Style::default().fg(BRAND_CYAN).bold(),
             ))
@@ -1680,6 +1782,178 @@ impl Dashboard {
         frame.render_widget(
             Paragraph::new(mcp_lines).block(mcp_block).wrap(Wrap { trim: false }),
             chunks[2],
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Workflows tab
+    // -----------------------------------------------------------------------
+
+    fn render_workflows(frame: &mut Frame, state: &DashboardState, area: Rect, scroll: usize) {
+        let all_workflows: Vec<&WorkflowSnapshot> = state
+            .active_workflows
+            .iter()
+            .chain(state.completed_workflows.iter())
+            .collect();
+
+        if all_workflows.is_empty() && state.blackboard_entries.is_empty() {
+            let msg = Paragraph::new(vec![
+                Line::from(""),
+                Line::from(Span::styled(
+                    "  Workflow Orchestration",
+                    Style::default().fg(Color::White).bold(),
+                )),
+                Line::from(""),
+                Line::from(Span::styled(
+                    "  No workflows running. Use pipeline(), fan_out(), delegate(), or swarm_dispatch().",
+                    Style::default().fg(BRAND_DIM),
+                )),
+                Line::from(""),
+                Line::from(Span::styled(
+                    "  Patterns: Pipeline \u{2192} FanOut \u{21c6} Delegate \u{27a4} Swarm \u{2731}",
+                    Style::default().fg(BRAND_DIM),
+                )),
+            ])
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(BRAND_DIM))
+                    .title(Span::styled(
+                        " Workflows ",
+                        Style::default().fg(BRAND_CYAN).bold(),
+                    ))
+                    .style(Style::default().bg(SURFACE)),
+            )
+            .wrap(Wrap { trim: false });
+            frame.render_widget(msg, area);
+            return;
+        }
+
+        // Split: top 60% workflow table, bottom 40% blackboard
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+            .split(area);
+
+        // --- Workflow table ---
+        let header = Row::new(vec![
+            Cell::from("ID").style(Style::default().fg(BRAND_CYAN).bold()),
+            Cell::from("Pattern").style(Style::default().fg(BRAND_CYAN).bold()),
+            Cell::from("Steps").style(Style::default().fg(BRAND_CYAN).bold()),
+            Cell::from("Status").style(Style::default().fg(BRAND_CYAN).bold()),
+            Cell::from("Duration").style(Style::default().fg(BRAND_CYAN).bold()),
+            Cell::from("Started").style(Style::default().fg(BRAND_CYAN).bold()),
+        ])
+        .height(1)
+        .bottom_margin(0);
+
+        let visible_rows = chunks[0].height.saturating_sub(4) as usize; // borders + header
+        let scroll = scroll.min(all_workflows.len().saturating_sub(visible_rows));
+
+        let rows: Vec<Row> = all_workflows
+            .iter()
+            .skip(scroll)
+            .take(visible_rows)
+            .map(|wf| {
+                let id_short = if wf.id.len() > 12 {
+                    format!("{}…", &wf.id[..12])
+                } else {
+                    wf.id.clone()
+                };
+                let steps_str = format!("{}/{}", wf.steps_completed, wf.steps_total);
+                let (status_style, status_str) = match wf.status.as_str() {
+                    "Running" => (Style::default().fg(BRAND_GREEN).bold(), "\u{25b6} Running"),
+                    "Completed" => (Style::default().fg(ACCENT_BLUE), "\u{2714} Done"),
+                    "Failed" => (Style::default().fg(BRAND_RED).bold(), "\u{2718} Failed"),
+                    other => (Style::default().fg(BRAND_DIM), other),
+                };
+                let duration_str = if wf.duration_ms > 0 {
+                    format!("{}ms", wf.duration_ms)
+                } else {
+                    "--".to_string()
+                };
+                Row::new(vec![
+                    Cell::from(id_short).style(Style::default().fg(BRAND_DIM)),
+                    Cell::from(wf.pattern.clone()).style(Style::default().fg(Color::White)),
+                    Cell::from(steps_str).style(Style::default().fg(BRAND_CYAN)),
+                    Cell::from(status_str).style(status_style),
+                    Cell::from(duration_str).style(Style::default().fg(BRAND_YELLOW)),
+                    Cell::from(wf.started_at.clone()).style(Style::default().fg(BRAND_DIM)),
+                ])
+            })
+            .collect();
+
+        let wf_table = Table::new(
+            rows,
+            [
+                Constraint::Length(14),
+                Constraint::Length(10),
+                Constraint::Length(8),
+                Constraint::Length(12),
+                Constraint::Length(10),
+                Constraint::Min(0),
+            ],
+        )
+        .header(header)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(BRAND_DIM))
+                .title(Span::styled(
+                    format!(
+                        " Workflows ({} active, {} completed) ",
+                        state.active_workflows.len(),
+                        state.completed_workflows.len()
+                    ),
+                    Style::default().fg(BRAND_CYAN).bold(),
+                ))
+                .style(Style::default().bg(SURFACE)),
+        )
+        .column_spacing(1);
+
+        frame.render_widget(wf_table, chunks[0]);
+
+        // --- Blackboard panel ---
+        let bb_lines: Vec<Line> = if state.blackboard_entries.is_empty() {
+            vec![
+                Line::from(""),
+                Line::from(Span::styled(
+                    "  No blackboard entries yet.",
+                    Style::default().fg(BRAND_DIM),
+                )),
+            ]
+        } else {
+            state
+                .blackboard_entries
+                .iter()
+                .map(|(key, preview, ts_ms)| {
+                    let age_secs = ts_ms / 1000;
+                    Line::from(vec![
+                        Span::styled("  ", Style::default()),
+                        Span::styled(key, Style::default().fg(Color::White)),
+                        Span::styled(" \u{2190} ", Style::default().fg(BRAND_DIM)),
+                        Span::styled(preview, Style::default().fg(BRAND_YELLOW)),
+                        Span::styled(
+                            format!("  ({}s)", age_secs),
+                            Style::default().fg(BRAND_DIM),
+                        ),
+                    ])
+                })
+                .collect()
+        };
+
+        let bb_block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(BRAND_DIM))
+            .title(Span::styled(
+                format!(" Blackboard ({} entries) ", state.blackboard_entries.len()),
+                Style::default().fg(BRAND_CYAN).bold(),
+            ))
+            .style(Style::default().bg(SURFACE));
+
+        frame.render_widget(
+            Paragraph::new(bb_lines).block(bb_block).wrap(Wrap { trim: false }),
+            chunks[1],
         );
     }
 
