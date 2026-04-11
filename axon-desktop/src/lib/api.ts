@@ -7,6 +7,9 @@ import type {
   TrustEntry,
   ConfigResponse,
   ChatRequest,
+  LlmConfigSection,
+  ValidateResponse,
+  ModelResponse,
 } from './types';
 
 let AXON_BASE = 'http://localhost:3000';
@@ -45,6 +48,20 @@ export const getTaskLog   = (s?: AbortSignal) => request<TaskLogEntry[]>('/api/t
 export const getTaskStats = (s?: AbortSignal) => request<TaskStatsResponse>('/api/tasks/stats', s);
 export const getTrust     = (s?: AbortSignal) => request<TrustEntry[]>('/api/trust', s);
 export const getConfig    = (s?: AbortSignal) => request<ConfigResponse>('/api/config', s);
+export const getModels    = (provider: string, s?: AbortSignal) =>
+  request<ModelResponse[]>(`/api/models/${encodeURIComponent(provider)}`, s);
+
+export const putLlmConfig = (llm: LlmConfigSection) =>
+  request<{ ok: boolean }>('/api/config/llm', undefined, {
+    method: 'PUT',
+    body: JSON.stringify(llm),
+  });
+
+export const validateApiKey = (provider: string, api_key: string) =>
+  request<ValidateResponse>('/api/auth/validate', undefined, {
+    method: 'POST',
+    body: JSON.stringify({ provider, api_key }),
+  });
 
 export async function* sendChatStream(req: ChatRequest): AsyncGenerator<string> {
   const res = await fetch(`${AXON_BASE}/api/chat/completions`, {

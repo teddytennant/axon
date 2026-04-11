@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from 'react';
-import { clsx } from 'clsx';
-import { Send, Trash2, Copy, Check } from 'lucide-react';
+import { Send, Copy, Check } from 'lucide-react';
 import { sendChatStream } from '../lib/api';
 import { useConfig } from '../hooks/use-api';
 
@@ -27,7 +26,7 @@ export default function ChatPage() {
 
   useEffect(() => {
     const ta = textareaRef.current;
-    if (ta) { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 180) + 'px'; }
+    if (ta) { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 160) + 'px'; }
   }, [input]);
 
   const sys = (c: string) =>
@@ -36,7 +35,7 @@ export default function ChatPage() {
   const cmd = (s: string): boolean => {
     const [c] = s.trim().split(/\s+/);
     if (c === '/clear') { setMsgs([]); return true; }
-    if (c === '/help')  { sys('commands: /clear  /help'); return true; }
+    if (c === '/help')  { sys('/clear  /help'); return true; }
     return false;
   };
 
@@ -52,7 +51,10 @@ export default function ChatPage() {
     setMsgs(p => [...p, { role: 'assistant', content: '', model, ts: new Date().toISOString() }]);
     try {
       for await (const chunk of sendChatStream({
-        messages: [...history.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })), { role: 'user', content: t }],
+        messages: [
+          ...history.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+          { role: 'user', content: t },
+        ],
         model,
       })) {
         setMsgs(p => {
@@ -74,26 +76,25 @@ export default function ChatPage() {
     }
   };
 
+  const isEmpty = msgs.length === 0;
+
   return (
     <div className="flex h-full flex-col bg-[#000]">
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-auto">
-        {msgs.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-4">
-            <div className="text-center">
-              <p className="text-[11px] text-[#222] tracking-wider">axon / chat</p>
-              <p className="mt-1.5 text-[10px] text-[#1c1c1c]">/help for commands · enter to send</p>
-            </div>
+        {isEmpty ? (
+          <div className="flex h-full items-center justify-center">
+            <span className="text-[10px] tracking-[0.2em] text-[#1e1e1e] uppercase">axon chat</span>
           </div>
         ) : (
-          <div className="mx-auto flex max-w-2xl flex-col gap-0.5 py-6 px-5">
+          <div className="mx-auto max-w-2xl space-y-1 py-8 px-6">
             {msgs.map((m, i) => <Bubble key={i} msg={m} />)}
             {busy && (
-              <div className="flex gap-[5px] px-4 py-3">
-                {[0, 140, 280].map(d => (
+              <div className="flex gap-[5px] py-4 pl-0.5">
+                {[0, 130, 260].map(d => (
                   <span
                     key={d}
-                    className="h-[3px] w-[3px] rounded-full bg-[#3a3a3a] animate-[pulse-dot_1.2s_ease-in-out_infinite]"
+                    className="h-[3px] w-[3px] rounded-full bg-[#303030] animate-[pulse-dot_1.2s_ease-in-out_infinite]"
                     style={{ animationDelay: `${d}ms` }}
                   />
                 ))}
@@ -104,51 +105,49 @@ export default function ChatPage() {
       </div>
 
       {/* Input */}
-      <div className="border-t border-[#181818] bg-[#000] px-4 py-3">
-        <div className="mx-auto flex max-w-2xl items-end gap-2">
-          <button
-            onClick={() => setMsgs([])}
-            className="mb-[7px] flex h-7 w-7 shrink-0 items-center justify-center rounded text-[#252525] transition-colors hover:text-[#555]"
-            title="Clear chat"
-          >
-            <Trash2 size={13} />
-          </button>
+      <div className="px-6 pb-5 pt-3">
+        <div className="mx-auto max-w-2xl">
+          <div className="flex items-end gap-2 rounded-2xl border border-[#181818] bg-[#080808] pl-4 pr-2 py-2 focus-within:border-[#232323] transition-colors">
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={(e: KeyboardEvent<HTMLTextAreaElement>) => {
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); }
+              }}
+              placeholder="message"
+              rows={1}
+              className="flex-1 resize-none bg-transparent py-1 text-[12px] text-[#d8d8d8] placeholder:text-[#282828] outline-none leading-relaxed"
+              style={{ userSelect: 'text' }}
+            />
+            <button
+              onClick={() => void send()}
+              disabled={!input.trim() || busy}
+              className="mb-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-white text-black transition-all hover:bg-[#e8e8e8] active:scale-90 disabled:bg-[#111] disabled:text-[#2a2a2a]"
+            >
+              <Send size={11} />
+            </button>
+          </div>
 
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={(e: KeyboardEvent<HTMLTextAreaElement>) => {
-              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); }
-            }}
-            placeholder="message…"
-            rows={1}
-            className="flex-1 resize-none rounded-lg border border-[#1e1e1e] bg-[#0a0a0a] px-3 py-[7px] text-[12px] text-[#ddd] placeholder-[#282828] outline-none transition-colors focus:border-[#2e2e2e] focus:bg-[#0d0d0d]"
-            style={{ userSelect: 'text' }}
-          />
-
-          <button
-            onClick={() => void send()}
-            disabled={!input.trim() || busy}
-            className={clsx(
-              'mb-[7px] flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-all',
-              input.trim() && !busy
-                ? 'bg-white text-black hover:bg-[#e8e8e8] active:scale-95'
-                : 'text-[#222]',
+          {/* Clear + model hint */}
+          <div className="mt-2 flex items-center justify-between px-1">
+            <button
+              onClick={() => setMsgs([])}
+              className="text-[9px] text-[#1e1e1e] transition-colors hover:text-[#444]"
+            >
+              clear
+            </button>
+            {config?.llm.model && (
+              <span className="text-[9px] text-[#1c1c1c]">{config.llm.model}</span>
             )}
-            title="Send  ↵"
-          >
-            <Send size={12} />
-          </button>
+          </div>
         </div>
-
-        {config?.llm.model && (
-          <p className="mx-auto mt-1.5 max-w-2xl text-[9px] text-[#1e1e1e] pl-9">{config.llm.model}</p>
-        )}
       </div>
     </div>
   );
 }
+
+// ── Message rendering ─────────────────────────────────────────
 
 function parseContent(content: string) {
   const segs: Array<{ type: 'text' | 'code'; content: string; lang?: string }> = [];
@@ -158,7 +157,7 @@ function parseContent(content: string) {
       segs.push({
         type: 'code',
         content: nl > -1 ? part.slice(nl + 1, -3) : part.slice(3, -3),
-        lang: nl > 3 ? part.slice(3, nl).trim() : '',
+        lang: nl > 3 ? part.slice(3, nl).trim() : undefined,
       });
     } else if (part) {
       segs.push({ type: 'text', content: part });
@@ -170,18 +169,18 @@ function parseContent(content: string) {
 function CodeBlock({ code, lang }: { code: string; lang?: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="my-2 overflow-hidden rounded-lg border border-[#1e1e1e]">
-      <div className="flex items-center justify-between border-b border-[#181818] bg-[#0a0a0a] px-3 py-1.5">
-        <span className="text-[9px] text-[#3a3a3a] tracking-wider">{lang || 'code'}</span>
+    <div className="group/code my-3 overflow-hidden rounded-xl bg-[#070707]">
+      <div className="flex items-center justify-between px-4 py-2">
+        <span className="text-[9px] text-[#2a2a2a] tracking-wider">{lang ?? 'code'}</span>
         <button
           onClick={() => { navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-          className="text-[#2e2e2e] transition-colors hover:text-[#777]"
+          className="opacity-0 group-hover/code:opacity-100 transition-opacity text-[#2e2e2e] hover:text-[#666]"
         >
           {copied ? <Check size={11} className="text-[#22c55e]" /> : <Copy size={11} />}
         </button>
       </div>
-      <pre className="overflow-x-auto bg-[#060606] px-4 py-3">
-        <code className="text-[11px] leading-relaxed text-[#bbb]">{code}</code>
+      <pre className="overflow-x-auto px-4 pb-4">
+        <code className="text-[11px] leading-relaxed text-[#aaa]">{code}</code>
       </pre>
     </div>
   );
@@ -190,8 +189,8 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
 function Bubble({ msg: m }: { msg: Msg }) {
   if (m.role === 'system') {
     return (
-      <div className="flex justify-center py-2">
-        <span className="text-[9px] text-[#2a2a2a] tracking-wider">{m.content}</span>
+      <div className="flex justify-center py-3">
+        <span className="text-[9px] text-[#222] tracking-widest">{m.content}</span>
       </div>
     );
   }
@@ -199,26 +198,24 @@ function Bubble({ msg: m }: { msg: Msg }) {
   const isUser = m.role === 'user';
   const segs   = parseContent(m.content);
 
-  return (
-    <div className={clsx('group flex gap-3 px-1 py-2', isUser && 'flex-row-reverse')}>
-      {/* Role label */}
-      <span className={clsx(
-        'mt-1 shrink-0 text-[9px] leading-none tracking-wider',
-        isUser ? 'text-[#2e2e2e]' : 'text-[#222]',
-      )}>
-        {isUser ? 'you' : 'ai'}
-      </span>
+  if (isUser) {
+    return (
+      <div className="flex justify-end py-1">
+        <div className="max-w-[75%] rounded-2xl rounded-br-sm bg-[#111] px-4 py-2.5 text-[12px] leading-relaxed text-[#ddd]">
+          {segs.map((s, i) =>
+            s.type === 'code'
+              ? <CodeBlock key={i} code={s.content} lang={s.lang} />
+              : <span key={i} className="whitespace-pre-wrap break-words">{s.content}</span>
+          )}
+        </div>
+      </div>
+    );
+  }
 
-      {/* Content */}
-      <div className={clsx(
-        'max-w-[88%] text-[12px] leading-relaxed',
-        isUser
-          ? 'rounded-xl rounded-tr-sm border border-[#1e1e1e] bg-[#0d0d0d] px-3.5 py-2.5 text-[#ddd]'
-          : 'px-0.5 text-[#b5b5b5]',
-      )}>
-        {!isUser && m.model && (
-          <p className="mb-1.5 text-[9px] text-[#252525] tracking-wider">{m.model}</p>
-        )}
+  // assistant
+  return (
+    <div className="py-1">
+      <div className="text-[12px] leading-relaxed text-[#999]">
         {segs.map((s, i) =>
           s.type === 'code'
             ? <CodeBlock key={i} code={s.content} lang={s.lang} />
