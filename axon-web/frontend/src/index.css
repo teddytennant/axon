@@ -1,21 +1,20 @@
-@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap");
 @import "tailwindcss";
 
 @theme {
-  --color-bg: #0a0a0a;
-  --color-surface: #111111;
-  --color-surface-raised: #181818;
-  --color-border: #222222;
-  --color-border-hover: #333333;
-  --color-text-primary: #f5f5f5;
-  --color-text-secondary: #888888;
-  --color-text-tertiary: #555555;
-  --color-accent: #00c8c8;
-  --color-success: #50dc78;
-  --color-warning: #f0c83c;
-  --color-error: #f05050;
+  --color-bg: #000000;
+  --color-surface: #0c0c0c;
+  --color-surface-raised: #141414;
+  --color-border: #1c1c1c;
+  --color-border-hover: #2a2a2a;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #6b6b6b;
+  --color-text-tertiary: #3a3a3a;
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
 
-  --font-body: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 }
 
@@ -30,6 +29,7 @@ html {
   color: var(--color-text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-size: 14px;
 }
 
 body {
@@ -38,7 +38,7 @@ body {
 }
 
 ::selection {
-  background-color: color-mix(in srgb, var(--color-accent) 25%, transparent);
+  background-color: rgba(255, 255, 255, 0.12);
 }
 
 input::placeholder,
@@ -46,18 +46,16 @@ textarea::placeholder {
   color: var(--color-text-tertiary);
 }
 
-/* Focus ring */
 :focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--color-accent) 60%, transparent);
+  outline: 1px solid rgba(255, 255, 255, 0.25);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: 2px;
 }
 
-/* Page enter animation */
 @keyframes fade-up {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
@@ -70,41 +68,27 @@ textarea::placeholder {
   to { opacity: 1; }
 }
 
-@keyframes pulse-glow {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
-}
-
 @keyframes flow-dash {
   from { stroke-dashoffset: 24; }
   to { stroke-dashoffset: 0; }
 }
 
 .animate-fade-up {
-  animation: fade-up 0.18s ease-out both;
+  animation: fade-up 0.15s ease-out both;
 }
 
 .animate-fade-in {
-  animation: fade-in 0.15s ease-out both;
+  animation: fade-in 0.12s ease-out both;
 }
 
-/* Accent glow on interactive elements */
-.glow-accent {
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 40%, transparent),
-              0 0 20px color-mix(in srgb, var(--color-accent) 10%, transparent);
-}
-
-/* Edge animation for graph */
 .edge-active {
   animation: flow-dash 0.7s linear infinite;
 }
 
-/* Subtle grid background for graph views */
 .graph-bg {
   background-image:
     linear-gradient(var(--color-border) 1px, transparent 1px),
     linear-gradient(90deg, var(--color-border) 1px, transparent 1px);
   background-size: 40px 40px;
-  background-color: #080808;
-  opacity: 0.4;
+  background-color: #000000;
 }

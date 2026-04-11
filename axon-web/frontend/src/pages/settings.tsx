@@ -79,10 +79,10 @@ export default function SettingsPage() {
 
   if (isLoading) {
     return (
-      <div className="max-w-2xl space-y-6 p-6">
-        <Skeleton className="h-48" />
-        <Skeleton className="h-48" />
-        <Skeleton className="h-32" />
+      <div className="max-w-xl space-y-4 p-6">
+        <Skeleton className="h-44" />
+        <Skeleton className="h-44" />
+        <Skeleton className="h-28" />
       </div>
     );
   }
@@ -90,8 +90,8 @@ export default function SettingsPage() {
   const hasKey = !!config?.llm.api_key;
 
   return (
-    <div className="max-w-2xl space-y-6 p-6">
-      <h1 className="text-lg font-semibold text-[#f5f5f5]">Settings</h1>
+    <div className="max-w-xl space-y-4 p-6">
+      <h1 className="text-sm font-medium text-white">Settings</h1>
 
       {/* Node Config */}
       <Card>
@@ -100,17 +100,17 @@ export default function SettingsPage() {
         </CardHeader>
         <div className="space-y-4">
           <div>
-            <label className="mb-1.5 block text-xs text-[#888]">Listen Address</label>
+            <label className="mb-1.5 block text-xs text-[#6b6b6b]">Listen Address</label>
             <Input value={listen} onChange={(e) => setListen(e.target.value)} className="font-mono" />
           </div>
           <div className="flex items-center gap-3">
-            <p className="text-xs text-[#555]">Headless: {config?.node.headless ? 'yes' : 'no'}</p>
+            <p className="text-xs text-[#3a3a3a]">Headless: {config?.node.headless ? 'yes' : 'no'}</p>
             {config?.node.web_port && (
-              <p className="text-xs text-[#555]">Web port: {config.node.web_port}</p>
+              <p className="text-xs text-[#3a3a3a]">Web port: {config.node.web_port}</p>
             )}
           </div>
           <Button onClick={saveNodeConfig} disabled={saving}>
-            <Save size={14} />
+            <Save size={13} />
             Save
           </Button>
         </div>
@@ -129,22 +129,22 @@ export default function SettingsPage() {
           </Badge>
         </CardHeader>
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1.5 block text-xs text-[#888]">Provider</label>
+              <label className="mb-1.5 block text-xs text-[#6b6b6b]">Provider</label>
               <Input value={provider} onChange={(e) => setProvider(e.target.value)} className="font-mono" />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs text-[#888]">Model</label>
+              <label className="mb-1.5 block text-xs text-[#6b6b6b]">Model</label>
               <Input value={model} onChange={(e) => setModel(e.target.value)} className="font-mono" />
             </div>
           </div>
           <div>
-            <label className="mb-1.5 block text-xs text-[#888]">Endpoint</label>
+            <label className="mb-1.5 block text-xs text-[#6b6b6b]">Endpoint</label>
             <Input value={endpoint} onChange={(e) => setEndpoint(e.target.value)} className="font-mono" placeholder="https://api.openai.com/v1" />
           </div>
           <Button onClick={saveLlmConfig} disabled={saving}>
-            <Save size={14} />
+            <Save size={13} />
             Save
           </Button>
         </div>
@@ -157,7 +157,7 @@ export default function SettingsPage() {
         </CardHeader>
         <div className="flex items-end gap-3">
           <div className="flex-1">
-            <label className="mb-1.5 block text-xs text-[#888]">{provider || 'Provider'} API Key</label>
+            <label className="mb-1.5 block text-xs text-[#6b6b6b]">{provider || 'Provider'} API Key</label>
             <Input
               type="password"
               value={apiKey}
@@ -167,7 +167,7 @@ export default function SettingsPage() {
             />
           </div>
           <Button onClick={handleSetKey} disabled={validating || !apiKey.trim()}>
-            <Key size={14} />
+            <Key size={13} />
             {validating ? 'Validating...' : 'Set Key'}
           </Button>
         </div>
@@ -179,11 +179,11 @@ export default function SettingsPage() {
           <CardHeader>
             <CardTitle>MCP Servers</CardTitle>
           </CardHeader>
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {config.mcp.servers.map((srv) => (
-              <div key={srv.name} className="flex items-center justify-between rounded-lg bg-[#181818] px-3 py-2">
-                <span className="font-mono text-xs text-[#f5f5f5]">{srv.name}</span>
-                <span className="font-mono text-xs text-[#555]">{srv.command}</span>
+              <div key={srv.name} className="flex items-center justify-between rounded border border-[#1c1c1c] px-3 py-2">
+                <span className="font-mono text-xs text-white">{srv.name}</span>
+                <span className="font-mono text-xs text-[#3a3a3a]">{srv.command}</span>
               </div>
             ))}
           </div>

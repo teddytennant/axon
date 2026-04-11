@@ -8,12 +8,12 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     <input
       ref={ref}
       className={clsx(
-        "h-9 w-full rounded-lg border border-[#222222] bg-[#111111] px-3 text-sm text-[#f5f5f5]",
-        "placeholder:text-[#555555]",
+        "h-8 w-full rounded border border-[#1c1c1c] bg-[#0c0c0c] px-3 text-sm text-white",
+        "placeholder:text-[#3a3a3a]",
         "transition-colors",
-        "hover:border-[#333333]",
-        "focus:border-[#00c8c8]/50 focus:outline-none focus:ring-1 focus:ring-[#00c8c8]/20",
-        "disabled:opacity-40 disabled:pointer-events-none",
+        "hover:border-[#2a2a2a]",
+        "focus:border-[#3a3a3a] focus:outline-none focus:ring-1 focus:ring-white/10",
+        "disabled:opacity-30 disabled:pointer-events-none",
         className,
       )}
       {...props}

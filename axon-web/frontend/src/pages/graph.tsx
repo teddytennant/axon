@@ -318,7 +318,7 @@ export default function GraphPage() {
       <div
         ref={containerRef}
         className="relative flex-1 overflow-hidden cursor-grab active:cursor-grabbing select-none"
-        style={{ background: '#070709' }}
+        style={{ background: '#000000' }}
         onMouseDown={onBgMouseDown}
         onClick={() => setSelected(null)}
       >
@@ -326,15 +326,15 @@ export default function GraphPage() {
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
-            backgroundImage: 'radial-gradient(circle, #1c1c24 1px, transparent 1px)',
+            backgroundImage: 'radial-gradient(circle, #1a1a1a 1px, transparent 1px)',
             backgroundSize: '28px 28px',
           }}
         />
 
         {nodes.length === 0 && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-[#252530]">
-            <Share2 size={36} />
-            <p className="font-mono text-sm">no agents or peers</p>
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-[#2a2a2a]">
+            <Share2 size={28} />
+            <p className="font-mono text-xs">no agents or peers</p>
           </div>
         )}
 
@@ -376,16 +376,16 @@ export default function GraphPage() {
                   {active && (
                     <line
                       x1={s.x} y1={s.y} x2={t.x} y2={t.y}
-                      stroke="#00c8c8"
+                      stroke="#ffffff"
                       strokeWidth={6}
                       strokeOpacity={0.06}
                     />
                   )}
                   <line
                     x1={s.x} y1={s.y} x2={t.x} y2={t.y}
-                    stroke={active ? '#00c8c8' : '#1e1e28'}
+                    stroke={active ? '#888888' : '#1c1c1c'}
                     strokeWidth={active ? 1.5 : 1}
-                    strokeOpacity={active ? 0.65 : 1}
+                    strokeOpacity={active ? 0.6 : 1}
                     strokeDasharray={active ? '6 6' : undefined}
                     className={active ? 'edge-flow' : undefined}
                   />
@@ -406,18 +406,18 @@ export default function GraphPage() {
                 className={clsx(
                   'absolute rounded-xl border cursor-pointer transition-shadow duration-150',
                   isSelected
-                    ? 'border-[#00c8c8]/50 shadow-[0_0_0_1px_rgba(0,200,200,0.2),0_0_24px_rgba(0,200,200,0.12)]'
+                    ? 'border-[#ffffff]/15 shadow-[0_0_0_1px_rgba(255,255,255,0.12)]'
                     : node.kind === 'agent'
-                      ? 'border-[#1e1e28] hover:border-[#2c2c3c] hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)]'
-                      : 'border-[#181820] hover:border-[#26263a] hover:shadow-[0_4px_20px_rgba(0,0,0,0.3)]',
+                      ? 'border-[#1c1c1c] hover:border-[#2a2a2a]'
+                      : 'border-[#181818] hover:border-[#2a2a2a]',
                 )}
                 style={{
                   left: node.x - w / 2,
                   top: node.y - h / 2,
                   width: w,
                   background: node.kind === 'agent'
-                    ? 'linear-gradient(135deg, #0e0e16 0%, #0c0c14 100%)'
-                    : 'linear-gradient(135deg, #0b0b11 0%, #0a0a0f 100%)',
+                    ? '#0c0c0c'
+                    : '#0c0c0c',
                 }}
                 onMouseDown={e => onNodeMouseDown(e, node.id)}
                 onClick={e => { e.stopPropagation(); setSelected(node.id); }}
@@ -444,7 +444,7 @@ export default function GraphPage() {
               key={title}
               onClick={e => { e.stopPropagation(); fn(); }}
               title={title}
-              className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#1e1e28] bg-[#0e0e16]/90 text-[#444] backdrop-blur-sm transition-colors hover:border-[#2c2c3c] hover:text-[#888]"
+              className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#1c1c1c] bg-black/90 text-[#444] transition-colors hover:border-[#2a2a2a] hover:text-[#888]"
             >
               <Icon size={13} />
             </button>
@@ -453,22 +453,22 @@ export default function GraphPage() {
 
         {/* Scale indicator — top left */}
         <div className="absolute top-4 left-4 z-10">
-          <span className="font-mono text-[9px] text-[#2a2a38]">
+          <span className="font-mono text-[9px] text-[#2a2a2a]">
             {Math.round(transform.scale * 100)}%
           </span>
         </div>
 
         {/* Legend — bottom left */}
         <div className="absolute bottom-4 left-4 z-10 flex items-center gap-3">
-          <LegendItem color="#00c8c8" label="agent" />
-          <LegendItem color="#3a3a50" label="peer" />
-          <span className="font-mono text-[9px] text-[#252530]">── shared capability</span>
+          <LegendItem color="#666666" label="agent" />
+          <LegendItem color="#333333" label="peer" />
+          <span className="font-mono text-[9px] text-[#2a2a2a]">── shared capability</span>
         </div>
 
         {/* Node count — bottom center */}
         {nodes.length > 0 && (
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10">
-            <span className="font-mono text-[9px] text-[#2a2a38]">
+            <span className="font-mono text-[9px] text-[#2a2a2a]">
               {agents.length} agent{agents.length !== 1 ? 's' : ''} · {peers.length} peer{peers.length !== 1 ? 's' : ''}
             </span>
           </div>
@@ -486,7 +486,7 @@ export default function GraphPage() {
 // ——— Node card components ———
 
 function AgentCard({ agent }: { agent: AgentInfo }) {
-  const dotColor = { idle: '#50dc78', busy: '#f0c83c', err: '#f05050' }[agent.status.toLowerCase()] ?? '#888';
+  const dotColor = { idle: '#22c55e', busy: '#f59e0b', err: '#ef4444' }[agent.status.toLowerCase()] ?? '#666';
   const successRate = agent.tasks_handled > 0
     ? Math.round((agent.tasks_succeeded / agent.tasks_handled) * 100)
     : null;
@@ -495,31 +495,31 @@ function AgentCard({ agent }: { agent: AgentInfo }) {
     <div>
       {/* Top accent bar — color matches status */}
       <div
-        className="h-0.5 rounded-t-xl opacity-70"
+        className="h-px opacity-40"
         style={{ background: `linear-gradient(90deg, ${dotColor}60, transparent)` }}
       />
       <div className="p-3">
         <div className="mb-1.5 flex items-center justify-between gap-2">
-          <span className="truncate text-[11px] font-semibold leading-none text-[#e4e4f0]">{agent.name}</span>
+          <span className="truncate text-[11px] font-semibold leading-none text-[#eeeeee]">{agent.name}</span>
           <span
             className="h-2 w-2 shrink-0 rounded-full ring-1 ring-black/50"
-            style={{ backgroundColor: dotColor, boxShadow: `0 0 6px ${dotColor}60` }}
+            style={{ backgroundColor: dotColor, boxShadow: undefined }}
           />
         </div>
-        <p className="mb-2 truncate font-mono text-[9px] text-[#3a3a50]">
+        <p className="mb-2 truncate font-mono text-[9px] text-[#444444]">
           {agent.provider_type ? `${agent.provider_type} · ${agent.model_name}` : 'no model'}
         </p>
         {agent.capabilities.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1">
             {agent.capabilities.slice(0, 3).map(c => (
-              <span key={c} className="rounded-md bg-[#141420] px-1.5 py-0.5 font-mono text-[8px] text-[#4a4a68]">{c}</span>
+              <span key={c} className="rounded border border-[#141414] px-1.5 py-0.5 font-mono text-[8px] text-[#444444]">{c}</span>
             ))}
             {agent.capabilities.length > 3 && (
               <span className="self-center text-[8px] text-[#2e2e40]">+{agent.capabilities.length - 3}</span>
             )}
           </div>
         )}
-        <div className="flex gap-3 border-t border-[#141420] pt-1.5">
+        <div className="flex gap-3 border-t border-[#141414] pt-1.5">
           <MiniStat label="tasks" value={String(agent.tasks_handled)} />
           <MiniStat label="ok" value={successRate !== null ? `${successRate}%` : '—'} />
           <MiniStat label="ms" value={agent.avg_latency_ms > 0 ? String(agent.avg_latency_ms) : '—'} />
@@ -534,16 +534,16 @@ function PeerCard({ peer }: { peer: PeerResponse }) {
     <div className="p-3">
       <div className="mb-1 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#3a3a50]" />
-          <span className="truncate font-mono text-[10px] text-[#4a4a68]">{peer.peer_id.slice(0, 14)}…</span>
+          <span className="h-1.5 w-1.5 rounded-full bg-[#333333]" />
+          <span className="truncate font-mono text-[10px] text-[#444444]">{peer.peer_id.slice(0, 14)}…</span>
         </div>
-        <span className="shrink-0 text-[9px] text-[#2a2a38]">{peer.last_seen_ago}</span>
+        <span className="shrink-0 text-[9px] text-[#2a2a2a]">{peer.last_seen_ago}</span>
       </div>
-      <p className="mb-2 truncate font-mono text-[9px] text-[#303040]">{peer.addr}</p>
+      <p className="mb-2 truncate font-mono text-[9px] text-[#333333]">{peer.addr}</p>
       {peer.capabilities.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {peer.capabilities.slice(0, 4).map(c => (
-            <span key={c} className="rounded-md bg-[#111118] px-1.5 py-0.5 font-mono text-[8px] text-[#3a3a50]">{c}</span>
+            <span key={c} className="rounded-md bg-[#111111] px-1.5 py-0.5 font-mono text-[8px] text-[#444444]">{c}</span>
           ))}
         </div>
       )}
@@ -555,7 +555,7 @@ function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <p className="text-[8px] uppercase tracking-widest text-[#2e2e40]">{label}</p>
-      <p className="font-mono text-[9px] text-[#6868a0]">{value}</p>
+      <p className="font-mono text-[9px] text-[#555555]">{value}</p>
     </div>
   );
 }
@@ -567,7 +567,7 @@ function LegendItem({ color, label }: { color: string; label: string }) {
         className="h-2 w-2 rounded-sm border"
         style={{ backgroundColor: `${color}18`, borderColor: `${color}60` }}
       />
-      <span className="font-mono text-[9px] text-[#2a2a38]">{label}</span>
+      <span className="font-mono text-[9px] text-[#2a2a2a]">{label}</span>
     </div>
   );
 }
@@ -588,23 +588,23 @@ function DetailPanel({ node, tasks, onClose }: {
 
   if (node.kind === 'agent' && node.agent) {
     const a = node.agent;
-    const dotColor = { idle: '#50dc78', busy: '#f0c83c', err: '#f05050' }[a.status.toLowerCase()] ?? '#888';
-    const lcColor = { Running: '#50dc78', Paused: '#f0c83c', Stopped: '#f05050', Created: '#444' }[a.lifecycle_state] ?? '#444';
+    const dotColor = { idle: '#22c55e', busy: '#f59e0b', err: '#ef4444' }[a.status.toLowerCase()] ?? '#666';
+    const lcColor = { Running: '#22c55e', Paused: '#f59e0b', Stopped: '#ef4444', Created: '#333' }[a.lifecycle_state] ?? '#333';
     const successRate = a.tasks_handled > 0 ? Math.round((a.tasks_succeeded / a.tasks_handled) * 100) : null;
     const relatedTasks = tasks.filter(t => a.capabilities.includes(t.capability)).slice(0, 12);
 
     return (
-      <div className="flex w-72 shrink-0 flex-col overflow-hidden border-l border-[#141420] bg-[#08080f] animate-fade-in">
+      <div className="flex w-72 shrink-0 flex-col overflow-hidden border-l border-[#141414] bg-[#0c0c0c] animate-fade-in">
         {/* Header with accent */}
-        <div className="relative border-b border-[#141420]">
-          <div className="h-0.5" style={{ background: `linear-gradient(90deg, ${dotColor}50, transparent)` }} />
+        <div className="relative border-b border-[#141414]">
+          <div className="h-0.5" style={{ background: `linear-gradient(90deg, ${dotColor}30, transparent)` }} />
           <div className="flex items-center justify-between px-4 py-3">
             <div className="flex min-w-0 items-center gap-2">
               <span
                 className="h-2 w-2 shrink-0 rounded-full"
-                style={{ backgroundColor: dotColor, boxShadow: `0 0 8px ${dotColor}50` }}
+                style={{ backgroundColor: dotColor }}
               />
-              <span className="truncate text-sm font-semibold text-[#e4e4f0]">{a.name}</span>
+              <span className="truncate text-sm font-semibold text-[#eeeeee]">{a.name}</span>
             </div>
             <CloseBtn onClose={onClose} />
           </div>
@@ -613,7 +613,7 @@ function DetailPanel({ node, tasks, onClose }: {
         <div className="flex-1 space-y-5 overflow-y-auto p-4">
           {a.provider_type && (
             <Sec label="Model">
-              <p className="font-mono text-xs text-[#5a5a80]">{a.provider_type} / {a.model_name}</p>
+              <p className="font-mono text-xs text-[#555555]">{a.provider_type} / {a.model_name}</p>
             </Sec>
           )}
           <Sec label="Status">
@@ -624,7 +624,7 @@ function DetailPanel({ node, tasks, onClose }: {
               )}
             </div>
             {a.last_heartbeat_secs_ago != null && (
-              <p className="mt-1 font-mono text-[10px] text-[#333345]">heartbeat {a.last_heartbeat_secs_ago}s ago</p>
+              <p className="mt-1 font-mono text-[10px] text-[#333333]">heartbeat {a.last_heartbeat_secs_ago}s ago</p>
             )}
           </Sec>
           <Sec label="Metrics">
@@ -634,9 +634,9 @@ function DetailPanel({ node, tasks, onClose }: {
                 { l: 'Success', v: successRate !== null ? `${successRate}%` : '—' },
                 { l: 'Avg ms', v: a.avg_latency_ms > 0 ? String(a.avg_latency_ms) : '—' },
               ].map(({ l, v }) => (
-                <div key={l} className="rounded-lg border border-[#141420] bg-[#0e0e18] p-2.5">
-                  <p className="text-[9px] uppercase tracking-widest text-[#333345]">{l}</p>
-                  <p className="mt-0.5 font-mono text-sm text-[#d4d4f0]">{v}</p>
+                <div key={l} className="rounded-lg border border-[#141414] bg-[#111111] p-2.5">
+                  <p className="text-[9px] uppercase tracking-widest text-[#333333]">{l}</p>
+                  <p className="mt-0.5 font-mono text-sm text-[#dddddd]">{v}</p>
                 </div>
               ))}
             </div>
@@ -645,14 +645,14 @@ function DetailPanel({ node, tasks, onClose }: {
             <Sec label="Capabilities">
               <div className="flex flex-wrap gap-1.5">
                 {a.capabilities.map(c => (
-                  <span key={c} className="rounded-md border border-[#141420] bg-[#0e0e18] px-2 py-0.5 font-mono text-[10px] text-[#5a5a80]">{c}</span>
+                  <span key={c} className="rounded-md border border-[#141414] bg-[#111111] px-2 py-0.5 font-mono text-[10px] text-[#555555]">{c}</span>
                 ))}
               </div>
             </Sec>
           )}
           <Sec label="Recent Activity">
             {relatedTasks.length === 0 ? (
-              <p className="text-[10px] text-[#252530]">No recent tasks</p>
+              <p className="text-[10px] text-[#2a2a2a]">No recent tasks</p>
             ) : (
               <div className="space-y-1">
                 {relatedTasks.map(t => <TaskRow key={t.id} task={t} />)}
@@ -667,34 +667,34 @@ function DetailPanel({ node, tasks, onClose }: {
   if (node.kind === 'peer' && node.peer) {
     const p = node.peer;
     return (
-      <div className="flex w-72 shrink-0 flex-col overflow-hidden border-l border-[#141420] bg-[#08080f] animate-fade-in">
-        <div className="flex items-center justify-between border-b border-[#141420] px-4 py-3">
+      <div className="flex w-72 shrink-0 flex-col overflow-hidden border-l border-[#141414] bg-[#0c0c0c] animate-fade-in">
+        <div className="flex items-center justify-between border-b border-[#141414] px-4 py-3">
           <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-[#3a3a50]" />
-            <span className="text-sm font-semibold text-[#e4e4f0]">Peer</span>
+            <span className="h-2 w-2 rounded-full bg-[#333333]" />
+            <span className="text-sm font-semibold text-[#eeeeee]">Peer</span>
           </div>
           <CloseBtn onClose={onClose} />
         </div>
         <div className="flex-1 space-y-4 overflow-y-auto p-4">
           <Sec label="Peer ID">
             <div className="flex items-start gap-2">
-              <p className="flex-1 break-all font-mono text-[10px] leading-relaxed text-[#5a5a80]">{p.peer_id}</p>
-              <button onClick={() => copy(p.peer_id)} className="mt-0.5 shrink-0 text-[#333345] transition-colors hover:text-[#888]">
-                {copied ? <Check size={12} className="text-[#50dc78]" /> : <Copy size={12} />}
+              <p className="flex-1 break-all font-mono text-[10px] leading-relaxed text-[#555555]">{p.peer_id}</p>
+              <button onClick={() => copy(p.peer_id)} className="mt-0.5 shrink-0 text-[#333333] transition-colors hover:text-[#888]">
+                {copied ? <Check size={12} className="text-[#22c55e]" /> : <Copy size={12} />}
               </button>
             </div>
           </Sec>
           <Sec label="Address">
-            <p className="font-mono text-xs text-[#5a5a80]">{p.addr}</p>
+            <p className="font-mono text-xs text-[#555555]">{p.addr}</p>
           </Sec>
           <Sec label="Last Seen">
-            <p className="text-xs text-[#5a5a80]">{p.last_seen_ago}</p>
+            <p className="text-xs text-[#555555]">{p.last_seen_ago}</p>
           </Sec>
           {p.capabilities.length > 0 && (
             <Sec label="Capabilities">
               <div className="flex flex-wrap gap-1.5">
                 {p.capabilities.map(c => (
-                  <span key={c} className="rounded-md border border-[#141420] bg-[#0e0e18] px-2 py-0.5 font-mono text-[10px] text-[#5a5a80]">{c}</span>
+                  <span key={c} className="rounded-md border border-[#141414] bg-[#111111] px-2 py-0.5 font-mono text-[10px] text-[#555555]">{c}</span>
                 ))}
               </div>
             </Sec>
@@ -710,7 +710,7 @@ function DetailPanel({ node, tasks, onClose }: {
 function Sec({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="mb-2 text-[9px] uppercase tracking-widest text-[#2e2e40]">{label}</p>
+      <p className="mb-2 text-[9px] uppercase tracking-widest text-[#2a2a2a]">{label}</p>
       {children}
     </div>
   );
@@ -718,24 +718,24 @@ function Sec({ label, children }: { label: string; children: React.ReactNode }) 
 
 function CloseBtn({ onClose }: { onClose: () => void }) {
   return (
-    <button onClick={onClose} className="text-[#333345] transition-colors hover:text-[#888]">
+    <button onClick={onClose} className="text-[#333333] transition-colors hover:text-[#888]">
       <X size={14} />
     </button>
   );
 }
 
 function TaskRow({ task }: { task: TaskLogEntry }) {
-  const color = { completed: '#50dc78', running: '#00c8c8', failed: '#f05050', pending: '#666688', cancelled: '#f0c83c' }[task.status] ?? '#444';
+  const color = { completed: '#22c55e', running: '#ffffff', failed: '#ef4444', pending: '#555555', cancelled: '#f59e0b' }[task.status] ?? '#444';
   const dur = task.duration_ms > 0
     ? task.duration_ms < 1000 ? `${task.duration_ms}ms` : `${(task.duration_ms / 1000).toFixed(1)}s`
     : '—';
   return (
-    <div className="flex items-center justify-between gap-2 rounded-lg bg-[#0c0c14] px-2.5 py-1.5">
+    <div className="flex items-center justify-between gap-2 rounded bg-[#111111] px-2.5 py-1.5">
       <div className="flex min-w-0 items-center gap-2">
         <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-        <span className="truncate font-mono text-[10px] text-[#5a5a80]">{task.capability}</span>
+        <span className="truncate font-mono text-[10px] text-[#555555]">{task.capability}</span>
       </div>
-      <span className="shrink-0 font-mono text-[9px] text-[#333345]">{dur}</span>
+      <span className="shrink-0 font-mono text-[9px] text-[#333333]">{dur}</span>
     </div>
   );
 }

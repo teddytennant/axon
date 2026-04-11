@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "identifier": "dev.axon.desktop",
   "build": {
+    "beforeDevCommand": "npm run dev",
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1421"
   },

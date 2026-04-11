@@ -1,87 +1,105 @@
-import { useState } from 'react';
-import { NavLink } from 'react-router';
+import { useEffect, useState } from 'react';
+import { NavLink, useNavigate } from 'react-router';
 import { clsx } from 'clsx';
 import {
   Share2, MessageSquare, Network, Bot, ListTodo,
-  GitBranch, Shield, Settings, PanelLeft, PanelLeftClose,
+  GitBranch, Shield, Settings,
 } from 'lucide-react';
 
 const navItems = [
-  { to: '/', icon: Share2, label: 'Graph', primary: true },
-  { to: '/chat', icon: MessageSquare, label: 'Chat' },
-  { to: '/mesh', icon: Network, label: 'Mesh' },
-  { to: '/agents', icon: Bot, label: 'Agents' },
-  { to: '/tasks', icon: ListTodo, label: 'Tasks' },
-  { to: '/workflows', icon: GitBranch, label: 'Workflows' },
-  { to: '/trust', icon: Shield, label: 'Trust' },
-  { to: '/settings', icon: Settings, label: 'Settings' },
+  { to: '/',          icon: Share2,        label: 'Graph',     key: '1' },
+  { to: '/chat',      icon: MessageSquare, label: 'Chat',      key: '2' },
+  { to: '/mesh',      icon: Network,       label: 'Mesh',      key: '3' },
+  { to: '/agents',    icon: Bot,           label: 'Agents',    key: '4' },
+  { to: '/tasks',     icon: ListTodo,      label: 'Tasks',     key: '5' },
+  { to: '/workflows', icon: GitBranch,     label: 'Workflows', key: '6' },
+  { to: '/trust',     icon: Shield,        label: 'Trust',     key: '7' },
+  { to: '/settings',  icon: Settings,      label: 'Settings',  key: '8' },
 ] as const;
 
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const n = parseInt(e.key);
+      if (n >= 1 && n <= 8) navigate(navItems[n - 1]!.to);
+      if (e.key === '[') setCollapsed(c => !c);
+    };
+    window.addEventListener('keydown', down);
+    return () => window.removeEventListener('keydown', down);
+  }, [navigate]);
 
   return (
     <aside
       className={clsx(
-        'flex flex-col h-screen border-r border-[#141424] bg-[#0a0a12] transition-all duration-200 shrink-0',
-        collapsed ? 'w-12' : 'w-52',
+        'flex flex-col h-screen bg-[#0a0a0a] border-r border-[#1a1a1a] shrink-0 transition-[width] duration-150',
+        collapsed ? 'w-10' : 'w-40',
       )}
     >
-      {/* Logo */}
+      {/* wordmark / drag region */}
       <div
-        className="flex items-center justify-between h-11 px-3 border-b border-[#141424]"
+        className="flex items-center h-9 px-3 border-b border-[#1a1a1a] shrink-0"
         data-tauri-drag-region
       >
-        {!collapsed && (
-          <div className="flex items-center gap-2">
-            <div className="flex h-5 w-5 items-center justify-center rounded bg-[#00c8c8]/10">
-              <Share2 size={10} className="text-[#00c8c8]" strokeWidth={2.5} />
-            </div>
-            <span className="font-mono text-xs font-bold tracking-widest text-[#00c8c8]">AXON</span>
-          </div>
-        )}
         <button
           onClick={() => setCollapsed(c => !c)}
-          className="p-1 rounded text-[#2e2e4a] hover:text-[#6868a0] hover:bg-[#141424] transition-colors"
+          className="flex items-center gap-2 w-full text-left"
+          title="Toggle sidebar  [ "
         >
-          {collapsed ? <PanelLeft size={14} /> : <PanelLeftClose size={14} />}
+          <span className="text-[10px] font-bold tracking-[0.25em] text-white">
+            {collapsed ? 'A' : 'AXON'}
+          </span>
         </button>
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 py-2 px-1.5 space-y-px overflow-y-auto">
-        {navItems.map(({ to, icon: Icon, label, primary }) => (
+      {/* nav */}
+      <nav className="flex-1 py-1 overflow-y-auto">
+        {navItems.map(({ to, icon: Icon, label, key }) => (
           <NavLink
             key={to}
             to={to}
             end={to === '/'}
             className={({ isActive }) => clsx(
-              'relative flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-xs transition-colors',
-              isActive
-                ? primary
-                  ? 'bg-[#00c8c8]/10 text-[#00c8c8]'
-                  : 'bg-[#00c8c8]/8 text-[#00c8c8]/80'
-                : 'text-[#3a3a58] hover:text-[#8888b0] hover:bg-[#141424]',
+              'relative flex items-center gap-2.5 px-3 py-[7px] group transition-colors',
+              isActive ? 'text-white' : 'text-[#3a3a3a] hover:text-[#999]',
               collapsed && 'justify-center px-0',
             )}
           >
             {({ isActive }) => (
               <>
-                {isActive && !collapsed && (
-                  <span className="absolute left-0 top-1 bottom-1 w-0.5 rounded-full bg-[#00c8c8]/70" />
+                {isActive && (
+                  <span className="absolute left-0 inset-y-1 w-[2px] bg-white rounded-r" />
                 )}
-                <Icon size={14} className="shrink-0" strokeWidth={isActive ? 2.2 : 1.8} />
-                {!collapsed && <span className={isActive ? 'font-semibold' : ''}>{label}</span>}
+                <Icon
+                  size={13}
+                  strokeWidth={isActive ? 2 : 1.5}
+                  className="shrink-0"
+                />
+                {!collapsed && (
+                  <>
+                    <span className="flex-1 text-[11px]">{label}</span>
+                    <span className={clsx(
+                      'text-[9px] tabular-nums',
+                      isActive ? 'text-[#444]' : 'text-[#252525] group-hover:text-[#3a3a3a]',
+                    )}>
+                      {key}
+                    </span>
+                  </>
+                )}
               </>
             )}
           </NavLink>
         ))}
       </nav>
 
-      {/* Version */}
+      {/* footer */}
       {!collapsed && (
-        <div className="border-t border-[#141424] p-3">
-          <p className="font-mono text-[8px] text-[#1e1e30]">axon desktop v0.1</p>
+        <div className="px-3 py-2 border-t border-[#1a1a1a]">
+          <p className="text-[9px] text-[#222]">v0.1  <span className="text-[#1a1a1a]">[ collapse</span></p>
         </div>
       )}
     </aside>

@@ -1,6 +1,5 @@
 import { useLocation } from 'react-router';
 import { useStatus } from '../../hooks/use-api';
-import { Activity, Zap } from 'lucide-react';
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Chat',
@@ -26,34 +25,27 @@ export function Header() {
   const pageTitle = PAGE_TITLES[location.pathname] ?? '';
 
   return (
-    <header className="flex h-12 items-center justify-between border-b border-[#1a1a1a] bg-[#0a0a0a] px-5">
+    <header className="flex h-11 items-center justify-between border-b border-[#1c1c1c] bg-[#000000] px-5">
       <div className="flex items-center gap-3">
-        <span className="text-sm font-semibold text-[#f5f5f5]">{pageTitle}</span>
+        <span className="text-sm font-medium text-white">{pageTitle}</span>
         {currentModel && (
           <>
-            <span className="text-[#333]">·</span>
-            <span className="font-mono text-xs text-[#444]">{currentModel}</span>
+            <span className="text-[#2a2a2a]">·</span>
+            <span className="font-mono text-xs text-[#3a3a3a]">{currentModel}</span>
           </>
         )}
       </div>
 
       <div className="flex items-center gap-4">
-        <div className="flex items-center gap-1.5 text-xs text-[#444]">
-          <Activity size={13} />
-          <span className="font-mono">{peerCount} peer{peerCount !== 1 ? 's' : ''}</span>
-        </div>
+        {peerCount > 0 && (
+          <span className="font-mono text-xs text-[#3a3a3a] tabular-nums">
+            {peerCount}p
+          </span>
+        )}
 
-        <div className={`flex items-center gap-1.5 text-[10px] font-medium px-2 py-0.5 rounded-full ${
-          isOnline
-            ? 'bg-[#50dc78]/8 text-[#50dc78]'
-            : 'bg-[#f05050]/8 text-[#f05050]'
-        }`}>
-          {isOnline ? (
-            <Zap size={10} className="fill-current" />
-          ) : (
-            <span className="h-1.5 w-1.5 rounded-full bg-current" />
-          )}
-          {isOnline ? 'live' : 'offline'}
+        <div className="flex items-center gap-1.5">
+          <span className={`h-[5px] w-[5px] rounded-full ${isOnline ? 'bg-[#22c55e]' : 'bg-[#ef4444]'}`} />
+          <span className="text-[11px] text-[#3a3a3a]">{isOnline ? 'live' : 'offline'}</span>
         </div>
       </div>
     </header>

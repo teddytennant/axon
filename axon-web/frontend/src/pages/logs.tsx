@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { clsx } from 'clsx';
-import { ScrollText } from 'lucide-react';
 import { useWebSocket } from '../hooks/use-websocket';
 
 type LogLevel = 'all' | 'warn' | 'error';
@@ -60,17 +59,17 @@ export default function LogsPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-3 border-b border-[#222] px-6 py-3">
-        <h1 className="text-lg font-semibold text-[#f5f5f5]">Logs</h1>
-        <span className="font-mono text-xs text-[#555]">{filtered.length} lines</span>
-        <div className="ml-auto flex gap-1.5">
+      <div className="flex items-center gap-3 border-b border-[#1c1c1c] px-6 py-3">
+        <h1 className="text-sm font-medium text-white">Logs</h1>
+        <span className="font-mono text-xs text-[#3a3a3a] tabular-nums">{filtered.length}</span>
+        <div className="ml-auto flex gap-1">
           {(['all', 'warn', 'error'] as const).map((level) => (
             <button
               key={level}
               onClick={() => setFilter(level)}
               className={clsx(
-                'rounded-lg px-3 py-1 text-xs font-medium uppercase transition-colors',
-                filter === level ? 'bg-[#181818] text-[#f5f5f5]' : 'text-[#555] hover:text-[#888]',
+                'px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide transition-colors rounded',
+                filter === level ? 'text-white bg-[#141414]' : 'text-[#3a3a3a] hover:text-[#6b6b6b]',
               )}
             >
               {level === 'all' ? 'ALL' : level === 'warn' ? 'WARN+' : 'ERR'}
@@ -86,8 +85,7 @@ export default function LogsPage() {
       >
         {filtered.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center">
-            <ScrollText size={32} className="mb-3 text-[#555]" />
-            <p className="font-sans text-sm text-[#555]">
+            <p className="font-sans text-sm text-[#3a3a3a]">
               {logs.length === 0 ? 'Waiting for log events...' : 'No matching logs'}
             </p>
           </div>
@@ -104,15 +102,15 @@ export default function LogsPage() {
 }
 
 const levelColor: Record<LogLine['level'], string> = {
-  error: 'text-[#f05050]',
-  warn: 'text-[#f0c83c]',
-  info: 'text-[#888]',
-  debug: 'text-[#444]',
+  error: 'text-[#ef4444]',
+  warn:  'text-[#f59e0b]',
+  info:  'text-[#6b6b6b]',
+  debug: 'text-[#3a3a3a]',
 };
 
 function LogEntry({ log }: { log: LogLine }) {
   return (
-    <div className={clsx('py-0.5 leading-5 hover:bg-[#111]', levelColor[log.level])}>
+    <div className={clsx('py-0.5 leading-5 hover:bg-[#0c0c0c]', levelColor[log.level])}>
       {log.text}
     </div>
   );

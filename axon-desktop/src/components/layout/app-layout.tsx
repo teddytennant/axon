@@ -4,11 +4,10 @@ import { Titlebar } from './titlebar';
 
 export function AppLayout() {
   const location = useLocation();
-  // Graph page gets full height without titlebar chrome
   const isGraph = location.pathname === '/';
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#07070d]">
+    <div className="flex h-screen overflow-hidden bg-[#000000]">
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         {!isGraph && <Titlebar />}

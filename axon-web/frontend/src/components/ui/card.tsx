@@ -20,7 +20,7 @@ export function Card({
   return (
     <div
       className={clsx(
-        "rounded-lg border border-[#222222] bg-[#111111]",
+        "rounded border border-[#1c1c1c] bg-[#0c0c0c]",
         paddingStyles[padding],
         className,
       )}
@@ -50,7 +50,7 @@ export function CardTitle({
 }: HTMLAttributes<HTMLHeadingElement>) {
   return (
     <h3
-      className={clsx("text-sm font-medium text-[#f5f5f5]", className)}
+      className={clsx("text-sm font-medium text-white", className)}
       {...props}
     />
   );

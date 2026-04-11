@@ -54,27 +54,22 @@ export function Sidebar() {
   return (
     <aside
       className={clsx(
-        "flex flex-col h-screen border-r border-[#1a1a1a] bg-[#0a0a0a] transition-all duration-200",
-        collapsed ? "w-14" : "w-56",
+        "flex flex-col h-screen border-r border-[#1c1c1c] bg-[#000000] transition-all duration-200",
+        collapsed ? "w-12" : "w-52",
       )}
     >
       {/* Logo */}
-      <div className="flex items-center justify-between h-14 px-4 border-b border-[#1a1a1a]">
+      <div className="flex items-center justify-between h-12 px-4 border-b border-[#1c1c1c]">
         {!collapsed && (
-          <div className="flex items-center gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[#00c8c8]/10">
-              <Share2 size={12} className="text-[#00c8c8]" strokeWidth={2.5} />
-            </div>
-            <span className="font-mono text-sm font-semibold tracking-widest text-[#00c8c8]">
-              AXON
-            </span>
-          </div>
+          <span className="font-mono text-xs font-semibold tracking-[0.2em] text-white">
+            AXON
+          </span>
         )}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="p-1.5 rounded-md text-[#444] hover:text-[#888] hover:bg-[#181818] transition-colors cursor-pointer"
+          className="p-1.5 rounded text-[#3a3a3a] hover:text-[#6b6b6b] hover:bg-[#141414] transition-colors cursor-pointer ml-auto"
         >
-          {collapsed ? <PanelLeft size={15} /> : <PanelLeftClose size={15} />}
+          {collapsed ? <PanelLeft size={14} /> : <PanelLeftClose size={14} />}
         </button>
       </div>
 
@@ -87,22 +82,25 @@ export function Sidebar() {
             end={to === "/"}
             className={({ isActive }) =>
               clsx(
-                "relative flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
+                "relative flex items-center gap-2.5 rounded px-3 py-2 text-sm transition-colors",
                 isActive
-                  ? "bg-[#00c8c8]/8 text-[#00c8c8]"
-                  : "text-[#666] hover:text-[#ccc] hover:bg-[#141414]",
+                  ? "text-white"
+                  : "text-[#3a3a3a] hover:text-[#aaaaaa] hover:bg-[#0c0c0c]",
                 collapsed && "justify-center px-0",
               )
             }
           >
             {({ isActive }) => (
               <>
-                {/* Left accent bar for active item */}
                 {isActive && !collapsed && (
-                  <span className="absolute left-0 top-1 bottom-1 w-0.5 rounded-full bg-[#00c8c8]" />
+                  <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full bg-white" />
                 )}
-                <Icon size={16} className="shrink-0" strokeWidth={isActive ? 2 : 1.75} />
-                {!collapsed && <span className={clsx("font-medium", isActive && "font-semibold")}>{label}</span>}
+                <Icon size={15} className="shrink-0" strokeWidth={isActive ? 2 : 1.5} />
+                {!collapsed && (
+                  <span className={clsx("text-[13px]", isActive ? "font-medium" : "font-normal")}>
+                    {label}
+                  </span>
+                )}
               </>
             )}
           </NavLink>
@@ -110,27 +108,27 @@ export function Sidebar() {
       </nav>
 
       {/* Peer ID */}
-      <div className="border-t border-[#1a1a1a] p-2">
+      <div className="border-t border-[#1c1c1c] p-2">
         {collapsed ? (
           <button
             onClick={copyPeerId}
-            className="flex items-center justify-center w-full p-2 rounded-md text-[#444] hover:text-[#666] hover:bg-[#141414] transition-colors cursor-pointer"
+            className="flex items-center justify-center w-full p-2 rounded text-[#3a3a3a] hover:text-[#6b6b6b] hover:bg-[#0c0c0c] transition-colors cursor-pointer"
             title={peerId || "No peer ID"}
           >
-            {copied ? <Check size={13} className="text-[#50dc78]" /> : <Copy size={13} />}
+            {copied ? <Check size={12} className="text-[#22c55e]" /> : <Copy size={12} />}
           </button>
         ) : (
           <button
             onClick={copyPeerId}
-            className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-[10px] text-[#444] hover:text-[#666] hover:bg-[#141414] transition-colors cursor-pointer group"
+            className="flex items-center gap-2 w-full px-2 py-1.5 rounded text-[10px] text-[#3a3a3a] hover:text-[#6b6b6b] hover:bg-[#0c0c0c] transition-colors cursor-pointer group"
             title={peerId || "No peer ID"}
           >
             <span className="font-mono truncate">{truncatedId}</span>
             {copied ? (
-              <Check size={11} className="shrink-0 text-[#50dc78]" />
+              <Check size={10} className="shrink-0 text-[#22c55e]" />
             ) : (
               <Copy
-                size={11}
+                size={10}
                 className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
               />
             )}

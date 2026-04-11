@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
-import { GitBranch, ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useWebSocket } from '../hooks/use-websocket';
 import type { WorkflowSnapshot, WorkflowsResponse } from '../lib/types';
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  Running:   { label: 'RUNNING',   color: '#50dc78', bg: 'bg-[#50dc78]/10' },
-  Completed: { label: 'DONE',      color: '#00c8c8', bg: 'bg-[#00c8c8]/10' },
-  Failed:    { label: 'FAILED',    color: '#f05050', bg: 'bg-[#f05050]/10' },
+const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
+  Running:   { label: 'RUNNING',   color: '#ffffff' },
+  Completed: { label: 'DONE',      color: '#22c55e' },
+  Failed:    { label: 'FAILED',    color: '#ef4444' },
 };
 
 const STEP_ICON: Record<string, string> = {
@@ -37,25 +37,20 @@ export default function WorkflowsPage() {
   return (
     <div className="p-6">
       <div className="mb-6 flex items-center gap-3">
-        <h1 className="text-lg font-semibold text-[#f5f5f5]">Workflows</h1>
-        <span className="rounded-full bg-[#00c8c8]/10 px-2.5 py-0.5 font-mono text-xs text-[#00c8c8]">
-          {data.active.length} active
-        </span>
-        <span className="rounded-full bg-[#333]/60 px-2.5 py-0.5 font-mono text-xs text-[#555]">
-          {data.completed.length} completed
-        </span>
+        <h1 className="text-sm font-medium text-white">Workflows</h1>
+        <span className="font-mono text-xs text-white tabular-nums">{data.active.length} active</span>
+        <span className="font-mono text-xs text-[#3a3a3a] tabular-nums">{data.completed.length} done</span>
       </div>
 
       {all.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24">
-          <GitBranch size={32} className="mb-3 text-[#555]" />
-          <p className="text-sm text-[#555]">No workflows running</p>
-          <p className="mt-1 font-mono text-xs text-[#444]">
-            Use pipeline(), fan_out(), delegate(), or swarm_dispatch()
+          <p className="text-sm text-[#3a3a3a]">No workflows running</p>
+          <p className="mt-1 font-mono text-xs text-[#2a2a2a]">
+            pipeline(), fan_out(), delegate(), swarm_dispatch()
           </p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           {all.map(wf => (
             <WorkflowRow
               key={wf.id}
@@ -75,67 +70,67 @@ function WorkflowRow({ wf, expanded, onToggle }: {
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const st = STATUS_CONFIG[wf.status] ?? { label: wf.status, color: '#555', bg: 'bg-[#555]/10' };
+  const st = STATUS_CONFIG[wf.status] ?? { label: wf.status, color: '#6b6b6b' };
   const progress = wf.steps_total > 0 ? wf.steps_completed / wf.steps_total : 0;
 
   return (
-    <div className="rounded-lg border border-[#222] bg-[#111]">
+    <div className="rounded border border-[#1c1c1c] bg-[#0c0c0c]">
       <button
-        className="flex w-full items-center gap-3 px-4 py-3 text-left"
+        className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-[#141414] transition-colors"
         onClick={onToggle}
       >
-        <span className="text-[#555]">
-          {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        <span className="text-[#3a3a3a] shrink-0">
+          {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         </span>
 
-        <span className="font-mono text-[10px] text-[#444]">
+        <span className="font-mono text-[10px] text-[#3a3a3a] shrink-0">
           {wf.id.slice(0, 14)}…
         </span>
 
-        <span className="rounded bg-[#181818] px-2 py-0.5 font-mono text-[10px] text-[#888]">
+        <span className="rounded border border-[#1c1c1c] px-2 py-0.5 font-mono text-[10px] text-[#6b6b6b] shrink-0">
           {wf.pattern}
         </span>
 
-        <div className="flex flex-1 items-center gap-2">
-          <div className="h-1 flex-1 overflow-hidden rounded-full bg-[#181818]">
+        <div className="flex flex-1 items-center gap-2 min-w-0">
+          <div className="h-px flex-1 overflow-hidden bg-[#1c1c1c]">
             <div
-              className="h-full rounded-full transition-all"
+              className="h-full transition-all"
               style={{ width: `${progress * 100}%`, backgroundColor: st.color }}
             />
           </div>
-          <span className="font-mono text-[10px] text-[#555]">
+          <span className="font-mono text-[10px] text-[#3a3a3a] shrink-0 tabular-nums">
             {wf.steps_completed}/{wf.steps_total}
           </span>
         </div>
 
         <span
-          className={`rounded px-2 py-0.5 text-[10px] font-medium ${st.bg}`}
+          className="text-[10px] font-medium shrink-0"
           style={{ color: st.color }}
         >
           {st.label}
         </span>
 
         {wf.duration_ms > 0 && (
-          <span className="font-mono text-[10px] text-[#555]">{wf.duration_ms}ms</span>
+          <span className="font-mono text-[10px] text-[#3a3a3a] shrink-0 tabular-nums">{wf.duration_ms}ms</span>
         )}
 
-        <span className="text-[10px] text-[#444]">{wf.started_at}</span>
+        <span className="text-[10px] text-[#2a2a2a] shrink-0">{wf.started_at}</span>
       </button>
 
       {expanded && wf.steps.length > 0 && (
-        <div className="border-t border-[#222] px-4 py-3">
+        <div className="border-t border-[#1c1c1c] px-4 py-3">
           <div className="space-y-1.5">
             {wf.steps.map((step, i) => {
               const icon = STEP_ICON[step.status] ?? '○';
-              const color = step.status === 'Completed' ? '#50dc78'
-                : step.status === 'Failed' ? '#f05050'
-                : '#f0c83c';
+              const color = step.status === 'Completed' ? '#22c55e'
+                : step.status === 'Failed' ? '#ef4444'
+                : '#f59e0b';
               return (
                 <div key={i} className="flex items-center gap-3 font-mono text-xs">
                   <span style={{ color }}>{icon}</span>
-                  <span className="flex-1 text-[#ccc]">{step.capability}</span>
-                  <span className="text-[#555]">{step.latency_ms}ms</span>
-                  <span className="text-[#444]">{step.payload_bytes}B</span>
+                  <span className="flex-1 text-[#aaaaaa]">{step.capability}</span>
+                  <span className="text-[#3a3a3a] tabular-nums">{step.latency_ms}ms</span>
+                  <span className="text-[#2a2a2a] tabular-nums">{step.payload_bytes}B</span>
                 </div>
               );
             })}

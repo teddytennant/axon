@@ -1,50 +1,43 @@
 import { useState, useEffect } from 'react';
-import { Shield } from 'lucide-react';
 import { useTrust } from '../hooks/use-api';
 import { useWebSocket } from '../hooks/use-websocket';
 import type { TrustEntry } from '../lib/types';
 
 export default function TrustPage() {
-  const { data: initialTrust, isLoading } = useTrust();
-  const { subscribe } = useWebSocket();
-  const [entries, setEntries] = useState<TrustEntry[]>([]);
+  const { data: init, isLoading } = useTrust();
+  const { subscribe }             = useWebSocket();
+  const [entries, setEntries]     = useState<TrustEntry[]>([]);
 
-  useEffect(() => { if (initialTrust) setEntries(initialTrust); }, [initialTrust]);
-
-  useEffect(() => {
-    return subscribe('trust', (data) => {
-      setEntries(data as TrustEntry[]);
-    });
-  }, [subscribe]);
+  useEffect(() => { if (init) setEntries(init); }, [init]);
+  useEffect(() => subscribe('trust', d => setEntries(d as TrustEntry[])), [subscribe]);
 
   const sorted = [...entries].sort((a, b) => b.overall - a.overall);
 
-  if (isLoading) return <LoadingSkeleton />;
+  if (isLoading) return <Skeleton />;
 
   return (
-    <div className="p-6">
-      <div className="mb-6 flex items-center gap-3">
-        <h1 className="text-lg font-semibold text-[#f5f5f5]">Trust</h1>
-        <span className="rounded-full bg-[#00c8c8]/10 px-2.5 py-0.5 font-mono text-xs text-[#00c8c8]">{entries.length}</span>
+    <div className="h-full overflow-auto p-5">
+      <div className="mb-5 flex items-center gap-3">
+        <span className="text-[11px] text-[#666]">trust</span>
+        <span className="text-[10px] text-[#333] tabular-nums">{entries.length}</span>
       </div>
 
       {sorted.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-24">
-          <Shield size={32} className="mb-3 text-[#555]" />
-          <p className="text-sm text-[#555]">No trust data available</p>
+        <div className="flex h-48 items-center justify-center">
+          <p className="text-[11px] text-[#2a2a2a]">no trust data</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-[#222]">
-          <table className="w-full text-left text-sm">
+        <div className="rounded border border-[#1f1f1f] overflow-hidden">
+          <table className="w-full text-left">
             <thead>
-              <tr className="border-b border-[#222] bg-[#111]">
-                {['Peer', 'Overall', 'Reliability', 'Accuracy', 'Availability', 'Observations'].map((h) => (
-                  <th key={h} className="px-4 py-3 text-[10px] font-medium uppercase tracking-widest text-[#555]">{h}</th>
+              <tr className="border-b border-[#1a1a1a] bg-[#111]">
+                {['peer', 'overall', 'reliability', 'accuracy', 'availability', 'obs'].map(h => (
+                  <th key={h} className="px-3 py-2.5 text-[9px] uppercase tracking-widest text-[#333]">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {sorted.map((entry) => <TrustRow key={entry.peer_id} entry={entry} />)}
+              {sorted.map(e => <TrustRow key={e.peer_id} entry={e} />)}
             </tbody>
           </table>
         </div>
@@ -55,37 +48,39 @@ export default function TrustPage() {
 
 function ScoreBar({ value }: { value: number }) {
   const pct = Math.round(value * 100);
-  const color = pct >= 80 ? '#50dc78' : pct >= 60 ? '#00c8c8' : pct >= 40 ? '#f0c83c' : '#f05050';
+  // monochrome: bright white for high scores, dim for low
+  const lightness = Math.round(20 + pct * 0.5); // 20–70% lightness
+  const barColor  = `hsl(0 0% ${lightness}%)`;
   return (
     <div className="flex items-center gap-2">
-      <div className="h-1.5 w-20 rounded-full bg-[#181818]">
-        <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
+      <div className="h-[3px] w-16 rounded-full bg-[#1a1a1a]">
+        <div className="h-[3px] rounded-full" style={{ width: `${pct}%`, background: barColor }} />
       </div>
-      <span className="font-mono text-xs" style={{ color }}>{pct}%</span>
+      <span className="text-[10px] tabular-nums text-[#555]">{pct}</span>
     </div>
   );
 }
 
-function TrustRow({ entry }: { entry: TrustEntry }) {
+function TrustRow({ entry: e }: { entry: TrustEntry }) {
   return (
-    <tr className="border-b border-[#222] last:border-0 hover:bg-[#181818]">
-      <td className="px-4 py-3 font-mono text-xs text-[#f5f5f5]" title={entry.peer_id}>
-        {entry.peer_id.slice(0, 16)}…
+    <tr className="border-b border-[#1a1a1a] last:border-0 hover:bg-[#141414] transition-colors">
+      <td className="px-3 py-2.5 text-[10px] text-[#ccc]" title={e.peer_id}>
+        {e.peer_id.slice(0, 16)}…
       </td>
-      <td className="px-4 py-3"><ScoreBar value={entry.overall} /></td>
-      <td className="px-4 py-3"><ScoreBar value={entry.reliability} /></td>
-      <td className="px-4 py-3"><ScoreBar value={entry.accuracy} /></td>
-      <td className="px-4 py-3"><ScoreBar value={entry.availability} /></td>
-      <td className="px-4 py-3 font-mono text-xs text-[#888]">{entry.observation_count}</td>
+      <td className="px-3 py-2.5"><ScoreBar value={e.overall} /></td>
+      <td className="px-3 py-2.5"><ScoreBar value={e.reliability} /></td>
+      <td className="px-3 py-2.5"><ScoreBar value={e.accuracy} /></td>
+      <td className="px-3 py-2.5"><ScoreBar value={e.availability} /></td>
+      <td className="px-3 py-2.5 text-[10px] text-[#444] tabular-nums">{e.observation_count}</td>
     </tr>
   );
 }
 
-function LoadingSkeleton() {
+function Skeleton() {
   return (
-    <div className="p-6">
-      <div className="mb-6 h-6 w-24 animate-pulse rounded bg-[#181818]" />
-      <div className="h-64 animate-pulse rounded-lg border border-[#222] bg-[#111]" />
+    <div className="p-5">
+      <div className="mb-5 h-4 w-16 rounded bg-[#1a1a1a] animate-pulse" />
+      <div className="h-48 rounded border border-[#1a1a1a] bg-[#111] animate-pulse" />
     </div>
   );
 }

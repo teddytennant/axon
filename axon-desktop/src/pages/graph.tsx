@@ -241,7 +241,7 @@ function useSim(
 // ——— Color helpers ———
 
 function agentStatusColor(status: string): string {
-  return { idle: '#50dc78', busy: '#f0c83c', err: '#f05050' }[status.toLowerCase()] ?? '#6868a0';
+  return { idle: '#22c55e', busy: '#f59e0b', err: '#ef4444' }[status.toLowerCase()] ?? '#555555';
 }
 
 // ——— Main page ———
@@ -435,7 +435,7 @@ export default function GraphPage() {
         >
           <defs>
             {/* Glow filters per color */}
-            <filter id="glow-cyan" x="-50%" y="-50%" width="200%" height="200%">
+            <filter id="glow-none" x="-50%" y="-50%" width="200%" height="200%">
               <feGaussianBlur stdDeviation="4" result="blur" />
               <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
             </filter>
@@ -476,7 +476,7 @@ export default function GraphPage() {
                     <path
                       d={d}
                       fill="none"
-                      stroke="#00c8c8"
+                      stroke="#888888"
                       strokeWidth={8}
                       strokeOpacity={0.06}
                     />
@@ -484,7 +484,7 @@ export default function GraphPage() {
                   <path
                     d={d}
                     fill="none"
-                    stroke={highlight ? '#00c8c8' : `rgba(80,80,120,${0.15 + edge.trust * 0.25})`}
+                    stroke={highlight ? '#888888' : `rgba(100,100,100,${0.1 + edge.trust * 0.2})`}
                     strokeWidth={highlight ? 1.5 : 0.8 + edge.trust * 0.6}
                     strokeOpacity={highlight ? 0.7 : 0.6}
                     strokeDasharray={highlight ? '6 6' : undefined}
@@ -511,8 +511,8 @@ export default function GraphPage() {
                 glowColor = color;
                 glowFilter = 'url(#glow-green)';
               } else {
-                color = isHighlighted ? '#6868a0' : '#3a3a58';
-                glowColor = '#6868a0';
+                color = isHighlighted ? '#555555' : '#3a3a3a';
+                glowColor = '#555555';
                 glowFilter = 'url(#glow-soft)';
               }
 
@@ -536,7 +536,7 @@ export default function GraphPage() {
                       cx={node.x} cy={node.y}
                       r={r + 7}
                       fill="none"
-                      stroke="#00c8c8"
+                      stroke="#888888"
                       strokeWidth={1}
                       strokeOpacity={0.4}
                     />
@@ -601,7 +601,7 @@ export default function GraphPage() {
                         y={node.y - r + 1 + 3.5}
                         textAnchor="middle"
                         fontSize={6.5}
-                        fill="#6868a0"
+                        fill="#555555"
                         fontFamily="JetBrains Mono, monospace"
                         style={{ pointerEvents: 'none' }}
                       >
@@ -626,7 +626,7 @@ export default function GraphPage() {
               key={label}
               onClick={e => { e.stopPropagation(); fn(); }}
               title={title}
-              className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#1a1a2a] bg-[#0e0e1a]/90 font-mono text-xs text-[#3a3a58] backdrop-blur-sm transition-colors hover:border-[#2a2a40] hover:text-[#8080b0]"
+              className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#1c1c1c] bg-black/90 text-[#444] transition-colors hover:border-[#2a2a2a] hover:text-[#888]"
             >
               {label}
             </button>
@@ -638,13 +638,13 @@ export default function GraphPage() {
           <div className={clsx(
             'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[9px] font-medium font-mono backdrop-blur-sm',
             isConnected
-              ? 'border-[#50dc78]/20 bg-[#50dc78]/5 text-[#50dc78]/70'
-              : 'border-[#f05050]/20 bg-[#f05050]/5 text-[#f05050]/60',
+              ? 'border-[#22c55e]/20 bg-transparent text-[#22c55e]/70'
+              : 'border-[#ef4444]/20 bg-transparent text-[#ef4444]/60',
           )}>
             <span
               className={clsx(
                 'h-1.5 w-1.5 rounded-full',
-                isConnected ? 'bg-[#50dc78] animate-pulse' : 'bg-[#f05050]',
+                isConnected ? 'bg-[#22c55e]' : 'bg-[#ef4444]',
               )}
             />
             {isConnected ? 'live' : 'offline'}
@@ -658,9 +658,9 @@ export default function GraphPage() {
 
         {/* Legend — bottom left */}
         <div className="absolute bottom-3 left-3 z-10 flex items-center gap-4">
-          <LegendDot color="#50dc78" label="agent (idle)" />
-          <LegendDot color="#f0c83c" label="agent (busy)" />
-          <LegendDot color="#3a3a58" label="peer" />
+          <LegendDot color="#22c55e" label="agent (idle)" />
+          <LegendDot color="#f59e0b" label="agent (busy)" />
+          <LegendDot color="#3a3a3a" label="peer" />
           <span className="font-mono text-[8px] text-[#1e1e30]">edge thickness = trust score</span>
         </div>
 
@@ -721,7 +721,7 @@ function HoverTooltip({
         className="absolute z-20 pointer-events-none animate-fade-in"
         style={{ left, top: screenY - 40, width: tooltipWidth }}
       >
-        <div className="rounded-lg border border-[#1a1a2a] bg-[#0e0e1a]/95 px-3 py-2 shadow-xl backdrop-blur-sm">
+        <div className="rounded-lg border border-[#1c1c1c] bg-[#0c0c0c]/95 px-3 py-2 shadow-xl">
           <div className="mb-1 flex items-center gap-1.5">
             <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
             <span className="truncate text-[11px] font-semibold text-[#c8c8e8]">{a.name}</span>
@@ -729,7 +729,7 @@ function HoverTooltip({
           {a.provider_type && (
             <p className="font-mono text-[9px] text-[#4a4a70]">{a.provider_type} · {a.model_name}</p>
           )}
-          <p className="mt-1 font-mono text-[9px] text-[#3a3a58]">{a.capabilities.slice(0, 3).join(' · ')}</p>
+          <p className="mt-1 font-mono text-[9px] text-[#3a3a3a]">{a.capabilities.slice(0, 3).join(' · ')}</p>
         </div>
       </div>
     );
@@ -742,10 +742,10 @@ function HoverTooltip({
         className="absolute z-20 pointer-events-none animate-fade-in"
         style={{ left, top: screenY - 30, width: tooltipWidth }}
       >
-        <div className="rounded-lg border border-[#1a1a2a] bg-[#0e0e1a]/95 px-3 py-2 shadow-xl backdrop-blur-sm">
-          <p className="font-mono text-[9px] text-[#6868a0]">{p.peer_id.slice(0, 20)}…</p>
-          <p className="mt-0.5 font-mono text-[8px] text-[#3a3a58]">{p.addr}</p>
-          <p className="mt-0.5 text-[8px] text-[#2a2a40]">{p.last_seen_ago}</p>
+        <div className="rounded-lg border border-[#1c1c1c] bg-[#0c0c0c]/95 px-3 py-2 shadow-xl">
+          <p className="font-mono text-[9px] text-[#555555]">{p.peer_id.slice(0, 20)}…</p>
+          <p className="mt-0.5 font-mono text-[8px] text-[#3a3a3a]">{p.addr}</p>
+          <p className="mt-0.5 text-[8px] text-[#2a2a2a]">{p.last_seen_ago}</p>
         </div>
       </div>
     );
@@ -784,7 +784,7 @@ function DetailPanel({ node, tasks, trust, onClose }: {
             <div className="flex items-center gap-3">
               <span className="font-mono text-xs font-bold" style={{ color }}>{a.status.toUpperCase()}</span>
               {a.lifecycle_state && (
-                <span className="font-mono text-xs text-[#6868a0]">{a.lifecycle_state}</span>
+                <span className="font-mono text-xs text-[#555555]">{a.lifecycle_state}</span>
               )}
             </div>
             {a.last_heartbeat_secs_ago != null && (
@@ -803,7 +803,7 @@ function DetailPanel({ node, tasks, trust, onClose }: {
                 { l: 'Success', v: successRate != null ? `${successRate}%` : '—' },
                 { l: 'Avg ms', v: a.avg_latency_ms > 0 ? String(a.avg_latency_ms) : '—' },
               ].map(({ l, v }) => (
-                <div key={l} className="rounded-lg border border-[#141424] bg-[#0c0c18] p-2.5">
+                <div key={l} className="rounded-lg border border-[#141414] bg-[#0c0c18] p-2.5">
                   <p className="text-[8px] uppercase tracking-widest text-[#2e2e4a]">{l}</p>
                   <p className="mt-0.5 font-mono text-sm text-[#d0d0f0]">{v}</p>
                 </div>
@@ -814,7 +814,7 @@ function DetailPanel({ node, tasks, trust, onClose }: {
             <Sec label="Capabilities">
               <div className="flex flex-wrap gap-1.5">
                 {a.capabilities.map(c => (
-                  <span key={c} className="rounded-md border border-[#141424] bg-[#0c0c18] px-2 py-0.5 font-mono text-[10px] text-[#5a5a88]">{c}</span>
+                  <span key={c} className="rounded-md border border-[#141414] bg-[#0c0c18] px-2 py-0.5 font-mono text-[10px] text-[#5a5a88]">{c}</span>
                 ))}
               </div>
             </Sec>
@@ -835,10 +835,10 @@ function DetailPanel({ node, tasks, trust, onClose }: {
     const p = node.peer;
     const t = trust.find(e => e.peer_id === p.peer_id);
     return (
-      <Panel onClose={onClose} accentColor="#6868a0">
+      <Panel onClose={onClose} accentColor="#333333">
         <PanelHeader onClose={onClose}>
           <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-[#3a3a58]" />
+            <span className="h-2 w-2 rounded-full bg-[#3a3a3a]" />
             <span className="font-semibold text-[#e0e0f4]">Peer</span>
           </div>
         </PanelHeader>
@@ -847,7 +847,7 @@ function DetailPanel({ node, tasks, trust, onClose }: {
             <div className="flex items-start gap-2">
               <p className="flex-1 break-all font-mono text-[10px] leading-relaxed text-[#5a5a88]">{p.peer_id}</p>
               <button onClick={() => copy(p.peer_id)} className="mt-0.5 shrink-0 text-[#2e2e4a] transition-colors hover:text-[#8888b0]">
-                {copied ? <Check size={12} className="text-[#50dc78]" /> : <Copy size={12} />}
+                {copied ? <Check size={12} className="text-[#22c55e]" /> : <Copy size={12} />}
               </button>
             </div>
           </Sec>
@@ -879,7 +879,7 @@ function DetailPanel({ node, tasks, trust, onClose }: {
             <Sec label="Capabilities">
               <div className="flex flex-wrap gap-1.5">
                 {p.capabilities.map(c => (
-                  <span key={c} className="rounded-md border border-[#141424] bg-[#0c0c18] px-2 py-0.5 font-mono text-[10px] text-[#5a5a88]">{c}</span>
+                  <span key={c} className="rounded-md border border-[#141414] bg-[#0c0c18] px-2 py-0.5 font-mono text-[10px] text-[#5a5a88]">{c}</span>
                 ))}
               </div>
             </Sec>
@@ -901,7 +901,7 @@ function Panel({ children, accentColor, onClose }: {
 }) {
   return (
     <div
-      className="flex w-[280px] shrink-0 flex-col overflow-hidden border-l border-[#141424] bg-[#08080f] animate-fade-in"
+      className="flex w-[280px] shrink-0 flex-col overflow-hidden border-l border-[#1c1c1c] bg-[#0c0c0c] animate-fade-in"
       onClick={e => e.stopPropagation()}
     >
       <div className="h-px" style={{ background: `linear-gradient(90deg, ${accentColor}40, transparent)` }} />
@@ -912,7 +912,7 @@ function Panel({ children, accentColor, onClose }: {
 
 function PanelHeader({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   return (
-    <div className="flex items-center justify-between border-b border-[#141424] px-4 py-3">
+    <div className="flex items-center justify-between border-b border-[#141414] px-4 py-3">
       <div className="min-w-0 flex-1">{children}</div>
       <button onClick={onClose} className="ml-2 shrink-0 text-[#2e2e4a] transition-colors hover:text-[#8888b0]">
         <X size={14} />
@@ -924,7 +924,7 @@ function PanelHeader({ children, onClose }: { children: React.ReactNode; onClose
 function Sec({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="mb-2 text-[8px] uppercase tracking-widest text-[#2a2a40]">{label}</p>
+      <p className="mb-2 text-[8px] uppercase tracking-widest text-[#2a2a2a]">{label}</p>
       {children}
     </div>
   );
@@ -932,10 +932,10 @@ function Sec({ label, children }: { label: string; children: React.ReactNode }) 
 
 function TrustBar({ score }: { score: number }) {
   const pct = Math.round(score * 100);
-  const color = score >= 0.8 ? '#50dc78' : score >= 0.6 ? '#00c8c8' : score >= 0.4 ? '#f0c83c' : '#f05050';
+  const color = score >= 0.6 ? '#22c55e' : score >= 0.4 ? '#f59e0b' : '#ef4444';
   return (
     <div className="flex items-center gap-2">
-      <div className="relative flex-1 h-1.5 rounded-full bg-[#141424] overflow-hidden">
+      <div className="relative flex-1 h-1.5 rounded-full bg-[#141414] overflow-hidden">
         <div className="absolute left-0 top-0 h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
       </div>
       <span className="font-mono text-[10px]" style={{ color }}>{pct}%</span>
@@ -944,7 +944,7 @@ function TrustBar({ score }: { score: number }) {
 }
 
 function TaskRow({ task }: { task: TaskLogEntry }) {
-  const color = { completed: '#50dc78', running: '#00c8c8', failed: '#f05050', pending: '#6868a0', cancelled: '#f0c83c' }[task.status] ?? '#4a4a70';
+  const color = { completed: '#22c55e', running: '#ffffff', failed: '#ef4444', pending: '#555555', cancelled: '#f59e0b' }[task.status] ?? '#4a4a70';
   const dur = task.duration_ms > 0
     ? task.duration_ms < 1000 ? `${task.duration_ms}ms` : `${(task.duration_ms / 1000).toFixed(1)}s`
     : '—';

@@ -8,7 +8,7 @@ export function Skeleton({ className }: SkeletonProps) {
   return (
     <div
       className={clsx(
-        "animate-pulse rounded-lg bg-[#181818]",
+        "animate-pulse rounded bg-[#141414]",
         className,
       )}
     />

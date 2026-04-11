@@ -23,10 +23,11 @@ createRoot(document.getElementById("root")!).render(
         theme="dark"
         toastOptions={{
           style: {
-            background: "#181818",
-            border: "1px solid #222222",
-            color: "#f5f5f5",
-            fontFamily: "Space Grotesk, sans-serif",
+            background: "#111111",
+            border: "1px solid #1c1c1c",
+            color: "#ffffff",
+            fontFamily: "Inter, sans-serif",
+            fontSize: "13px",
           },
         }}
       />
