@@ -1,6 +1,6 @@
+use async_trait::async_trait;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use async_trait::async_trait;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
@@ -186,7 +186,10 @@ impl Agent for ManagedAgent {
 
 /// Spawn a background task that sends periodic heartbeats for a managed agent.
 /// The returned `JoinHandle` can be aborted to stop heartbeating.
-pub fn spawn_heartbeat(agent: Arc<ManagedAgent>, interval: Duration) -> tokio::task::JoinHandle<()> {
+pub fn spawn_heartbeat(
+    agent: Arc<ManagedAgent>,
+    interval: Duration,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(interval);
         loop {
@@ -219,8 +222,8 @@ pub async fn check_health(agents: &[Arc<ManagedAgent>], timeout: Duration) -> Ve
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use crate::protocol::{Capability, TaskStatus};
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use uuid::Uuid;
 
     struct EchoAgent {
@@ -405,13 +408,16 @@ mod tests {
 
     #[tokio::test]
     async fn managed_agent_capabilities_from_definition() {
-        let def = super::super::definition::AgentDefinition::from_toml(r#"
+        let def = super::super::definition::AgentDefinition::from_toml(
+            r#"
 name = "capped"
 [[capabilities]]
 namespace = "llm"
 name = "chat"
 version = 1
-"#).unwrap();
+"#,
+        )
+        .unwrap();
         let inner = Arc::new(EchoAgent {
             name: "capped".to_string(),
             caps: vec![],

@@ -7,7 +7,9 @@ use crate::protocol::{Capability, TaskRequest, TaskResponse, TaskStatus};
 use crate::runtime::Runtime;
 
 use super::lifecycle::ManagedAgent;
-use super::trace::{emit_step_complete, emit_step_start, emit_workflow_complete, emit_workflow_error, WorkflowSpan};
+use super::trace::{
+    emit_step_complete, emit_step_start, emit_workflow_complete, emit_workflow_error, WorkflowSpan,
+};
 
 pub type WorkflowId = Uuid;
 
@@ -171,7 +173,11 @@ pub async fn pipeline(
     let mut responses = Vec::with_capacity(steps.len());
 
     for (i, step) in steps.iter().enumerate() {
-        let step_span = if i == 0 { span.clone() } else { span.next_step_n(i) };
+        let step_span = if i == 0 {
+            span.clone()
+        } else {
+            span.next_step_n(i)
+        };
         emit_step_start(&step_span, &step.capability);
 
         let req = TaskRequest {
@@ -277,7 +283,13 @@ pub async fn fan_out(
         return Err(err);
     }
 
-    let result = WorkflowResult::partial(workflow_id, successful.len(), total, successful, duration_ms);
+    let result = WorkflowResult::partial(
+        workflow_id,
+        successful.len(),
+        total,
+        successful,
+        duration_ms,
+    );
     emit_workflow_complete(&span, &result);
     Ok(result)
 }
@@ -355,7 +367,8 @@ pub fn supervisor(
             for agent in &agents {
                 let current = agent.state().await;
                 match current {
-                    super::lifecycle::AgentState::Paused | super::lifecycle::AgentState::Created => {
+                    super::lifecycle::AgentState::Paused
+                    | super::lifecycle::AgentState::Created => {
                         tracing::warn!(
                             agent = agent.definition.name,
                             state = %current,
@@ -401,15 +414,17 @@ pub async fn swarm_dispatch(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async_trait::async_trait;
     use crate::protocol::Capability;
     use crate::runtime::{Agent, AgentError};
+    use async_trait::async_trait;
 
     // Agent that uppercases its payload
     struct UpperAgent;
     #[async_trait]
     impl Agent for UpperAgent {
-        fn name(&self) -> &str { "upper" }
+        fn name(&self) -> &str {
+            "upper"
+        }
         fn capabilities(&self) -> Vec<Capability> {
             vec![Capability::new("test", "upper", 1)]
         }
@@ -427,7 +442,9 @@ mod tests {
     struct ReverseAgent;
     #[async_trait]
     impl Agent for ReverseAgent {
-        fn name(&self) -> &str { "reverse" }
+        fn name(&self) -> &str {
+            "reverse"
+        }
         fn capabilities(&self) -> Vec<Capability> {
             vec![Capability::new("test", "reverse", 1)]
         }
@@ -447,7 +464,9 @@ mod tests {
     struct FailAgent;
     #[async_trait]
     impl Agent for FailAgent {
-        fn name(&self) -> &str { "fail" }
+        fn name(&self) -> &str {
+            "fail"
+        }
         fn capabilities(&self) -> Vec<Capability> {
             vec![Capability::new("test", "fail", 1)]
         }
@@ -462,11 +481,18 @@ mod tests {
     }
 
     // Agent that echoes back
-    struct EchoAgent { name: String, caps: Vec<Capability> }
+    struct EchoAgent {
+        name: String,
+        caps: Vec<Capability>,
+    }
     #[async_trait]
     impl Agent for EchoAgent {
-        fn name(&self) -> &str { &self.name }
-        fn capabilities(&self) -> Vec<Capability> { self.caps.clone() }
+        fn name(&self) -> &str {
+            &self.name
+        }
+        fn capabilities(&self) -> Vec<Capability> {
+            self.caps.clone()
+        }
         async fn handle(&self, request: TaskRequest) -> Result<TaskResponse, AgentError> {
             Ok(TaskResponse {
                 request_id: request.id,
@@ -485,16 +511,15 @@ mod tests {
         rt
     }
 
-    fn wid() -> WorkflowId { Uuid::new_v4() }
+    fn wid() -> WorkflowId {
+        Uuid::new_v4()
+    }
 
     // ---- pipeline tests ----
 
     #[tokio::test]
     async fn pipeline_two_steps_chains_payloads() {
-        let rt = runtime_with(vec![
-            Arc::new(UpperAgent),
-            Arc::new(ReverseAgent),
-        ]).await;
+        let rt = runtime_with(vec![Arc::new(UpperAgent), Arc::new(ReverseAgent)]).await;
 
         let steps = vec![
             WorkflowStep::new(Capability::new("test", "upper", 1)),
@@ -502,7 +527,9 @@ mod tests {
         ];
 
         // "hello" -> uppercase -> "HELLO" -> reverse -> "OLLEH"
-        let result = pipeline(&rt, &steps, b"hello".to_vec(), wid()).await.unwrap();
+        let result = pipeline(&rt, &steps, b"hello".to_vec(), wid())
+            .await
+            .unwrap();
         assert_eq!(result.steps_completed, 2);
         assert_eq!(result.final_response.unwrap().payload, b"OLLEH");
     }
@@ -510,7 +537,9 @@ mod tests {
     #[tokio::test]
     async fn pipeline_empty_steps_returns_initial_payload() {
         let rt = Runtime::new();
-        let result = pipeline(&rt, &[], b"original".to_vec(), wid()).await.unwrap();
+        let result = pipeline(&rt, &[], b"original".to_vec(), wid())
+            .await
+            .unwrap();
         assert_eq!(result.steps_completed, 1);
         assert_eq!(result.final_response.unwrap().payload, b"original");
     }
@@ -519,7 +548,9 @@ mod tests {
     async fn pipeline_single_step() {
         let rt = runtime_with(vec![Arc::new(UpperAgent)]).await;
         let steps = vec![WorkflowStep::new(Capability::new("test", "upper", 1))];
-        let result = pipeline(&rt, &steps, b"world".to_vec(), wid()).await.unwrap();
+        let result = pipeline(&rt, &steps, b"world".to_vec(), wid())
+            .await
+            .unwrap();
         assert_eq!(result.final_response.unwrap().payload, b"WORLD");
     }
 
@@ -530,7 +561,9 @@ mod tests {
             WorkflowStep::new(Capability::new("test", "fail", 1)),
             WorkflowStep::new(Capability::new("test", "reverse", 1)),
         ];
-        let err = pipeline(&rt, &steps, b"data".to_vec(), wid()).await.unwrap_err();
+        let err = pipeline(&rt, &steps, b"data".to_vec(), wid())
+            .await
+            .unwrap_err();
         assert!(matches!(err, WorkflowError::StepFailed { step: 0, .. }));
     }
 
@@ -538,7 +571,9 @@ mod tests {
     async fn pipeline_fails_on_no_capability() {
         let rt = Runtime::new(); // no agents registered
         let steps = vec![WorkflowStep::new(Capability::new("test", "upper", 1))];
-        let err = pipeline(&rt, &steps, b"data".to_vec(), wid()).await.unwrap_err();
+        let err = pipeline(&rt, &steps, b"data".to_vec(), wid())
+            .await
+            .unwrap_err();
         assert!(matches!(err, WorkflowError::StepFailed { step: 0, .. }));
     }
 
@@ -560,9 +595,16 @@ mod tests {
         // Three-step pipeline: echo1 → (extract "result") → echo2 → (passthrough) → echo3
         // The transform on step 0 feeds extracted data into step 1.
         let rt = runtime_with(vec![
-            Arc::new(EchoAgent { name: "e1".to_string(), caps: vec![Capability::new("json", "echo1", 1)] }),
-            Arc::new(EchoAgent { name: "e2".to_string(), caps: vec![Capability::new("json", "echo2", 1)] }),
-        ]).await;
+            Arc::new(EchoAgent {
+                name: "e1".to_string(),
+                caps: vec![Capability::new("json", "echo1", 1)],
+            }),
+            Arc::new(EchoAgent {
+                name: "e2".to_string(),
+                caps: vec![Capability::new("json", "echo2", 1)],
+            }),
+        ])
+        .await;
 
         let input = serde_json::json!({"result": "hello world"});
         // Step 0: echo1 echoes JSON back, transform extracts "result" for step 1
@@ -572,12 +614,9 @@ mod tests {
                 .with_transform(PayloadTransform::ExtractField("result".to_string())),
             WorkflowStep::new(Capability::new("json", "echo2", 1)),
         ];
-        let result = pipeline(
-            &rt,
-            &steps,
-            serde_json::to_vec(&input).unwrap(),
-            wid(),
-        ).await.unwrap();
+        let result = pipeline(&rt, &steps, serde_json::to_vec(&input).unwrap(), wid())
+            .await
+            .unwrap();
         // Step 1 (echo2) received the extracted "result" value and echoed it back
         let final_payload = result.final_response.unwrap().payload;
         let s: String = serde_json::from_slice(&final_payload).unwrap();
@@ -589,17 +628,29 @@ mod tests {
     #[tokio::test]
     async fn fan_out_collects_all_results() {
         let rt = runtime_with(vec![
-            Arc::new(EchoAgent { name: "a".to_string(), caps: vec![Capability::new("svc", "a", 1)] }),
-            Arc::new(EchoAgent { name: "b".to_string(), caps: vec![Capability::new("svc", "b", 1)] }),
-            Arc::new(EchoAgent { name: "c".to_string(), caps: vec![Capability::new("svc", "c", 1)] }),
-        ]).await;
+            Arc::new(EchoAgent {
+                name: "a".to_string(),
+                caps: vec![Capability::new("svc", "a", 1)],
+            }),
+            Arc::new(EchoAgent {
+                name: "b".to_string(),
+                caps: vec![Capability::new("svc", "b", 1)],
+            }),
+            Arc::new(EchoAgent {
+                name: "c".to_string(),
+                caps: vec![Capability::new("svc", "c", 1)],
+            }),
+        ])
+        .await;
 
         let targets = vec![
             Capability::new("svc", "a", 1),
             Capability::new("svc", "b", 1),
             Capability::new("svc", "c", 1),
         ];
-        let result = fan_out(&rt, &targets, b"ping".to_vec(), 5000, wid()).await.unwrap();
+        let result = fan_out(&rt, &targets, b"ping".to_vec(), 5000, wid())
+            .await
+            .unwrap();
         assert_eq!(result.all_responses.len(), 3);
         assert_eq!(result.steps_completed, 3);
         assert_eq!(result.steps_total, 3);
@@ -608,15 +659,21 @@ mod tests {
     #[tokio::test]
     async fn fan_out_partial_success() {
         let rt = runtime_with(vec![
-            Arc::new(EchoAgent { name: "ok".to_string(), caps: vec![Capability::new("svc", "ok", 1)] }),
+            Arc::new(EchoAgent {
+                name: "ok".to_string(),
+                caps: vec![Capability::new("svc", "ok", 1)],
+            }),
             Arc::new(FailAgent),
-        ]).await;
+        ])
+        .await;
 
         let targets = vec![
             Capability::new("svc", "ok", 1),
             Capability::new("test", "fail", 1),
         ];
-        let result = fan_out(&rt, &targets, b"data".to_vec(), 5000, wid()).await.unwrap();
+        let result = fan_out(&rt, &targets, b"data".to_vec(), 5000, wid())
+            .await
+            .unwrap();
         // Only the successful response is in all_responses
         assert_eq!(result.all_responses.len(), 1);
         assert_eq!(result.steps_completed, 1);
@@ -627,7 +684,9 @@ mod tests {
     async fn fan_out_all_fail_returns_error() {
         let rt = runtime_with(vec![Arc::new(FailAgent)]).await;
         let targets = vec![Capability::new("test", "fail", 1)];
-        let err = fan_out(&rt, &targets, b"x".to_vec(), 5000, wid()).await.unwrap_err();
+        let err = fan_out(&rt, &targets, b"x".to_vec(), 5000, wid())
+            .await
+            .unwrap_err();
         assert!(matches!(err, WorkflowError::AllFanOutFailed));
     }
 
@@ -635,7 +694,9 @@ mod tests {
     async fn fan_out_no_capability_returns_error() {
         let rt = Runtime::new();
         let targets = vec![Capability::new("svc", "missing", 1)];
-        let err = fan_out(&rt, &targets, b"x".to_vec(), 5000, wid()).await.unwrap_err();
+        let err = fan_out(&rt, &targets, b"x".to_vec(), 5000, wid())
+            .await
+            .unwrap_err();
         assert!(matches!(err, WorkflowError::AllFanOutFailed));
     }
 
@@ -644,14 +705,30 @@ mod tests {
     #[tokio::test]
     async fn delegate_routes_to_capable_agent() {
         let rt = runtime_with(vec![Arc::new(UpperAgent)]).await;
-        let result = delegate(&rt, &Capability::new("test", "upper", 1), b"hi".to_vec(), 5000, wid()).await.unwrap();
+        let result = delegate(
+            &rt,
+            &Capability::new("test", "upper", 1),
+            b"hi".to_vec(),
+            5000,
+            wid(),
+        )
+        .await
+        .unwrap();
         assert_eq!(result.final_response.unwrap().payload, b"HI");
     }
 
     #[tokio::test]
     async fn delegate_no_capability_returns_error() {
         let rt = Runtime::new();
-        let err = delegate(&rt, &Capability::new("test", "upper", 1), b"x".to_vec(), 5000, wid()).await.unwrap_err();
+        let err = delegate(
+            &rt,
+            &Capability::new("test", "upper", 1),
+            b"x".to_vec(),
+            5000,
+            wid(),
+        )
+        .await
+        .unwrap_err();
         assert!(matches!(err, WorkflowError::StepFailed { step: 0, .. }));
     }
 
@@ -688,7 +765,10 @@ mod tests {
     fn payload_transform_extract_field_missing_returns_original() {
         let json = serde_json::json!({"a": 1});
         let bytes = serde_json::to_vec(&json).unwrap();
-        let out = apply_transform(&PayloadTransform::ExtractField("missing".to_string()), &bytes);
+        let out = apply_transform(
+            &PayloadTransform::ExtractField("missing".to_string()),
+            &bytes,
+        );
         assert_eq!(out, bytes);
     }
 

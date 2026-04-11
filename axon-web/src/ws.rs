@@ -41,7 +41,11 @@ async fn handle_ws(socket: WebSocket, state: Arc<SharedWebState>) {
                 }
             });
 
-            if sender.send(Message::Text(metrics.to_string().into())).await.is_err() {
+            if sender
+                .send(Message::Text(metrics.to_string().into()))
+                .await
+                .is_err()
+            {
                 return;
             }
 
@@ -69,7 +73,11 @@ async fn handle_ws(socket: WebSocket, state: Arc<SharedWebState>) {
                 "type": "peers",
                 "data": peers_json,
             });
-            if sender.send(Message::Text(peers_msg.to_string().into())).await.is_err() {
+            if sender
+                .send(Message::Text(peers_msg.to_string().into()))
+                .await
+                .is_err()
+            {
                 return;
             }
 
@@ -78,7 +86,11 @@ async fn handle_ws(socket: WebSocket, state: Arc<SharedWebState>) {
                 "type": "agents",
                 "data": ws.agent_info,
             });
-            if sender.send(Message::Text(agents_msg.to_string().into())).await.is_err() {
+            if sender
+                .send(Message::Text(agents_msg.to_string().into()))
+                .await
+                .is_err()
+            {
                 return;
             }
 
@@ -97,24 +109,28 @@ async fn handle_ws(socket: WebSocket, state: Arc<SharedWebState>) {
                     "recent": ws.task_log,
                 }
             });
-            if sender.send(Message::Text(tasks_msg.to_string().into())).await.is_err() {
+            if sender
+                .send(Message::Text(tasks_msg.to_string().into()))
+                .await
+                .is_err()
+            {
                 return;
             }
 
             // New log lines since last push
             let current_log_count = ws.logs.len();
             if current_log_count > last_log_count {
-                let new_logs: Vec<&String> = ws
-                    .logs
-                    .iter()
-                    .skip(last_log_count)
-                    .collect();
+                let new_logs: Vec<&String> = ws.logs.iter().skip(last_log_count).collect();
                 for log in new_logs {
                     let log_msg = serde_json::json!({
                         "type": "log",
                         "data": log,
                     });
-                    if sender.send(Message::Text(log_msg.to_string().into())).await.is_err() {
+                    if sender
+                        .send(Message::Text(log_msg.to_string().into()))
+                        .await
+                        .is_err()
+                    {
                         return;
                     }
                 }
@@ -129,7 +145,11 @@ async fn handle_ws(socket: WebSocket, state: Arc<SharedWebState>) {
                     "completed": ws.completed_workflows.iter().collect::<Vec<_>>(),
                 }
             });
-            if sender.send(Message::Text(workflows_msg.to_string().into())).await.is_err() {
+            if sender
+                .send(Message::Text(workflows_msg.to_string().into()))
+                .await
+                .is_err()
+            {
                 return;
             }
 
@@ -138,7 +158,11 @@ async fn handle_ws(socket: WebSocket, state: Arc<SharedWebState>) {
                 "type": "blackboard",
                 "data": ws.blackboard_entries,
             });
-            if sender.send(Message::Text(bb_msg.to_string().into())).await.is_err() {
+            if sender
+                .send(Message::Text(bb_msg.to_string().into()))
+                .await
+                .is_err()
+            {
                 return;
             }
 
@@ -164,7 +188,11 @@ async fn handle_ws(socket: WebSocket, state: Arc<SharedWebState>) {
                 "type": "trust",
                 "data": trust_entries,
             });
-            if sender.send(Message::Text(trust_msg.to_string().into())).await.is_err() {
+            if sender
+                .send(Message::Text(trust_msg.to_string().into()))
+                .await
+                .is_err()
+            {
                 return;
             }
         }

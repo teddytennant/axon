@@ -164,7 +164,10 @@ mod tests {
         let t1 = span.elapsed_ms();
         thread::sleep(Duration::from_millis(5));
         let t2 = span.elapsed_ms();
-        assert!(t2 >= t1, "elapsed_ms should be monotonically non-decreasing");
+        assert!(
+            t2 >= t1,
+            "elapsed_ms should be monotonically non-decreasing"
+        );
     }
 
     #[test]

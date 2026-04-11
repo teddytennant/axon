@@ -158,7 +158,10 @@ version = 2
     fn parse_invalid_toml_returns_error() {
         let result = AgentDefinition::from_toml("not valid toml ][[]");
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), DefinitionError::ParseError(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            DefinitionError::ParseError(_)
+        ));
     }
 
     #[test]

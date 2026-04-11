@@ -498,10 +498,7 @@ impl Dashboard {
         };
 
         let header_spans = vec![
-            Span::styled(
-                " \u{25b2} AXON ",
-                Style::default().fg(BRAND_CYAN).bold(),
-            ),
+            Span::styled(" \u{25b2} AXON ", Style::default().fg(BRAND_CYAN).bold()),
             Span::styled("\u{2502} ", Style::default().fg(BRAND_DIM)),
             Span::styled(peer_short, Style::default().fg(Color::White).bold()),
             Span::styled(
@@ -553,10 +550,7 @@ impl Dashboard {
             .map(|(i, t)| {
                 if *t == active_tab {
                     Line::from(vec![
-                        Span::styled(
-                            format!(" {} ", t.icon()),
-                            Style::default().fg(BRAND_CYAN),
-                        ),
+                        Span::styled(format!(" {} ", t.icon()), Style::default().fg(BRAND_CYAN)),
                         Span::styled(
                             format!("{} {} ", i + 1, t.title()),
                             Style::default().fg(BRAND_CYAN).bold(),
@@ -613,8 +607,8 @@ impl Dashboard {
             ));
         }
 
-        let bar = Paragraph::new(Line::from(spans))
-            .style(Style::default().bg(SURFACE).fg(BRAND_DIM));
+        let bar =
+            Paragraph::new(Line::from(spans)).style(Style::default().bg(SURFACE).fg(BRAND_DIM));
         frame.render_widget(bar, area);
     }
 
@@ -746,10 +740,7 @@ impl Dashboard {
                     "Trust",
                     Style::default().fg(BRAND_CYAN).bold(),
                 )),
-                Cell::from(Span::styled(
-                    "Seen",
-                    Style::default().fg(BRAND_CYAN).bold(),
-                )),
+                Cell::from(Span::styled("Seen", Style::default().fg(BRAND_CYAN).bold())),
             ])
             .bottom_margin(1),
         )
@@ -768,8 +759,7 @@ impl Dashboard {
 
         // Scrollbar
         if state.peers.len() > chunks[1].height.saturating_sub(4) as usize {
-            let mut scrollbar_state = ScrollbarState::new(state.peers.len())
-                .position(scroll);
+            let mut scrollbar_state = ScrollbarState::new(state.peers.len()).position(scroll);
             frame.render_stateful_widget(
                 Scrollbar::new(ScrollbarOrientation::VerticalRight)
                     .style(Style::default().fg(BRAND_DIM)),
@@ -841,11 +831,7 @@ impl Dashboard {
             0.0
         };
 
-        let trusted_count = state
-            .peer_trust
-            .iter()
-            .filter(|(_, t)| *t >= 0.7)
-            .count();
+        let trusted_count = state.peer_trust.iter().filter(|(_, t)| *t >= 0.7).count();
 
         let recent_count = state
             .peers
@@ -869,10 +855,7 @@ impl Dashboard {
 
         let health_card = Paragraph::new(vec![
             Line::from(vec![
-                Span::styled(
-                    " NETWORK HEALTH",
-                    Style::default().fg(health_color).bold(),
-                ),
+                Span::styled(" NETWORK HEALTH", Style::default().fg(health_color).bold()),
                 Span::styled(
                     format!("  {:.0}% connectivity", connectivity * 100.0),
                     Style::default().fg(health_color),
@@ -958,10 +941,7 @@ impl Dashboard {
 
             // Line 1: name + status + provider
             lines.push(Line::from(vec![
-                Span::styled(
-                    format!("  {:>2}. ", i + 1),
-                    Style::default().fg(BRAND_DIM),
-                ),
+                Span::styled(format!("  {:>2}. ", i + 1), Style::default().fg(BRAND_DIM)),
                 Span::styled(&agent.name, Style::default().fg(Color::White).bold()),
                 Span::raw("  "),
                 status_indicator,
@@ -1065,10 +1045,7 @@ impl Dashboard {
             .enumerate()
             .map(|(i, name)| {
                 ListItem::new(Line::from(vec![
-                    Span::styled(
-                        format!("  {:>2}. ", i + 1),
-                        Style::default().fg(BRAND_DIM),
-                    ),
+                    Span::styled(format!("  {:>2}. ", i + 1), Style::default().fg(BRAND_DIM)),
                     Span::styled(
                         format!("\u{25c9} {}", name),
                         Style::default().fg(Color::White),
@@ -1223,10 +1200,7 @@ impl Dashboard {
                     "Latency",
                     Style::default().fg(BRAND_CYAN).bold(),
                 )),
-                Cell::from(Span::styled(
-                    "Peer",
-                    Style::default().fg(BRAND_CYAN).bold(),
-                )),
+                Cell::from(Span::styled("Peer", Style::default().fg(BRAND_CYAN).bold())),
             ])
             .bottom_margin(1),
         )
@@ -1314,7 +1288,11 @@ impl Dashboard {
             Span::styled(
                 success_pct,
                 Style::default()
-                    .fg(if failed == 0 { BRAND_GREEN } else { BRAND_YELLOW })
+                    .fg(if failed == 0 {
+                        BRAND_GREEN
+                    } else {
+                        BRAND_YELLOW
+                    })
                     .bold(),
             ),
         ]))
@@ -1364,11 +1342,7 @@ impl Dashboard {
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(BRAND_DIM))
                     .title(Span::styled(
-                        format!(
-                            " Throughput (last {}s, peak {}/s) ",
-                            data.len(),
-                            max_val
-                        ),
+                        format!(" Throughput (last {}s, peak {}/s) ", data.len(), max_val),
                         Style::default().fg(BRAND_CYAN).bold(),
                     ))
                     .style(Style::default().bg(SURFACE)),
@@ -1437,10 +1411,7 @@ impl Dashboard {
                     Span::styled("    ", Style::default()),
                     Span::styled(key, Style::default().fg(Color::White)),
                     Span::styled(" = ", Style::default().fg(BRAND_DIM)),
-                    Span::styled(
-                        format!("{}", val),
-                        Style::default().fg(BRAND_GREEN).bold(),
-                    ),
+                    Span::styled(format!("{}", val), Style::default().fg(BRAND_GREEN).bold()),
                 ]));
             }
         }
@@ -1461,10 +1432,7 @@ impl Dashboard {
                     Span::styled("    ", Style::default()),
                     Span::styled(key, Style::default().fg(Color::White)),
                     Span::styled(" \u{2190} ", Style::default().fg(BRAND_DIM)),
-                    Span::styled(
-                        format!("\"{}\"", val),
-                        Style::default().fg(BRAND_YELLOW),
-                    ),
+                    Span::styled(format!("\"{}\"", val), Style::default().fg(BRAND_YELLOW)),
                 ]));
             }
         }
@@ -1522,10 +1490,7 @@ impl Dashboard {
                     Span::styled(key, Style::default().fg(Color::White)),
                     Span::styled(" \u{2190} ", Style::default().fg(BRAND_DIM)),
                     Span::styled(preview, Style::default().fg(BRAND_YELLOW)),
-                    Span::styled(
-                        format!("  ({}s)", ts_secs),
-                        Style::default().fg(BRAND_DIM),
-                    ),
+                    Span::styled(format!("  ({}s)", ts_secs), Style::default().fg(BRAND_DIM)),
                 ]));
             }
         }
@@ -1550,7 +1515,9 @@ impl Dashboard {
             ))
             .style(Style::default().bg(SURFACE));
 
-        let paragraph = Paragraph::new(lines).block(block).wrap(Wrap { trim: false });
+        let paragraph = Paragraph::new(lines)
+            .block(block)
+            .wrap(Wrap { trim: false });
         frame.render_widget(paragraph, area);
 
         // Scrollbar
@@ -1575,7 +1542,7 @@ impl Dashboard {
             .constraints([
                 Constraint::Length(10), // Node info card
                 Constraint::Length(9),  // LLM config card
-                Constraint::Min(0),    // MCP / hints
+                Constraint::Min(0),     // MCP / hints
             ])
             .split(area);
 
@@ -1620,10 +1587,7 @@ impl Dashboard {
                     Style::default().fg(ACCENT_BLUE),
                 ),
                 Span::styled(
-                    format!(
-                        "  ({})",
-                        state.agent_names.join(", ")
-                    ),
+                    format!("  ({})", state.agent_names.join(", ")),
                     Style::default().fg(BRAND_DIM),
                 ),
             ]),
@@ -1668,10 +1632,7 @@ impl Dashboard {
         let llm_lines = vec![
             Line::from(vec![
                 Span::styled("  Provider:   ", Style::default().fg(BRAND_DIM)),
-                Span::styled(
-                    provider_display,
-                    Style::default().fg(BRAND_CYAN).bold(),
-                ),
+                Span::styled(provider_display, Style::default().fg(BRAND_CYAN).bold()),
             ]),
             Line::from(vec![
                 Span::styled("  Model:      ", Style::default().fg(BRAND_DIM)),
@@ -1679,10 +1640,7 @@ impl Dashboard {
             ]),
             Line::from(vec![
                 Span::styled("  API Key:    ", Style::default().fg(BRAND_DIM)),
-                Span::styled(
-                    "configured",
-                    Style::default().fg(BRAND_GREEN),
-                ),
+                Span::styled("configured", Style::default().fg(BRAND_GREEN)),
             ]),
             Line::from(""),
             Line::from(Span::styled(
@@ -1725,45 +1683,27 @@ impl Dashboard {
             Line::from(""),
             Line::from(vec![
                 Span::styled("    axon setup       ", Style::default().fg(BRAND_CYAN)),
-                Span::styled(
-                    "Re-run setup wizard",
-                    Style::default().fg(BRAND_DIM),
-                ),
+                Span::styled("Re-run setup wizard", Style::default().fg(BRAND_DIM)),
             ]),
             Line::from(vec![
                 Span::styled("    axon auth <p>    ", Style::default().fg(BRAND_CYAN)),
-                Span::styled(
-                    "Change provider/API key",
-                    Style::default().fg(BRAND_DIM),
-                ),
+                Span::styled("Change provider/API key", Style::default().fg(BRAND_DIM)),
             ]),
             Line::from(vec![
                 Span::styled("    axon models      ", Style::default().fg(BRAND_CYAN)),
-                Span::styled(
-                    "Browse available models",
-                    Style::default().fg(BRAND_DIM),
-                ),
+                Span::styled("Browse available models", Style::default().fg(BRAND_DIM)),
             ]),
             Line::from(vec![
                 Span::styled("    axon serve-mcp   ", Style::default().fg(BRAND_CYAN)),
-                Span::styled(
-                    "MCP gateway for AI tools",
-                    Style::default().fg(BRAND_DIM),
-                ),
+                Span::styled("MCP gateway for AI tools", Style::default().fg(BRAND_DIM)),
             ]),
             Line::from(vec![
                 Span::styled("    axon trust show  ", Style::default().fg(BRAND_CYAN)),
-                Span::styled(
-                    "View peer trust scores",
-                    Style::default().fg(BRAND_DIM),
-                ),
+                Span::styled("View peer trust scores", Style::default().fg(BRAND_DIM)),
             ]),
             Line::from(vec![
                 Span::styled("    axon init        ", Style::default().fg(BRAND_CYAN)),
-                Span::styled(
-                    "Generate example config",
-                    Style::default().fg(BRAND_DIM),
-                ),
+                Span::styled("Generate example config", Style::default().fg(BRAND_DIM)),
             ]),
         ];
 
@@ -1778,7 +1718,9 @@ impl Dashboard {
             .padding(Padding::vertical(1));
 
         frame.render_widget(
-            Paragraph::new(mcp_lines).block(mcp_block).wrap(Wrap { trim: false }),
+            Paragraph::new(mcp_lines)
+                .block(mcp_block)
+                .wrap(Wrap { trim: false }),
             chunks[2],
         );
     }
@@ -1931,10 +1873,7 @@ impl Dashboard {
                         Span::styled(key, Style::default().fg(Color::White)),
                         Span::styled(" \u{2190} ", Style::default().fg(BRAND_DIM)),
                         Span::styled(preview, Style::default().fg(BRAND_YELLOW)),
-                        Span::styled(
-                            format!("  ({}s)", age_secs),
-                            Style::default().fg(BRAND_DIM),
-                        ),
+                        Span::styled(format!("  ({}s)", age_secs), Style::default().fg(BRAND_DIM)),
                     ])
                 })
                 .collect()
@@ -1950,7 +1889,9 @@ impl Dashboard {
             .style(Style::default().bg(SURFACE));
 
         frame.render_widget(
-            Paragraph::new(bb_lines).block(bb_block).wrap(Wrap { trim: false }),
+            Paragraph::new(bb_lines)
+                .block(bb_block)
+                .wrap(Wrap { trim: false }),
             chunks[1],
         );
     }
@@ -2076,17 +2017,15 @@ fn task_row<'a>(t: &'a TaskLogEntry, in_flight: bool) -> Row<'a> {
         "Error" => (Style::default().fg(BRAND_RED), "\u{2717}"),
         "Timeout" => (Style::default().fg(BRAND_YELLOW), "\u{25f7}"),
         "InFlight" | "Pending" => (
-            Style::default().fg(ACCENT_BLUE).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(ACCENT_BLUE)
+                .add_modifier(Modifier::BOLD),
             "\u{25cb}",
         ),
         _ => (Style::default().fg(BRAND_DIM), "\u{2022}"),
     };
 
-    let id_short = if t.id.len() >= 8 {
-        &t.id[..8]
-    } else {
-        &t.id
-    };
+    let id_short = if t.id.len() >= 8 { &t.id[..8] } else { &t.id };
 
     let id_style = if in_flight {
         Style::default().fg(ACCENT_BLUE).bold()
@@ -2108,10 +2047,7 @@ fn task_row<'a>(t: &'a TaskLogEntry, in_flight: bool) -> Row<'a> {
             format!("{}ms", t.duration_ms),
             Style::default().fg(BRAND_DIM),
         )),
-        Cell::from(Span::styled(
-            t.peer.clone(),
-            Style::default().fg(BRAND_DIM),
-        )),
+        Cell::from(Span::styled(t.peer.clone(), Style::default().fg(BRAND_DIM))),
     ])
 }
 

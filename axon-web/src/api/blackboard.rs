@@ -4,9 +4,7 @@ use axum::http::StatusCode;
 use axum::response::Json;
 use std::sync::Arc;
 
-pub async fn list_entries(
-    State(state): State<Arc<SharedWebState>>,
-) -> Json<Vec<BlackboardEntry>> {
+pub async fn list_entries(State(state): State<Arc<SharedWebState>>) -> Json<Vec<BlackboardEntry>> {
     let ws = state.web_state.read().await;
     Json(ws.blackboard_entries.clone())
 }

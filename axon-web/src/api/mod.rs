@@ -28,7 +28,10 @@ pub fn api_router() -> Router<Arc<SharedWebState>> {
         .route("/api/tools", get(tools::get_tools))
         .route("/api/tools/search", get(tools::search_tools))
         .route("/api/models/{provider}", get(models::get_models))
-        .route("/api/config", get(config::get_config).put(config::put_config))
+        .route(
+            "/api/config",
+            get(config::get_config).put(config::put_config),
+        )
         .route("/api/config/llm", put(config::put_llm_config))
         .route("/api/auth/validate", post(auth::validate_key))
         .route("/api/auth/key/{provider}", put(auth::put_key))

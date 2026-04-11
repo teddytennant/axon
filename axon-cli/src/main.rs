@@ -275,7 +275,9 @@ async fn main() -> anyhow::Result<()> {
         } => {
             // First-run detection: if no config exists, offer setup
             if !config::config_exists() && !headless && atty::is(atty::Stream::Stdin) {
-                eprintln!("\x1b[36m▲ AXON\x1b[0m  No configuration found. Running setup wizard...\n");
+                eprintln!(
+                    "\x1b[36m▲ AXON\x1b[0m  No configuration found. Running setup wizard...\n"
+                );
                 match onboarding::run_onboarding().await {
                     Ok(true) => {
                         eprintln!("\n\x1b[32m✓\x1b[0m Setup complete. Starting node...\n");
@@ -672,35 +674,28 @@ async fn main() -> anyhow::Result<()> {
         Commands::Trust { action } => {
             handle_trust_command(action);
         }
-        Commands::Setup => {
-            match onboarding::run_onboarding().await {
-                Ok(true) => {
-                    println!("\n\x1b[32m✓\x1b[0m Configuration saved. Run \x1b[36maxon start\x1b[0m to launch your node.");
-                }
-                Ok(false) => {
-                    println!("\nSetup cancelled.");
-                }
-                Err(e) => {
-                    eprintln!("Setup error: {}", e);
-                }
+        Commands::Setup => match onboarding::run_onboarding().await {
+            Ok(true) => {
+                println!("\n\x1b[32m✓\x1b[0m Configuration saved. Run \x1b[36maxon start\x1b[0m to launch your node.");
             }
-        }
-        Commands::Auth { provider } => {
-            match onboarding::run_auth(&provider).await {
-                Ok(true) => {
-                    println!(
-                        "\n\x1b[32m✓\x1b[0m {} configuration saved.",
-                        provider
-                    );
-                }
-                Ok(false) => {
-                    println!("\nAuth cancelled.");
-                }
-                Err(e) => {
-                    eprintln!("Auth error: {}", e);
-                }
+            Ok(false) => {
+                println!("\nSetup cancelled.");
             }
-        }
+            Err(e) => {
+                eprintln!("Setup error: {}", e);
+            }
+        },
+        Commands::Auth { provider } => match onboarding::run_auth(&provider).await {
+            Ok(true) => {
+                println!("\n\x1b[32m✓\x1b[0m {} configuration saved.", provider);
+            }
+            Ok(false) => {
+                println!("\nAuth cancelled.");
+            }
+            Err(e) => {
+                eprintln!("Auth error: {}", e);
+            }
+        },
         Commands::Models {
             provider,
             filter,
@@ -744,15 +739,15 @@ async fn main() -> anyhow::Result<()> {
                     };
 
                     if json {
-                        println!("{}", serde_json::to_string_pretty(&models).unwrap_or_default());
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&models).unwrap_or_default()
+                        );
                     } else {
                         if models.is_empty() {
                             println!("No models found.");
                         } else {
-                            println!(
-                                "\n{:<45} {:<30} {:>10}",
-                                "MODEL ID", "NAME", "CONTEXT"
-                            );
+                            println!("\n{:<45} {:<30} {:>10}", "MODEL ID", "NAME", "CONTEXT");
                             println!("{}", "─".repeat(87));
                             for m in &models {
                                 let ctx = m
@@ -817,10 +812,7 @@ async fn main() -> anyhow::Result<()> {
 
                 let llm = providers::build_provider(&kind, &endpoint, &api_key, &model)?;
 
-                eprintln!(
-                    "\x1b[36m▲\x1b[0m {} · {}\n",
-                    kind, model
-                );
+                eprintln!("\x1b[36m▲\x1b[0m {} · {}\n", kind, model);
 
                 let resp = llm
                     .complete(providers::CompletionRequest {
@@ -1211,8 +1203,7 @@ async fn run_node(
         if mcp_tool_count > 0 {
             state.add_log(format!(
                 "MCP bridge: {} tools from {} server(s)",
-                mcp_tool_count,
-                mcp_server_count,
+                mcp_tool_count, mcp_server_count,
             ));
         }
 
@@ -1264,10 +1255,8 @@ async fn run_node(
         let web_cfg = config::load_config();
         ws.provider_name = web_cfg.llm.provider.clone();
         ws.model_name = if web_cfg.llm.model.is_empty() {
-            providers::default_model(
-                &web_cfg.llm.provider.parse().unwrap_or(ProviderKind::Ollama),
-            )
-            .to_string()
+            providers::default_model(&web_cfg.llm.provider.parse().unwrap_or(ProviderKind::Ollama))
+                .to_string()
         } else {
             web_cfg.llm.model.clone()
         };
@@ -1289,10 +1278,10 @@ async fn run_node(
         tokio::spawn(async move {
             axon_web::start_web_server(shared_web, wp).await;
         });
-        dashboard_state.write().await.add_log(format!(
-            "Web UI available at http://localhost:{}",
-            wp
-        ));
+        dashboard_state
+            .write()
+            .await
+            .add_log(format!("Web UI available at http://localhost:{}", wp));
     }
 
     // Spawn connection acceptor
@@ -2741,9 +2730,7 @@ async fn forward_to_peer(
 }
 
 async fn run_chat_remote(peer_addr: SocketAddr) -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_writer(std::io::sink)
-        .init();
+    tracing_subscriber::fmt().with_writer(std::io::sink).init();
 
     let identity = Identity::load_or_generate(&Identity::default_path())?;
     let transport = Transport::bind("0.0.0.0:0".parse()?, &identity).await?;

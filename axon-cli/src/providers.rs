@@ -406,10 +406,7 @@ async fn fetch_ollama_models(endpoint: &str) -> Result<Vec<ModelInfo>, ProviderE
                         .as_u64()
                         .map(|s| format!("{:.1}GB", s as f64 / 1e9))
                         .unwrap_or_default();
-                    let family = m["details"]["family"]
-                        .as_str()
-                        .unwrap_or("")
-                        .to_string();
+                    let family = m["details"]["family"].as_str().unwrap_or("").to_string();
                     let params = m["details"]["parameter_size"]
                         .as_str()
                         .unwrap_or("")
@@ -520,10 +517,7 @@ fn xai_models() -> Vec<ModelInfo> {
 
 /// Validate an API key by making a lightweight request.
 #[allow(dead_code)]
-pub async fn validate_api_key(
-    kind: &ProviderKind,
-    api_key: &str,
-) -> Result<bool, ProviderError> {
+pub async fn validate_api_key(kind: &ProviderKind, api_key: &str) -> Result<bool, ProviderError> {
     match kind {
         ProviderKind::Ollama => Ok(true), // no key needed
         ProviderKind::OpenRouter => {
@@ -654,12 +648,7 @@ mod tests {
 
     #[test]
     fn build_openrouter_requires_key() {
-        let p = build_provider(
-            &ProviderKind::OpenRouter,
-            "",
-            "",
-            "x-ai/grok-4.20-beta",
-        );
+        let p = build_provider(&ProviderKind::OpenRouter, "", "", "x-ai/grok-4.20-beta");
         assert!(p.is_err());
     }
 
@@ -700,12 +689,18 @@ mod tests {
 
     #[test]
     fn openrouter_default_model_is_latest() {
-        assert_eq!(default_model(&ProviderKind::OpenRouter), "x-ai/grok-4.20-beta");
+        assert_eq!(
+            default_model(&ProviderKind::OpenRouter),
+            "x-ai/grok-4.20-beta"
+        );
     }
 
     #[test]
     fn error_message_suggests_openrouter() {
         let err = "anthropic".parse::<ProviderKind>().unwrap_err();
-        assert!(err.contains("openrouter"), "Error should suggest OpenRouter for unknown providers");
+        assert!(
+            err.contains("openrouter"),
+            "Error should suggest OpenRouter for unknown providers"
+        );
     }
 }

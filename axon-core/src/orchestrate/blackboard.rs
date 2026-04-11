@@ -61,10 +61,7 @@ impl Blackboard {
     }
 
     /// Read and deserialize a JSON value.
-    pub async fn read_json<T: serde::de::DeserializeOwned>(
-        &self,
-        key: &str,
-    ) -> Option<T> {
+    pub async fn read_json<T: serde::de::DeserializeOwned>(&self, key: &str) -> Option<T> {
         let bytes = self.read(key).await?;
         serde_json::from_slice(&bytes).ok()
     }

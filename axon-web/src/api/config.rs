@@ -71,8 +71,7 @@ pub async fn get_config(
         }));
     }
 
-    let contents =
-        std::fs::read_to_string(&path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let contents = std::fs::read_to_string(&path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Parse as generic TOML to extract values
     let val: toml::Value =
@@ -151,7 +150,11 @@ pub async fn get_config(
                         args: t
                             .get("args")
                             .and_then(|v| v.as_array())
-                            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                            .map(|a| {
+                                a.iter()
+                                    .filter_map(|v| v.as_str().map(String::from))
+                                    .collect()
+                            })
                             .unwrap_or_default(),
                         timeout_secs: t
                             .get("timeout_secs")
@@ -218,8 +221,7 @@ pub async fn put_config(
         String::new()
     };
 
-    let mut doc: toml::Table =
-        toml::from_str(&contents).unwrap_or_default();
+    let mut doc: toml::Table = toml::from_str(&contents).unwrap_or_default();
 
     if let Some(node) = req.node {
         let node_table = doc

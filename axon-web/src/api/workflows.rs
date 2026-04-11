@@ -4,9 +4,7 @@ use axum::http::StatusCode;
 use axum::response::Json;
 use std::sync::Arc;
 
-pub async fn list_workflows(
-    State(state): State<Arc<SharedWebState>>,
-) -> Json<serde_json::Value> {
+pub async fn list_workflows(State(state): State<Arc<SharedWebState>>) -> Json<serde_json::Value> {
     let ws = state.web_state.read().await;
     Json(serde_json::json!({
         "active": ws.active_workflows,

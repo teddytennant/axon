@@ -24,24 +24,20 @@ pub async fn validate_key(
     let client = reqwest::Client::new();
     let result = match req.provider.as_str() {
         "ollama" => Ok(true),
-        "openrouter" => {
-            client
-                .get("https://openrouter.ai/api/v1/models")
-                .bearer_auth(&req.api_key)
-                .timeout(std::time::Duration::from_secs(5))
-                .send()
-                .await
-                .map(|r| r.status().is_success())
-        }
-        "xai" => {
-            client
-                .get("https://api.x.ai/v1/models")
-                .bearer_auth(&req.api_key)
-                .timeout(std::time::Duration::from_secs(5))
-                .send()
-                .await
-                .map(|r| r.status().is_success())
-        }
+        "openrouter" => client
+            .get("https://openrouter.ai/api/v1/models")
+            .bearer_auth(&req.api_key)
+            .timeout(std::time::Duration::from_secs(5))
+            .send()
+            .await
+            .map(|r| r.status().is_success()),
+        "xai" => client
+            .get("https://api.x.ai/v1/models")
+            .bearer_auth(&req.api_key)
+            .timeout(std::time::Duration::from_secs(5))
+            .send()
+            .await
+            .map(|r| r.status().is_success()),
         "custom" => Ok(!req.api_key.is_empty()),
         _ => Ok(false),
     };
@@ -93,8 +89,7 @@ pub async fn put_key(
     let header = "# Axon node configuration\n\
                   # Managed by axon CLI — edit freely or re-run `axon setup`\n\
                   # API keys: prefer env vars (XAI_API_KEY, OPENROUTER_API_KEY)\n\n";
-    let serialized =
-        toml::to_string_pretty(&doc).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let serialized = toml::to_string_pretty(&doc).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     std::fs::write(&path, format!("{}{}", header, serialized))
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 

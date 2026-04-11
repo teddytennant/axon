@@ -1,11 +1,11 @@
 pub mod crdt;
-pub mod orchestrate;
 pub mod discovery;
 pub mod gossip;
 pub mod identity;
 pub mod mcp;
 pub mod mdns;
 pub mod negotiate;
+pub mod orchestrate;
 pub mod protocol;
 pub mod router;
 pub mod runtime;
@@ -15,7 +15,9 @@ pub mod trust;
 
 pub use crdt::{GCounter, LWWRegister, ORSet};
 pub use discovery::PeerTable;
-pub use gossip::{broadcast_tool_catalog, run_gossip, send_tool_catalog, GossipConfig, LocalToolCatalog};
+pub use gossip::{
+    broadcast_tool_catalog, run_gossip, send_tool_catalog, GossipConfig, LocalToolCatalog,
+};
 pub use identity::Identity;
 pub use mcp::{
     BudgetSearchResult, CompactToolSchema, McpBridge, McpBridgeAgent, McpClient, McpClientError,

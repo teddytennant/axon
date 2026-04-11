@@ -42,46 +42,164 @@ struct CmdDef {
 
 const COMMANDS: &[CmdDef] = &[
     // Agent orchestration
-    CmdDef { name: "run",      aliases: &["r"],           args: "<cap> [data]", desc: "run an agent task, show result",        category: "agents" },
-    CmdDef { name: "spawn",    aliases: &["s"],           args: "<cap> [data]", desc: "launch background agent task",          category: "agents" },
-    CmdDef { name: "jobs",     aliases: &["j"],           args: "",             desc: "list running and completed jobs",       category: "agents" },
-    CmdDef { name: "kill",     aliases: &[],              args: "<id>",         desc: "cancel a background job",               category: "agents" },
-    CmdDef { name: "agents",   aliases: &["a"],           args: "",             desc: "list available agents",                 category: "agents" },
-    CmdDef { name: "auto",     aliases: &[],              args: "",             desc: "toggle auto-agent (LLM launches agents)",      category: "agents" },
-    CmdDef { name: "task",     aliases: &["t"],           args: "<cap> [data]", desc: "alias for /run",                        category: "agents" },
+    CmdDef {
+        name: "run",
+        aliases: &["r"],
+        args: "<cap> [data]",
+        desc: "run an agent task, show result",
+        category: "agents",
+    },
+    CmdDef {
+        name: "spawn",
+        aliases: &["s"],
+        args: "<cap> [data]",
+        desc: "launch background agent task",
+        category: "agents",
+    },
+    CmdDef {
+        name: "jobs",
+        aliases: &["j"],
+        args: "",
+        desc: "list running and completed jobs",
+        category: "agents",
+    },
+    CmdDef {
+        name: "kill",
+        aliases: &[],
+        args: "<id>",
+        desc: "cancel a background job",
+        category: "agents",
+    },
+    CmdDef {
+        name: "agents",
+        aliases: &["a"],
+        args: "",
+        desc: "list available agents",
+        category: "agents",
+    },
+    CmdDef {
+        name: "auto",
+        aliases: &[],
+        args: "",
+        desc: "toggle auto-agent (LLM launches agents)",
+        category: "agents",
+    },
+    CmdDef {
+        name: "task",
+        aliases: &["t"],
+        args: "<cap> [data]",
+        desc: "alias for /run",
+        category: "agents",
+    },
     // Mesh
-    CmdDef { name: "peers",    aliases: &[],              args: "",             desc: "show connected mesh peers",             category: "mesh" },
-    CmdDef { name: "tools",    aliases: &[],              args: "",             desc: "list available MCP tools",              category: "mesh" },
-    CmdDef { name: "status",   aliases: &[],              args: "",             desc: "show node and mesh status",             category: "mesh" },
-    CmdDef { name: "trust",    aliases: &[],              args: "[peer]",       desc: "show peer trust scores",                category: "mesh" },
-    CmdDef { name: "route",    aliases: &[],              args: "<peer> <msg>", desc: "send prompt to a specific peer's LLM",  category: "mesh" },
+    CmdDef {
+        name: "peers",
+        aliases: &[],
+        args: "",
+        desc: "show connected mesh peers",
+        category: "mesh",
+    },
+    CmdDef {
+        name: "tools",
+        aliases: &[],
+        args: "",
+        desc: "list available MCP tools",
+        category: "mesh",
+    },
+    CmdDef {
+        name: "status",
+        aliases: &[],
+        args: "",
+        desc: "show node and mesh status",
+        category: "mesh",
+    },
+    CmdDef {
+        name: "trust",
+        aliases: &[],
+        args: "[peer]",
+        desc: "show peer trust scores",
+        category: "mesh",
+    },
+    CmdDef {
+        name: "route",
+        aliases: &[],
+        args: "<peer> <msg>",
+        desc: "send prompt to a specific peer's LLM",
+        category: "mesh",
+    },
     // Model / Provider
-    CmdDef { name: "model",    aliases: &["m"],           args: "[id]",         desc: "pick or switch model",                  category: "llm" },
-    CmdDef { name: "provider", aliases: &["p"],           args: "<name>",       desc: "switch provider",                       category: "llm" },
-    CmdDef { name: "system",   aliases: &[],              args: "<prompt>",     desc: "set system prompt",                     category: "llm" },
+    CmdDef {
+        name: "model",
+        aliases: &["m"],
+        args: "[id]",
+        desc: "pick or switch model",
+        category: "llm",
+    },
+    CmdDef {
+        name: "provider",
+        aliases: &["p"],
+        args: "<name>",
+        desc: "switch provider",
+        category: "llm",
+    },
+    CmdDef {
+        name: "system",
+        aliases: &[],
+        args: "<prompt>",
+        desc: "set system prompt",
+        category: "llm",
+    },
     // Session
-    CmdDef { name: "clear",    aliases: &["c"],           args: "",             desc: "clear conversation",                    category: "session" },
-    CmdDef { name: "help",     aliases: &["h", "?"],      args: "",             desc: "show help",                             category: "session" },
-    CmdDef { name: "quit",     aliases: &["q", "exit"],   args: "",             desc: "exit",                                  category: "session" },
+    CmdDef {
+        name: "clear",
+        aliases: &["c"],
+        args: "",
+        desc: "clear conversation",
+        category: "session",
+    },
+    CmdDef {
+        name: "help",
+        aliases: &["h", "?"],
+        args: "",
+        desc: "show help",
+        category: "session",
+    },
+    CmdDef {
+        name: "quit",
+        aliases: &["q", "exit"],
+        args: "",
+        desc: "exit",
+        category: "session",
+    },
 ];
 
 fn match_command(input: &str) -> Option<(&'static CmdDef, String)> {
     let input = input.trim();
-    if !input.starts_with('/') { return None; }
+    if !input.starts_with('/') {
+        return None;
+    }
     let mut parts = input[1..].splitn(2, ' ');
     let cmd = parts.next().unwrap_or("").to_lowercase();
     let arg = parts.next().unwrap_or("").trim().to_string();
-    COMMANDS.iter().find(|c| c.name == cmd || c.aliases.contains(&cmd.as_str())).map(|c| (c, arg))
+    COMMANDS
+        .iter()
+        .find(|c| c.name == cmd || c.aliases.contains(&cmd.as_str()))
+        .map(|c| (c, arg))
 }
 
 fn filtered_suggestions(input: &str) -> Vec<&'static CmdDef> {
-    if !input.starts_with('/') { return Vec::new(); }
+    if !input.starts_with('/') {
+        return Vec::new();
+    }
     let partial = &input[1..].to_lowercase();
     if partial.is_empty() {
         return COMMANDS.iter().collect();
     }
-    if partial.contains(' ') { return Vec::new(); }
-    COMMANDS.iter()
+    if partial.contains(' ') {
+        return Vec::new();
+    }
+    COMMANDS
+        .iter()
         .filter(|c| c.name.starts_with(partial) || c.aliases.iter().any(|a| a.starts_with(partial)))
         .collect()
 }
@@ -91,7 +209,11 @@ fn filtered_suggestions(input: &str) -> Vec<&'static CmdDef> {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
-enum Role { User, Assistant, System }
+enum Role {
+    User,
+    Assistant,
+    System,
+}
 
 #[derive(Debug, Clone)]
 struct ChatMessage {
@@ -119,8 +241,12 @@ impl ModelPicker {
             self.models.iter().enumerate().collect()
         } else {
             let q = self.filter.to_lowercase();
-            self.models.iter().enumerate()
-                .filter(|(_, m)| m.id.to_lowercase().contains(&q) || m.name.to_lowercase().contains(&q))
+            self.models
+                .iter()
+                .enumerate()
+                .filter(|(_, m)| {
+                    m.id.to_lowercase().contains(&q) || m.name.to_lowercase().contains(&q)
+                })
                 .collect()
         }
     }
@@ -203,12 +329,22 @@ impl ChatState {
         if !self.system_prompt.is_empty() {
             prompt.push_str(&format!("System: {}\n\n", self.system_prompt));
         }
-        let history: Vec<&ChatMessage> = self.messages.iter()
+        let history: Vec<&ChatMessage> = self
+            .messages
+            .iter()
             .filter(|m| matches!(m.role, Role::User | Role::Assistant))
             .collect();
-        let recent = if history.len() > 20 { &history[history.len() - 20..] } else { &history };
+        let recent = if history.len() > 20 {
+            &history[history.len() - 20..]
+        } else {
+            &history
+        };
         for msg in recent {
-            let role = match msg.role { Role::User => "User", Role::Assistant => "Assistant", Role::System => "System" };
+            let role = match msg.role {
+                Role::User => "User",
+                Role::Assistant => "Assistant",
+                Role::System => "System",
+            };
             prompt.push_str(&format!("{}: {}\n\n", role, msg.content));
         }
         prompt.push_str(&format!("User: {}\n\nAssistant:", user_msg));
@@ -216,12 +352,22 @@ impl ChatState {
     }
 
     fn rebuild_provider(&mut self) -> Result<(), ProviderError> {
-        self.provider = build_provider(&self.provider_kind, &self.endpoint, &self.api_key, &self.model)?;
+        self.provider = build_provider(
+            &self.provider_kind,
+            &self.endpoint,
+            &self.api_key,
+            &self.model,
+        )?;
         Ok(())
     }
 
     fn sys_msg(&mut self, content: String) {
-        self.messages.push(ChatMessage { role: Role::System, content, duration_ms: None, tokens: None });
+        self.messages.push(ChatMessage {
+            role: Role::System,
+            content,
+            duration_ms: None,
+            tokens: None,
+        });
         self.auto_scroll = true;
     }
 
@@ -230,7 +376,9 @@ impl ChatState {
     }
 
     fn has_suggestions(&self) -> bool {
-        !self.suggestions().is_empty() && self.input.starts_with('/') && !self.input[1..].contains(' ')
+        !self.suggestions().is_empty()
+            && self.input.starts_with('/')
+            && !self.input[1..].contains(' ')
     }
 }
 
@@ -241,9 +389,21 @@ impl ChatState {
 pub async fn run_chat() -> anyhow::Result<()> {
     let cfg = config::load_config();
     let kind: ProviderKind = cfg.llm.provider.parse().unwrap_or(ProviderKind::Ollama);
-    let api_key = if cfg.llm.api_key.is_empty() { providers::resolve_api_key("", &kind) } else { cfg.llm.api_key.clone() };
-    let endpoint = if cfg.llm.endpoint.is_empty() { providers::default_endpoint(&kind).to_string() } else { cfg.llm.endpoint.clone() };
-    let model = if cfg.llm.model.is_empty() { providers::default_model(&kind).to_string() } else { cfg.llm.model.clone() };
+    let api_key = if cfg.llm.api_key.is_empty() {
+        providers::resolve_api_key("", &kind)
+    } else {
+        cfg.llm.api_key.clone()
+    };
+    let endpoint = if cfg.llm.endpoint.is_empty() {
+        providers::default_endpoint(&kind).to_string()
+    } else {
+        cfg.llm.endpoint.clone()
+    };
+    let model = if cfg.llm.model.is_empty() {
+        providers::default_model(&kind).to_string()
+    } else {
+        cfg.llm.model.clone()
+    };
     let provider = build_provider(&kind, &endpoint, &api_key, &model)?;
 
     let mut state = ChatState {
@@ -296,11 +456,17 @@ async fn event_loop(
         if let Some(mut rx) = state.pending.take() {
             match rx.try_recv() {
                 Ok(result) => {
-                    let elapsed = state.pending_start.map(|s| s.elapsed().as_millis() as u64).unwrap_or(0);
+                    let elapsed = state
+                        .pending_start
+                        .map(|s| s.elapsed().as_millis() as u64)
+                        .unwrap_or(0);
                     state.pending_start = None;
                     match result {
                         Ok(resp) => {
-                            let tokens = resp.usage.as_ref().map(|u| (u.prompt_tokens, u.completion_tokens));
+                            let tokens = resp
+                                .usage
+                                .as_ref()
+                                .map(|u| (u.prompt_tokens, u.completion_tokens));
                             if let Some((p, c)) = tokens {
                                 state.total_prompt_tokens += p as u64;
                                 state.total_completion_tokens += c as u64;
@@ -344,8 +510,18 @@ async fn event_loop(
                 let ep = state.endpoint.clone();
                 let key = state.api_key.clone();
                 match providers::fetch_models(&kind, &ep, &key).await {
-                    Ok(m) => { if let Some(p) = &mut state.model_picker { p.models = m; p.loading = false; } }
-                    Err(e) => { if let Some(p) = &mut state.model_picker { p.error = Some(format!("{}", e)); p.loading = false; } }
+                    Ok(m) => {
+                        if let Some(p) = &mut state.model_picker {
+                            p.models = m;
+                            p.loading = false;
+                        }
+                    }
+                    Err(e) => {
+                        if let Some(p) = &mut state.model_picker {
+                            p.error = Some(format!("{}", e));
+                            p.loading = false;
+                        }
+                    }
                 }
             }
         }
@@ -359,7 +535,9 @@ async fn event_loop(
         let poll_ms = if has_active { 80 } else { 150 };
         if event::poll(Duration::from_millis(poll_ms))? {
             if let Event::Key(key) = event::read()? {
-                if handle_key(key, state).await { break; }
+                if handle_key(key, state).await {
+                    break;
+                }
             }
         }
     }
@@ -367,12 +545,19 @@ async fn event_loop(
 }
 
 async fn handle_key(key: KeyEvent, state: &mut ChatState) -> bool {
-    if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) { return true; }
+    if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+        return true;
+    }
 
     // Model picker takes priority
-    if state.model_picker.is_some() { return handle_picker_key(key, state); }
+    if state.model_picker.is_some() {
+        return handle_picker_key(key, state);
+    }
     // Help overlay
-    if state.show_help { state.show_help = false; return false; }
+    if state.show_help {
+        state.show_help = false;
+        return false;
+    }
 
     if key.code == KeyCode::Esc {
         if state.has_suggestions() {
@@ -390,7 +575,9 @@ async fn handle_key(key: KeyEvent, state: &mut ChatState) -> bool {
         return true;
     }
 
-    if state.pending.is_some() { return false; }
+    if state.pending.is_some() {
+        return false;
+    }
 
     // Autocomplete interactions
     if state.has_suggestions() {
@@ -451,12 +638,16 @@ async fn handle_key(key: KeyEvent, state: &mut ChatState) -> bool {
     match key.code {
         KeyCode::Enter => {
             let input = state.input.trim().to_string();
-            if input.is_empty() { return false; }
+            if input.is_empty() {
+                return false;
+            }
             state.input.clear();
             state.input_cursor = 0;
             state.cmd_history_idx = None;
             state.ac_cursor = 0;
-            if !input.starts_with('/') { state.cmd_history.push(input.clone()); }
+            if !input.starts_with('/') {
+                state.cmd_history.push(input.clone());
+            }
 
             if let Some((cmd, arg)) = match_command(&input) {
                 return handle_command(cmd.name, &arg, state, &input).await;
@@ -472,20 +663,41 @@ async fn handle_key(key: KeyEvent, state: &mut ChatState) -> bool {
             false
         }
         KeyCode::Backspace => {
-            if state.input_cursor > 0 { state.input_cursor -= 1; state.input.remove(state.input_cursor); state.ac_cursor = 0; }
+            if state.input_cursor > 0 {
+                state.input_cursor -= 1;
+                state.input.remove(state.input_cursor);
+                state.ac_cursor = 0;
+            }
             false
         }
         KeyCode::Delete => {
-            if state.input_cursor < state.input.len() { state.input.remove(state.input_cursor); }
+            if state.input_cursor < state.input.len() {
+                state.input.remove(state.input_cursor);
+            }
             false
         }
-        KeyCode::Left => { state.input_cursor = state.input_cursor.saturating_sub(1); false }
-        KeyCode::Right => { state.input_cursor = (state.input_cursor + 1).min(state.input.len()); false }
-        KeyCode::Home => { state.input_cursor = 0; false }
-        KeyCode::End => { state.input_cursor = state.input.len(); false }
+        KeyCode::Left => {
+            state.input_cursor = state.input_cursor.saturating_sub(1);
+            false
+        }
+        KeyCode::Right => {
+            state.input_cursor = (state.input_cursor + 1).min(state.input.len());
+            false
+        }
+        KeyCode::Home => {
+            state.input_cursor = 0;
+            false
+        }
+        KeyCode::End => {
+            state.input_cursor = state.input.len();
+            false
+        }
         KeyCode::Up => {
             if !state.cmd_history.is_empty() {
-                let idx = match state.cmd_history_idx { Some(i) => i.saturating_sub(1), None => state.cmd_history.len() - 1 };
+                let idx = match state.cmd_history_idx {
+                    Some(i) => i.saturating_sub(1),
+                    None => state.cmd_history.len() - 1,
+                };
                 state.cmd_history_idx = Some(idx);
                 state.input = state.cmd_history[idx].clone();
                 state.input_cursor = state.input.len();
@@ -498,36 +710,74 @@ async fn handle_key(key: KeyEvent, state: &mut ChatState) -> bool {
                     state.cmd_history_idx = Some(idx + 1);
                     state.input = state.cmd_history[idx + 1].clone();
                     state.input_cursor = state.input.len();
-                } else { state.cmd_history_idx = None; state.input.clear(); state.input_cursor = 0; }
+                } else {
+                    state.cmd_history_idx = None;
+                    state.input.clear();
+                    state.input_cursor = 0;
+                }
             }
             false
         }
-        KeyCode::PageUp => { state.scroll = state.scroll.saturating_sub(10); state.auto_scroll = false; false }
-        KeyCode::PageDown => { state.scroll = state.scroll.saturating_add(10); state.auto_scroll = true; false }
+        KeyCode::PageUp => {
+            state.scroll = state.scroll.saturating_sub(10);
+            state.auto_scroll = false;
+            false
+        }
+        KeyCode::PageDown => {
+            state.scroll = state.scroll.saturating_add(10);
+            state.auto_scroll = true;
+            false
+        }
         KeyCode::Tab => false,
         _ => false,
     }
 }
 
 fn handle_picker_key(key: KeyEvent, state: &mut ChatState) -> bool {
-    let picker = match &mut state.model_picker { Some(p) => p, None => return false };
+    let picker = match &mut state.model_picker {
+        Some(p) => p,
+        None => return false,
+    };
     match key.code {
-        KeyCode::Esc => { state.model_picker = None; false }
-        KeyCode::Up => { picker.cursor = picker.cursor.saturating_sub(1); false }
-        KeyCode::Down => { let max = picker.filtered().len().saturating_sub(1); picker.cursor = (picker.cursor + 1).min(max); false }
+        KeyCode::Esc => {
+            state.model_picker = None;
+            false
+        }
+        KeyCode::Up => {
+            picker.cursor = picker.cursor.saturating_sub(1);
+            false
+        }
+        KeyCode::Down => {
+            let max = picker.filtered().len().saturating_sub(1);
+            picker.cursor = (picker.cursor + 1).min(max);
+            false
+        }
         KeyCode::Enter => {
             let filtered = picker.filtered();
             if let Some((_, model)) = filtered.get(picker.cursor) {
                 let id = model.id.clone();
                 state.model = id.clone();
                 state.model_picker = None;
-                if let Err(e) = state.rebuild_provider() { state.sys_msg(format!("failed: {}", e)); }
-                else { state.sys_msg(format!("model → {}", id)); }
-            } else { state.model_picker = None; }
+                if let Err(e) = state.rebuild_provider() {
+                    state.sys_msg(format!("failed: {}", e));
+                } else {
+                    state.sys_msg(format!("model → {}", id));
+                }
+            } else {
+                state.model_picker = None;
+            }
             false
         }
-        KeyCode::Char(c) => { picker.filter.push(c); picker.cursor = 0; false }
-        KeyCode::Backspace => { picker.filter.pop(); picker.cursor = 0; false }
+        KeyCode::Char(c) => {
+            picker.filter.push(c);
+            picker.cursor = 0;
+            false
+        }
+        KeyCode::Backspace => {
+            picker.filter.pop();
+            picker.cursor = 0;
+            false
+        }
         _ => false,
     }
 }
@@ -539,31 +789,52 @@ fn handle_picker_key(key: KeyEvent, state: &mut ChatState) -> bool {
 async fn handle_command(name: &str, arg: &str, state: &mut ChatState, raw: &str) -> bool {
     match name {
         "quit" => return true,
-        "clear" => { state.messages.clear(); state.scroll = 0; }
-        "help" => { state.show_help = true; }
+        "clear" => {
+            state.messages.clear();
+            state.scroll = 0;
+        }
+        "help" => {
+            state.show_help = true;
+        }
 
         "model" => {
             if arg.is_empty() {
                 state.model_picker = Some(ModelPicker {
-                    models: Vec::new(), cursor: 0, filter: String::new(), loading: true, error: None,
+                    models: Vec::new(),
+                    cursor: 0,
+                    filter: String::new(),
+                    loading: true,
+                    error: None,
                 });
             } else {
                 state.model = arg.to_string();
-                if let Err(e) = state.rebuild_provider() { state.sys_msg(format!("failed: {}", e)); }
-                else { state.sys_msg(format!("model → {}", arg)); }
+                if let Err(e) = state.rebuild_provider() {
+                    state.sys_msg(format!("failed: {}", e));
+                } else {
+                    state.sys_msg(format!("model → {}", arg));
+                }
             }
         }
         "provider" => {
             if arg.is_empty() {
-                state.sys_msg(format!("current: {} — options: ollama, openrouter, xai, custom", state.provider_kind));
+                state.sys_msg(format!(
+                    "current: {} — options: ollama, openrouter, xai, custom",
+                    state.provider_kind
+                ));
             } else {
                 match arg.parse::<ProviderKind>() {
                     Ok(k) => {
                         state.provider_kind = k.clone();
                         state.endpoint = providers::default_endpoint(&k).to_string();
                         state.model = providers::default_model(&k).to_string();
-                        if let Err(e) = state.rebuild_provider() { state.sys_msg(format!("failed: {}", e)); }
-                        else { state.sys_msg(format!("provider → {} ({})", state.provider_kind, state.model)); }
+                        if let Err(e) = state.rebuild_provider() {
+                            state.sys_msg(format!("failed: {}", e));
+                        } else {
+                            state.sys_msg(format!(
+                                "provider → {} ({})",
+                                state.provider_kind, state.model
+                            ));
+                        }
                     }
                     Err(e) => state.sys_msg(e),
                 }
@@ -571,8 +842,11 @@ async fn handle_command(name: &str, arg: &str, state: &mut ChatState, raw: &str)
         }
         "system" => {
             if arg.is_empty() {
-                if state.system_prompt.is_empty() { state.sys_msg("no system prompt set".into()); }
-                else { state.sys_msg(format!("system: {}", state.system_prompt)); }
+                if state.system_prompt.is_empty() {
+                    state.sys_msg("no system prompt set".into());
+                } else {
+                    state.sys_msg(format!("system: {}", state.system_prompt));
+                }
             } else {
                 state.system_prompt = arg.to_string();
                 state.sys_msg(format!("system prompt set ({} chars)", arg.len()));
@@ -616,7 +890,10 @@ async fn handle_command(name: &str, arg: &str, state: &mut ChatState, raw: &str)
                             None => "cancelled".into(),
                         }
                     };
-                    lines.push(format!("  #{:<3} {:<20} {}", job.id, job.capability, status));
+                    lines.push(format!(
+                        "  #{:<3} {:<20} {}",
+                        job.id, job.capability, status
+                    ));
                 }
                 state.sys_msg(lines.join("\n"));
             }
@@ -638,14 +915,20 @@ async fn handle_command(name: &str, arg: &str, state: &mut ChatState, raw: &str)
             let cfg = config::load_config();
             let auto_label = if state.auto_agent { "on" } else { "off" };
             let mut lines = vec![
-                format!("agents:                                  auto-agent: {}", auto_label),
+                format!(
+                    "agents:                                  auto-agent: {}",
+                    auto_label
+                ),
                 format!("  echo.ping        echo back a message            /run echo.ping hello"),
                 format!("  system.info      hostname, os, arch             /run system.info"),
                 format!("  llm.chat         prompt the LLM                 /run llm.chat <prompt>"),
             ];
             let mcp_count = cfg.mcp.servers.len();
             if mcp_count > 0 {
-                lines.push(format!("  mcp.*            {} MCP server(s)               (via axon start)", mcp_count));
+                lines.push(format!(
+                    "  mcp.*            {} MCP server(s)               (via axon start)",
+                    mcp_count
+                ));
             }
             lines.push(String::new());
             lines.push("/run  — execute and wait     /spawn — launch in background".into());
@@ -655,7 +938,9 @@ async fn handle_command(name: &str, arg: &str, state: &mut ChatState, raw: &str)
         "auto" => {
             state.auto_agent = !state.auto_agent;
             if state.auto_agent {
-                state.sys_msg("auto-agent on — the LLM can now launch agents via [[run:cap:payload]]".into());
+                state.sys_msg(
+                    "auto-agent on — the LLM can now launch agents via [[run:cap:payload]]".into(),
+                );
             } else {
                 state.sys_msg("auto-agent off".into());
             }
@@ -676,9 +961,15 @@ async fn handle_command(name: &str, arg: &str, state: &mut ChatState, raw: &str)
         "tools" => {
             let cfg = config::load_config();
             if cfg.mcp.servers.is_empty() {
-                state.sys_msg("no MCP servers configured\nadd [[mcp.servers]] to ~/.config/axon/config.toml".into());
+                state.sys_msg(
+                    "no MCP servers configured\nadd [[mcp.servers]] to ~/.config/axon/config.toml"
+                        .into(),
+                );
             } else {
-                let mut lines = vec![format!("{} MCP server(s) configured:", cfg.mcp.servers.len())];
+                let mut lines = vec![format!(
+                    "{} MCP server(s) configured:",
+                    cfg.mcp.servers.len()
+                )];
                 for s in &cfg.mcp.servers {
                     lines.push(format!("  {} — {} {}", s.name, s.command, s.args.join(" ")));
                 }
@@ -689,17 +980,27 @@ async fn handle_command(name: &str, arg: &str, state: &mut ChatState, raw: &str)
         }
         "status" => {
             let cfg = config::load_config();
-            let has_key = !cfg.llm.api_key.is_empty() || !providers::resolve_api_key("", &state.provider_kind).is_empty();
+            let has_key = !cfg.llm.api_key.is_empty()
+                || !providers::resolve_api_key("", &state.provider_kind).is_empty();
             let id_path = axon_core::Identity::default_path();
             let has_id = id_path.exists();
             let lines = vec![
                 format!("provider:  {}", state.provider_kind),
                 format!("model:     {}", state.model),
                 format!("endpoint:  {}", state.endpoint),
-                format!("api key:   {}", if has_key { "configured" } else { "missing" }),
-                format!("identity:  {}", if has_id { "exists" } else { "not created" }),
+                format!(
+                    "api key:   {}",
+                    if has_key { "configured" } else { "missing" }
+                ),
+                format!(
+                    "identity:  {}",
+                    if has_id { "exists" } else { "not created" }
+                ),
                 format!("mcp:       {} server(s)", cfg.mcp.servers.len()),
-                format!("tokens:    {} prompt + {} completion", state.total_prompt_tokens, state.total_completion_tokens),
+                format!(
+                    "tokens:    {} prompt + {} completion",
+                    state.total_prompt_tokens, state.total_completion_tokens
+                ),
             ];
             state.sys_msg(lines.join("\n"));
         }
@@ -710,7 +1011,10 @@ async fn handle_command(name: &str, arg: &str, state: &mut ChatState, raw: &str)
             if arg.is_empty() {
                 state.sys_msg("usage: /route <peer-addr> <message>\nroutes a prompt to a specific peer's LLM agent over QUIC".into());
             } else {
-                state.sys_msg("routing requires a running node\nstart with: axon start, then use /route".into());
+                state.sys_msg(
+                    "routing requires a running node\nstart with: axon start, then use /route"
+                        .into(),
+                );
             }
         }
 
@@ -743,26 +1047,41 @@ async fn execute_agent(cap: &str, payload: &str, state: &ChatState) -> Result<St
     let (ns, name) = (parts[0], parts[1]);
 
     match (ns, name) {
-        ("echo", "ping") => {
-            Ok(if payload.is_empty() { "pong".into() } else { payload.to_string() })
-        }
+        ("echo", "ping") => Ok(if payload.is_empty() {
+            "pong".into()
+        } else {
+            payload.to_string()
+        }),
         ("system", "info") => {
             let hostname = std::env::var("HOSTNAME")
                 .or_else(|_| std::fs::read_to_string("/etc/hostname").map(|s| s.trim().to_string()))
                 .unwrap_or_else(|_| "unknown".into());
-            Ok(format!("host: {}  os: {}  arch: {}", hostname, std::env::consts::OS, std::env::consts::ARCH))
+            Ok(format!(
+                "host: {}  os: {}  arch: {}",
+                hostname,
+                std::env::consts::OS,
+                std::env::consts::ARCH
+            ))
         }
         ("llm", "chat") => {
             if payload.is_empty() {
                 return Err("llm.chat requires a payload".into());
             }
-            let provider = build_provider(&state.provider_kind, &state.endpoint, &state.api_key, &state.model)
+            let provider = build_provider(
+                &state.provider_kind,
+                &state.endpoint,
+                &state.api_key,
+                &state.model,
+            )
+            .map_err(|e| format!("{}", e))?;
+            let resp = provider
+                .complete(CompletionRequest {
+                    prompt: payload.to_string(),
+                    max_tokens: None,
+                    temperature: None,
+                })
+                .await
                 .map_err(|e| format!("{}", e))?;
-            let resp = provider.complete(CompletionRequest {
-                prompt: payload.to_string(),
-                max_tokens: None,
-                temperature: None,
-            }).await.map_err(|e| format!("{}", e))?;
             Ok(resp.text.trim().to_string())
         }
         _ => Err(format!("no agent for {}", cap)),
@@ -787,20 +1106,36 @@ fn spawn_job(state: &mut ChatState, cap: &str, payload: &str) {
             Err(format!("invalid capability: {}", cap_owned))
         } else {
             match (parts[0], parts[1]) {
-                ("echo", "ping") => Ok(if payload_owned.is_empty() { "pong".into() } else { payload_owned }),
+                ("echo", "ping") => Ok(if payload_owned.is_empty() {
+                    "pong".into()
+                } else {
+                    payload_owned
+                }),
                 ("system", "info") => {
                     let h = std::env::var("HOSTNAME")
-                        .or_else(|_| std::fs::read_to_string("/etc/hostname").map(|s| s.trim().to_string()))
+                        .or_else(|_| {
+                            std::fs::read_to_string("/etc/hostname").map(|s| s.trim().to_string())
+                        })
                         .unwrap_or_else(|_| "unknown".into());
-                    Ok(format!("host: {}  os: {}  arch: {}", h, std::env::consts::OS, std::env::consts::ARCH))
+                    Ok(format!(
+                        "host: {}  os: {}  arch: {}",
+                        h,
+                        std::env::consts::OS,
+                        std::env::consts::ARCH
+                    ))
                 }
-                ("llm", "chat") => {
-                    match build_provider(&pk, &ep, &key, &mdl) {
-                        Ok(p) => p.complete(CompletionRequest { prompt: payload_owned, max_tokens: None, temperature: None })
-                            .await.map(|r| r.text.trim().to_string()).map_err(|e| format!("{}", e)),
-                        Err(e) => Err(format!("{}", e)),
-                    }
-                }
+                ("llm", "chat") => match build_provider(&pk, &ep, &key, &mdl) {
+                    Ok(p) => p
+                        .complete(CompletionRequest {
+                            prompt: payload_owned,
+                            max_tokens: None,
+                            temperature: None,
+                        })
+                        .await
+                        .map(|r| r.text.trim().to_string())
+                        .map_err(|e| format!("{}", e)),
+                    Err(e) => Err(format!("{}", e)),
+                },
                 _ => Err(format!("no agent for {}", cap_owned)),
             }
         };
@@ -834,7 +1169,10 @@ fn poll_jobs(state: &mut ChatState) {
                         Ok(output) => {
                             state.messages.push(ChatMessage {
                                 role: Role::System,
-                                content: format!("job #{} ({}) done in {}\n  {}", job.id, job.capability, time_str, output),
+                                content: format!(
+                                    "job #{} ({}) done in {}\n  {}",
+                                    job.id, job.capability, time_str, output
+                                ),
                                 duration_ms: Some(elapsed.as_millis() as u64),
                                 tokens: None,
                             });
@@ -842,7 +1180,10 @@ fn poll_jobs(state: &mut ChatState) {
                         Err(e) => {
                             state.messages.push(ChatMessage {
                                 role: Role::System,
-                                content: format!("job #{} ({}) failed in {}: {}", job.id, job.capability, time_str, e),
+                                content: format!(
+                                    "job #{} ({}) failed in {}: {}",
+                                    job.id, job.capability, time_str, e
+                                ),
                                 duration_ms: Some(elapsed.as_millis() as u64),
                                 tokens: None,
                             });
@@ -886,7 +1227,12 @@ fn extract_agent_calls(text: &str) -> Vec<(String, String)> {
 }
 
 fn send_message(state: &mut ChatState, user_msg: &str) {
-    state.messages.push(ChatMessage { role: Role::User, content: user_msg.to_string(), duration_ms: None, tokens: None });
+    state.messages.push(ChatMessage {
+        role: Role::User,
+        content: user_msg.to_string(),
+        duration_ms: None,
+        tokens: None,
+    });
     state.auto_scroll = true;
 
     let prompt = state.build_prompt(user_msg);
@@ -898,7 +1244,14 @@ fn send_message(state: &mut ChatState, user_msg: &str) {
 
     tokio::spawn(async move {
         let result = match build_provider(&pk, &ep, &key, &mdl) {
-            Ok(p) => p.complete(CompletionRequest { prompt, max_tokens: None, temperature: None }).await,
+            Ok(p) => {
+                p.complete(CompletionRequest {
+                    prompt,
+                    max_tokens: None,
+                    temperature: None,
+                })
+                .await
+            }
             Err(e) => Err(e),
         };
         let _ = tx.send(result);
@@ -936,15 +1289,27 @@ fn render(frame: &mut Frame, state: &mut ChatState) {
         render_autocomplete(frame, state, chunks[2]);
     }
 
-    if state.show_help { render_help(frame, area); }
-    if state.model_picker.is_some() { render_model_picker(frame, state, area); }
+    if state.show_help {
+        render_help(frame, area);
+    }
+    if state.model_picker.is_some() {
+        render_model_picker(frame, state, area);
+    }
 }
 
 fn render_header(frame: &mut Frame, state: &ChatState, area: Rect) {
-    let model_short = if state.model.len() > 30 { format!("{}…", &state.model[..29]) } else { state.model.clone() };
+    let model_short = if state.model.len() > 30 {
+        format!("{}…", &state.model[..29])
+    } else {
+        state.model.clone()
+    };
     let total_tokens = state.total_prompt_tokens + state.total_completion_tokens;
     let right = if total_tokens > 0 {
-        let t = if total_tokens > 1000 { format!("{:.1}k", total_tokens as f64 / 1000.0) } else { format!("{}", total_tokens) };
+        let t = if total_tokens > 1000 {
+            format!("{:.1}k", total_tokens as f64 / 1000.0)
+        } else {
+            format!("{}", total_tokens)
+        };
         format!("{} {} · {} tok ", state.provider_kind, model_short, t)
     } else {
         format!("{} {} ", state.provider_kind, model_short)
@@ -970,10 +1335,16 @@ fn render_messages(frame: &mut Frame, state: &mut ChatState, area: Rect) {
         match msg.role {
             Role::User => {
                 lines.push(Line::from(""));
-                lines.push(Line::from(Span::styled("  you", Style::default().fg(ACCENT).bold())));
+                lines.push(Line::from(Span::styled(
+                    "  you",
+                    Style::default().fg(ACCENT).bold(),
+                )));
                 for l in msg.content.lines() {
                     for wr in wrap(l, w.saturating_sub(6)) {
-                        lines.push(Line::from(Span::styled(format!("  {}", wr), Style::default().fg(TEXT))));
+                        lines.push(Line::from(Span::styled(
+                            format!("  {}", wr),
+                            Style::default().fg(TEXT),
+                        )));
                     }
                 }
             }
@@ -981,16 +1352,26 @@ fn render_messages(frame: &mut Frame, state: &mut ChatState, area: Rect) {
                 lines.push(Line::from(""));
                 let mut label = vec![Span::styled("  axon", Style::default().fg(LABEL).bold())];
                 if let Some(ms) = msg.duration_ms {
-                    let t = if ms >= 1000 { format!("{:.1}s", ms as f64 / 1000.0) } else { format!("{}ms", ms) };
+                    let t = if ms >= 1000 {
+                        format!("{:.1}s", ms as f64 / 1000.0)
+                    } else {
+                        format!("{}ms", ms)
+                    };
                     label.push(Span::styled(format!("  {}", t), Style::default().fg(FAINT)));
                 }
                 if let Some((_, c)) = msg.tokens {
-                    label.push(Span::styled(format!(" · {}tok", c), Style::default().fg(FAINT)));
+                    label.push(Span::styled(
+                        format!(" · {}tok", c),
+                        Style::default().fg(FAINT),
+                    ));
                 }
                 lines.push(Line::from(label));
                 for l in msg.content.lines() {
                     for wr in wrap(l, w.saturating_sub(6)) {
-                        lines.push(Line::from(Span::styled(format!("  {}", wr), Style::default().fg(TEXT_DIM))));
+                        lines.push(Line::from(Span::styled(
+                            format!("  {}", wr),
+                            Style::default().fg(TEXT_DIM),
+                        )));
                     }
                 }
             }
@@ -998,7 +1379,10 @@ fn render_messages(frame: &mut Frame, state: &mut ChatState, area: Rect) {
                 lines.push(Line::from(""));
                 for l in msg.content.lines() {
                     for wr in wrap(l, w.saturating_sub(6)) {
-                        lines.push(Line::from(Span::styled(format!("  {}", wr), Style::default().fg(DIM).italic())));
+                        lines.push(Line::from(Span::styled(
+                            format!("  {}", wr),
+                            Style::default().fg(DIM).italic(),
+                        )));
                     }
                 }
             }
@@ -1008,8 +1392,15 @@ fn render_messages(frame: &mut Frame, state: &mut ChatState, area: Rect) {
     if state.pending.is_some() {
         lines.push(Line::from(""));
         let f = (state.spinner_tick / 2) % SPINNER.len();
-        let elapsed = state.pending_start.map(|s| s.elapsed().as_secs()).unwrap_or(0);
-        let t = if elapsed > 0 { format!("  {}s", elapsed) } else { String::new() };
+        let elapsed = state
+            .pending_start
+            .map(|s| s.elapsed().as_secs())
+            .unwrap_or(0);
+        let t = if elapsed > 0 {
+            format!("  {}s", elapsed)
+        } else {
+            String::new()
+        };
         lines.push(Line::from(vec![
             Span::styled(format!("  {} ", SPINNER[f]), Style::default().fg(ACCENT)),
             Span::styled("thinking", Style::default().fg(DIM).italic()),
@@ -1019,8 +1410,11 @@ fn render_messages(frame: &mut Frame, state: &mut ChatState, area: Rect) {
 
     lines.push(Line::from(""));
     let total = lines.len();
-    if state.auto_scroll { state.scroll = total.saturating_sub(visible); }
-    else { state.scroll = state.scroll.min(total.saturating_sub(visible)); }
+    if state.auto_scroll {
+        state.scroll = total.saturating_sub(visible);
+    } else {
+        state.scroll = state.scroll.min(total.saturating_sub(visible));
+    }
 
     let display: Vec<Line> = lines.into_iter().skip(state.scroll).take(visible).collect();
     frame.render_widget(Paragraph::new(display), area);
@@ -1029,18 +1423,31 @@ fn render_messages(frame: &mut Frame, state: &mut ChatState, area: Rect) {
         let mut sb = ScrollbarState::new(total).position(state.scroll);
         frame.render_stateful_widget(
             Scrollbar::new(ScrollbarOrientation::VerticalRight).style(Style::default().fg(FAINT)),
-            area, &mut sb,
+            area,
+            &mut sb,
         );
     }
 }
 
 fn render_input(frame: &mut Frame, state: &ChatState, area: Rect) {
     let waiting = state.pending.is_some();
-    let (icon, ic) = if waiting { ("◌ ", FAINT) } else { ("❯ ", ACCENT) };
-    let text = if waiting { "waiting...".to_string() }
-        else if state.input.is_empty() { "message or /command".to_string() }
-        else { state.input.clone() };
-    let tc = if waiting || state.input.is_empty() { FAINT } else { TEXT };
+    let (icon, ic) = if waiting {
+        ("◌ ", FAINT)
+    } else {
+        ("❯ ", ACCENT)
+    };
+    let text = if waiting {
+        "waiting...".to_string()
+    } else if state.input.is_empty() {
+        "message or /command".to_string()
+    } else {
+        state.input.clone()
+    };
+    let tc = if waiting || state.input.is_empty() {
+        FAINT
+    } else {
+        TEXT
+    };
 
     let line = Line::from(vec![
         Span::styled(format!(" {}", icon), Style::default().fg(ic)),
@@ -1050,13 +1457,17 @@ fn render_input(frame: &mut Frame, state: &ChatState, area: Rect) {
 
     if !waiting {
         let cx = area.x + 3 + state.input_cursor as u16;
-        if cx < area.x + area.width { frame.set_cursor_position((cx, area.y)); }
+        if cx < area.x + area.width {
+            frame.set_cursor_position((cx, area.y));
+        }
     }
 }
 
 fn render_autocomplete(frame: &mut Frame, state: &ChatState, input_area: Rect) {
     let suggestions = filtered_suggestions(&state.input);
-    if suggestions.is_empty() { return; }
+    if suggestions.is_empty() {
+        return;
+    }
 
     let count = suggestions.len().min(10) as u16;
     let w = 50u16.min(input_area.width.saturating_sub(2));
@@ -1070,13 +1481,28 @@ fn render_autocomplete(frame: &mut Frame, state: &ChatState, input_area: Rect) {
     let mut lines: Vec<Line> = Vec::new();
     for (i, cmd) in suggestions.iter().enumerate().take(10) {
         let sel = i == state.ac_cursor;
-        let name_style = if sel { Style::default().fg(TEXT).bold() } else { Style::default().fg(ACCENT) };
-        let desc_style = if sel { Style::default().fg(DIM) } else { Style::default().fg(FAINT) };
+        let name_style = if sel {
+            Style::default().fg(TEXT).bold()
+        } else {
+            Style::default().fg(ACCENT)
+        };
+        let desc_style = if sel {
+            Style::default().fg(DIM)
+        } else {
+            Style::default().fg(FAINT)
+        };
 
-        let args_str = if cmd.args.is_empty() { String::new() } else { format!(" {}", cmd.args) };
+        let args_str = if cmd.args.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", cmd.args)
+        };
 
         lines.push(Line::from(vec![
-            Span::styled(if sel { " ▸ " } else { "   " }, Style::default().fg(if sel { ACCENT } else { FAINT })),
+            Span::styled(
+                if sel { " ▸ " } else { "   " },
+                Style::default().fg(if sel { ACCENT } else { FAINT }),
+            ),
             Span::styled(format!("/{}", cmd.name), name_style),
             Span::styled(args_str, Style::default().fg(FAINT)),
             Span::styled(format!("  {}", cmd.desc), desc_style),
@@ -1091,7 +1517,11 @@ fn render_autocomplete(frame: &mut Frame, state: &ChatState, input_area: Rect) {
 }
 
 fn render_status_bar(frame: &mut Frame, state: &ChatState, area: Rect) {
-    let n = state.messages.iter().filter(|m| matches!(m.role, Role::User)).count();
+    let n = state
+        .messages
+        .iter()
+        .filter(|m| matches!(m.role, Role::User))
+        .count();
     let running = state.jobs.iter().filter(|j| j.rx.is_some()).count();
     let mut spans = vec![
         Span::styled(" enter", Style::default().fg(DIM)),
@@ -1102,12 +1532,18 @@ fn render_status_bar(frame: &mut Frame, state: &ChatState, area: Rect) {
         Span::styled(" quit  ", Style::default().fg(FAINT)),
     ];
     if running > 0 {
-        spans.push(Span::styled(format!("{}job ", running), Style::default().fg(ACCENT)));
+        spans.push(Span::styled(
+            format!("{}job ", running),
+            Style::default().fg(ACCENT),
+        ));
     }
     if state.auto_agent {
         spans.push(Span::styled("auto ", Style::default().fg(ACCENT)));
     }
-    spans.push(Span::styled(format!("{}msg", n), Style::default().fg(FAINT)));
+    spans.push(Span::styled(
+        format!("{}msg", n),
+        Style::default().fg(FAINT),
+    ));
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
@@ -1120,26 +1556,38 @@ fn render_help(frame: &mut Frame, area: Rect) {
 
     let mut lines = vec![
         Line::from(""),
-        Line::from(Span::styled("  orchestration", Style::default().fg(TEXT).bold())),
+        Line::from(Span::styled(
+            "  orchestration",
+            Style::default().fg(TEXT).bold(),
+        )),
         Line::from(""),
     ];
     for cmd in COMMANDS.iter().filter(|c| c.category == "mesh") {
         lines.push(help_line(cmd));
     }
     lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled("  model / provider", Style::default().fg(TEXT).bold())));
+    lines.push(Line::from(Span::styled(
+        "  model / provider",
+        Style::default().fg(TEXT).bold(),
+    )));
     lines.push(Line::from(""));
     for cmd in COMMANDS.iter().filter(|c| c.category == "llm") {
         lines.push(help_line(cmd));
     }
     lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled("  session", Style::default().fg(TEXT).bold())));
+    lines.push(Line::from(Span::styled(
+        "  session",
+        Style::default().fg(TEXT).bold(),
+    )));
     lines.push(Line::from(""));
     for cmd in COMMANDS.iter().filter(|c| c.category == "session") {
         lines.push(help_line(cmd));
     }
     lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled("  press any key", Style::default().fg(FAINT).italic())));
+    lines.push(Line::from(Span::styled(
+        "  press any key",
+        Style::default().fg(FAINT).italic(),
+    )));
 
     let block = Block::default()
         .borders(Borders::ALL)
@@ -1149,7 +1597,10 @@ fn render_help(frame: &mut Frame, area: Rect) {
 }
 
 fn render_model_picker(frame: &mut Frame, state: &ChatState, area: Rect) {
-    let picker = match &state.model_picker { Some(p) => p, None => return };
+    let picker = match &state.model_picker {
+        Some(p) => p,
+        None => return,
+    };
     let w = 70u16.min(area.width.saturating_sub(4));
     let h = (area.height - 4).min(24);
     let popup = centered(area, w, h);
@@ -1157,8 +1608,16 @@ fn render_model_picker(frame: &mut Frame, state: &ChatState, area: Rect) {
     frame.render_widget(Block::default().style(Style::default().bg(POPUP_BG)), popup);
 
     if picker.loading {
-        let lines = vec![Line::from(""), Line::from(Span::styled("  loading models...", Style::default().fg(DIM).italic()))];
-        let block = Block::default().borders(Borders::ALL).border_style(Style::default().fg(FAINT))
+        let lines = vec![
+            Line::from(""),
+            Line::from(Span::styled(
+                "  loading models...",
+                Style::default().fg(DIM).italic(),
+            )),
+        ];
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(FAINT))
             .title(Span::styled(" model ", Style::default().fg(ACCENT)))
             .style(Style::default().bg(POPUP_BG));
         frame.render_widget(Paragraph::new(lines).block(block), popup);
@@ -1167,39 +1626,73 @@ fn render_model_picker(frame: &mut Frame, state: &ChatState, area: Rect) {
 
     let filtered = picker.filtered();
     let inner_h = popup.height.saturating_sub(4) as usize;
-    let scroll = if picker.cursor >= inner_h { picker.cursor - inner_h + 1 } else { 0 };
+    let scroll = if picker.cursor >= inner_h {
+        picker.cursor - inner_h + 1
+    } else {
+        0
+    };
 
     let mut lines: Vec<Line> = Vec::new();
     if !picker.filter.is_empty() {
-        lines.push(Line::from(vec![Span::styled("  /", Style::default().fg(FAINT)), Span::styled(&picker.filter, Style::default().fg(ACCENT))]));
+        lines.push(Line::from(vec![
+            Span::styled("  /", Style::default().fg(FAINT)),
+            Span::styled(&picker.filter, Style::default().fg(ACCENT)),
+        ]));
     } else {
-        lines.push(Line::from(Span::styled("  type to filter", Style::default().fg(FAINT).italic())));
+        lines.push(Line::from(Span::styled(
+            "  type to filter",
+            Style::default().fg(FAINT).italic(),
+        )));
     }
     lines.push(Line::from(""));
 
     if let Some(err) = &picker.error {
-        lines.push(Line::from(Span::styled(format!("  {}", err), Style::default().fg(Color::Rgb(150, 70, 70)))));
+        lines.push(Line::from(Span::styled(
+            format!("  {}", err),
+            Style::default().fg(Color::Rgb(150, 70, 70)),
+        )));
     }
 
     for (i, (_, model)) in filtered.iter().enumerate().skip(scroll).take(inner_h) {
         let sel = i == picker.cursor;
         let is_current = model.id == state.model;
         let mut spans = vec![
-            Span::styled(if sel { " ▸ " } else { "   " }, Style::default().fg(if sel { ACCENT } else { FAINT })),
-            Span::styled(&model.id, if sel { Style::default().fg(ACCENT).bold() } else { Style::default().fg(TEXT) }),
+            Span::styled(
+                if sel { " ▸ " } else { "   " },
+                Style::default().fg(if sel { ACCENT } else { FAINT }),
+            ),
+            Span::styled(
+                &model.id,
+                if sel {
+                    Style::default().fg(ACCENT).bold()
+                } else {
+                    Style::default().fg(TEXT)
+                },
+            ),
         ];
-        if is_current { spans.push(Span::styled(" ●", Style::default().fg(LABEL))); }
+        if is_current {
+            spans.push(Span::styled(" ●", Style::default().fg(LABEL)));
+        }
         if let Some(ctx) = model.context_length {
-            let c = if ctx >= 1_000_000 { format!("{}M", ctx / 1_000_000) } else { format!("{}K", ctx / 1_000) };
+            let c = if ctx >= 1_000_000 {
+                format!("{}M", ctx / 1_000_000)
+            } else {
+                format!("{}K", ctx / 1_000)
+            };
             spans.push(Span::styled(format!("  {}", c), Style::default().fg(FAINT)));
         }
         lines.push(Line::from(spans));
     }
 
     let title = format!(" model ({}) ", filtered.len());
-    let block = Block::default().borders(Borders::ALL).border_style(Style::default().fg(FAINT))
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(FAINT))
         .title(Span::styled(title, Style::default().fg(ACCENT)))
-        .title_bottom(Line::from(Span::styled(" ↑↓ enter esc ", Style::default().fg(FAINT))))
+        .title_bottom(Line::from(Span::styled(
+            " ↑↓ enter esc ",
+            Style::default().fg(FAINT),
+        )))
         .style(Style::default().bg(POPUP_BG));
     frame.render_widget(Paragraph::new(lines).block(block), popup);
 }
@@ -1209,19 +1702,33 @@ fn render_model_picker(frame: &mut Frame, state: &ChatState, area: Rect) {
 // ---------------------------------------------------------------------------
 
 fn help_line(cmd: &CmdDef) -> Line<'static> {
-    let args = if cmd.args.is_empty() { String::new() } else { format!(" {}", cmd.args) };
+    let args = if cmd.args.is_empty() {
+        String::new()
+    } else {
+        format!(" {}", cmd.args)
+    };
     Line::from(vec![
-        Span::styled(format!("  /{:<12}{:<12}", cmd.name, args), Style::default().fg(ACCENT)),
+        Span::styled(
+            format!("  /{:<12}{:<12}", cmd.name, args),
+            Style::default().fg(ACCENT),
+        ),
         Span::styled(cmd.desc.to_string(), Style::default().fg(DIM)),
     ])
 }
 
 fn centered(area: Rect, w: u16, h: u16) -> Rect {
-    Rect::new((area.width.saturating_sub(w)) / 2, (area.height.saturating_sub(h)) / 2, w.min(area.width), h.min(area.height))
+    Rect::new(
+        (area.width.saturating_sub(w)) / 2,
+        (area.height.saturating_sub(h)) / 2,
+        w.min(area.width),
+        h.min(area.height),
+    )
 }
 
 fn wrap(text: &str, max: usize) -> Vec<String> {
-    if max == 0 || text.len() <= max { return vec![text.to_string()]; }
+    if max == 0 || text.len() <= max {
+        return vec![text.to_string()];
+    }
     let mut out = Vec::new();
     let mut rem = text;
     while rem.len() > max {
@@ -1230,7 +1737,11 @@ fn wrap(text: &str, max: usize) -> Vec<String> {
         out.push(l.to_string());
         rem = r.trim_start();
     }
-    if !rem.is_empty() { out.push(rem.to_string()); }
-    if out.is_empty() { out.push(String::new()); }
+    if !rem.is_empty() {
+        out.push(rem.to_string());
+    }
+    if out.is_empty() {
+        out.push(String::new());
+    }
     out
 }

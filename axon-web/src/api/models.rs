@@ -74,8 +74,7 @@ pub async fn get_models(
                 return Err(StatusCode::BAD_GATEWAY);
             }
 
-            let json: serde_json::Value =
-                resp.json().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+            let json: serde_json::Value = resp.json().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
 
             json["models"]
                 .as_array()
@@ -120,8 +119,7 @@ pub async fn get_models(
             if !resp.status().is_success() {
                 return Err(StatusCode::BAD_GATEWAY);
             }
-            let json: serde_json::Value =
-                resp.json().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+            let json: serde_json::Value = resp.json().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
 
             let mut models: Vec<ModelResponse> = json["data"]
                 .as_array()

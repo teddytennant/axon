@@ -215,7 +215,10 @@ pub async fn run_onboarding() -> anyhow::Result<bool> {
 
 /// Run the onboarding for a specific provider (for `axon auth <provider>`).
 pub async fn run_auth(provider: &ProviderKind) -> anyhow::Result<bool> {
-    let idx = PROVIDERS.iter().position(|p| p.kind == *provider).unwrap_or(0);
+    let idx = PROVIDERS
+        .iter()
+        .position(|p| p.kind == *provider)
+        .unwrap_or(0);
 
     enable_raw_mode()?;
     stdout().execute(EnterAlternateScreen)?;
@@ -317,8 +320,7 @@ fn handle_key(key: KeyEvent, state: &mut WizardState) -> Action {
                 Action::None
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                state.provider_cursor =
-                    (state.provider_cursor + 1).min(PROVIDERS.len() - 1);
+                state.provider_cursor = (state.provider_cursor + 1).min(PROVIDERS.len() - 1);
                 Action::None
             }
             KeyCode::Enter | KeyCode::Char(' ') => {
@@ -350,9 +352,7 @@ fn handle_key(key: KeyEvent, state: &mut WizardState) -> Action {
             } else {
                 match key.code {
                     KeyCode::Char(c) => {
-                        state
-                            .api_key_input
-                            .insert(state.api_key_cursor, c);
+                        state.api_key_input.insert(state.api_key_cursor, c);
                         state.api_key_cursor += 1;
                         state.api_key_error = None;
                         Action::None
@@ -375,9 +375,7 @@ fn handle_key(key: KeyEvent, state: &mut WizardState) -> Action {
                         Action::None
                     }
                     KeyCode::Enter => {
-                        if state.api_key_input.is_empty()
-                            && state.current_provider().needs_key
-                        {
+                        if state.api_key_input.is_empty() && state.current_provider().needs_key {
                             state.api_key_error = Some("API key is required".into());
                             Action::None
                         } else {
@@ -580,11 +578,11 @@ fn render(frame: &mut Frame, state: &WizardState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),  // top margin
-            Constraint::Length(3),  // logo (compact)
-            Constraint::Length(1),  // progress bar
+            Constraint::Length(1), // top margin
+            Constraint::Length(3), // logo (compact)
+            Constraint::Length(1), // progress bar
             Constraint::Min(6),    // content
-            Constraint::Length(1),  // status bar
+            Constraint::Length(1), // status bar
         ])
         .horizontal_margin(4)
         .split(area);
@@ -604,13 +602,14 @@ fn render(frame: &mut Frame, state: &WizardState) {
 }
 
 fn render_logo(frame: &mut Frame, area: Rect) {
-    let logo = vec![
-        Line::from(vec![
-            Span::styled("  ▲ ", Style::default().fg(BRAND_CYAN).bold()),
-            Span::styled("A X O N", Style::default().fg(BRAND_CYAN).bold()),
-            Span::styled("  ·  Decentralized AI Agent Mesh", Style::default().fg(BRAND_DIM)),
-        ]),
-    ];
+    let logo = vec![Line::from(vec![
+        Span::styled("  ▲ ", Style::default().fg(BRAND_CYAN).bold()),
+        Span::styled("A X O N", Style::default().fg(BRAND_CYAN).bold()),
+        Span::styled(
+            "  ·  Decentralized AI Agent Mesh",
+            Style::default().fg(BRAND_DIM),
+        ),
+    ])];
     frame.render_widget(Paragraph::new(logo), area);
 }
 
@@ -665,7 +664,10 @@ fn render_welcome(frame: &mut Frame, area: Rect) {
         )),
         Line::from(vec![
             Span::styled("    1. ", Style::default().fg(BRAND_CYAN).bold()),
-            Span::styled("Choose an LLM provider  ", Style::default().fg(Color::White)),
+            Span::styled(
+                "Choose an LLM provider  ",
+                Style::default().fg(Color::White),
+            ),
             Span::styled("2. ", Style::default().fg(BRAND_CYAN).bold()),
             Span::styled("Enter API key  ", Style::default().fg(Color::White)),
             Span::styled("3. ", Style::default().fg(BRAND_CYAN).bold()),
@@ -753,11 +755,7 @@ fn render_api_key(frame: &mut Frame, state: &WizardState, area: Rect) {
         if len <= 8 {
             "•".repeat(len)
         } else {
-            format!(
-                "{}{}",
-                &state.api_key_input[..4],
-                "•".repeat(len - 4)
-            )
+            format!("{}{}", &state.api_key_input[..4], "•".repeat(len - 4))
         }
     };
 
@@ -781,10 +779,7 @@ fn render_api_key(frame: &mut Frame, state: &WizardState, area: Rect) {
         Line::from(""),
         Line::from(vec![
             Span::styled("  ▸ ", Style::default().fg(BRAND_CYAN)),
-            Span::styled(
-                &displayed_key,
-                Style::default().fg(BRAND_GREEN),
-            ),
+            Span::styled(&displayed_key, Style::default().fg(BRAND_GREEN)),
             Span::styled(cursor_char, Style::default().fg(BRAND_CYAN)),
         ]),
         Line::from(""),
@@ -815,18 +810,27 @@ fn render_api_key(frame: &mut Frame, state: &WizardState, area: Rect) {
         )));
         let ep_cursor = if state.editing_endpoint { "█" } else { "" };
         lines.push(Line::from(vec![
-            Span::styled("  ▸ ", Style::default().fg(if state.editing_endpoint { BRAND_CYAN } else { BRAND_DIM })),
+            Span::styled(
+                "  ▸ ",
+                Style::default().fg(if state.editing_endpoint {
+                    BRAND_CYAN
+                } else {
+                    BRAND_DIM
+                }),
+            ),
             Span::styled(
                 if state.custom_endpoint.is_empty() {
                     "http://localhost:8080/v1"
                 } else {
                     &state.custom_endpoint
                 },
-                Style::default().fg(if state.custom_endpoint.is_empty() && !state.editing_endpoint {
-                    BRAND_DIM
-                } else {
-                    BRAND_GREEN
-                }),
+                Style::default().fg(
+                    if state.custom_endpoint.is_empty() && !state.editing_endpoint {
+                        BRAND_DIM
+                    } else {
+                        BRAND_GREEN
+                    },
+                ),
             ),
             Span::styled(ep_cursor, Style::default().fg(BRAND_CYAN)),
         ]));
@@ -871,7 +875,7 @@ fn render_model_select(frame: &mut Frame, state: &WizardState, area: Rect) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3), // header + filter
-            Constraint::Min(0),   // model list
+            Constraint::Min(0),    // model list
         ])
         .split(area);
 
@@ -884,12 +888,10 @@ fn render_model_select(frame: &mut Frame, state: &WizardState, area: Rect) {
         String::new()
     };
 
-    let mut header_spans = vec![
-        Span::styled(
-            format!("  Choose a model ({})", state.current_provider().label),
-            Style::default().fg(Color::White).bold(),
-        ),
-    ];
+    let mut header_spans = vec![Span::styled(
+        format!("  Choose a model ({})", state.current_provider().label),
+        Style::default().fg(Color::White).bold(),
+    )];
     if !filter_display.is_empty() {
         header_spans.push(Span::styled("  ", Style::default()));
         header_spans.push(Span::styled(
@@ -898,10 +900,7 @@ fn render_model_select(frame: &mut Frame, state: &WizardState, area: Rect) {
         ));
     }
 
-    let mut header_lines = vec![
-        Line::from(""),
-        Line::from(header_spans),
-    ];
+    let mut header_lines = vec![Line::from(""), Line::from(header_spans)];
 
     if let Some(err) = &state.models_error {
         header_lines.push(Line::from(Span::styled(
@@ -919,10 +918,7 @@ fn render_model_select(frame: &mut Frame, state: &WizardState, area: Rect) {
         ))
         .style(Style::default().bg(SURFACE));
 
-    frame.render_widget(
-        Paragraph::new(header_lines).block(header_block),
-        inner[0],
-    );
+    frame.render_widget(Paragraph::new(header_lines).block(header_block), inner[0]);
 
     // Model list
     let filtered = state.filtered_models();
@@ -1073,7 +1069,9 @@ fn render_done(frame: &mut Frame, state: &WizardState, area: Rect) {
         .padding(Padding::horizontal(2));
 
     frame.render_widget(
-        Paragraph::new(lines).block(block).wrap(Wrap { trim: false }),
+        Paragraph::new(lines)
+            .block(block)
+            .wrap(Wrap { trim: false }),
         area,
     );
 }
@@ -1138,7 +1136,6 @@ fn render_help_bar(frame: &mut Frame, state: &WizardState, area: Rect) {
         ],
     };
 
-    let bar =
-        Paragraph::new(Line::from(spans)).style(Style::default().bg(SURFACE).fg(BRAND_DIM));
+    let bar = Paragraph::new(Line::from(spans)).style(Style::default().bg(SURFACE).fg(BRAND_DIM));
     frame.render_widget(bar, area);
 }

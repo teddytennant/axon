@@ -26,8 +26,7 @@ pub struct ChatMessage {
 pub async fn completions(
     State(_state): State<Arc<SharedWebState>>,
     Json(req): Json<ChatRequest>,
-) -> Result<Sse<BoxStream<'static, Result<Event, Infallible>>>, StatusCode>
-{
+) -> Result<Sse<BoxStream<'static, Result<Event, Infallible>>>, StatusCode> {
     // Load provider config
     let path = dirs::config_dir()
         .map(|d| d.join("axon").join("config.toml"))
@@ -119,8 +118,7 @@ pub async fn completions(
                 .await
                 .map_err(|_| StatusCode::BAD_GATEWAY)?;
 
-            let json: serde_json::Value =
-                resp.json().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+            let json: serde_json::Value = resp.json().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
             json["response"].as_str().unwrap_or("").to_string()
         }
         _ => {
@@ -166,15 +164,13 @@ pub async fn completions(
 
             if !resp.status().is_success() {
                 let err_text = resp.text().await.unwrap_or_default();
-                let s: BoxStream<'static, Result<Event, Infallible>> = stream::once(async move {
-                    Ok(Event::default().event("error").data(err_text))
-                })
-                .boxed();
+                let s: BoxStream<'static, Result<Event, Infallible>> =
+                    stream::once(async move { Ok(Event::default().event("error").data(err_text)) })
+                        .boxed();
                 return Ok(Sse::new(s));
             }
 
-            let json: serde_json::Value =
-                resp.json().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+            let json: serde_json::Value = resp.json().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
             json["choices"][0]["message"]["content"]
                 .as_str()
                 .unwrap_or("")
