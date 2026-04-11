@@ -8,34 +8,45 @@ export interface WebSocketClient {
   close: () => void;
 }
 
+const MIN_DELAY = 500;
+const MAX_DELAY = 30_000;
+const JITTER     = 0.2; // ±20%
+
 export function createWebSocket(): WebSocketClient {
-  const subs = new Map<WsEventType, Set<Callback>>();
-  let ws: WebSocket | null = null;
-  let closed = false;
+  const subs  = new Map<WsEventType, Set<Callback>>();
+  let ws      : WebSocket | null = null;
+  let closed  = false;
+  let delay   = MIN_DELAY;
+  let retryId : ReturnType<typeof setTimeout> | null = null;
 
   function connect() {
     if (closed) return;
     const base = getAxonBase();
-    const url = base.replace(/^http/, 'ws') + '/api/ws/live';
+    const url  = base.replace(/^http/, 'ws') + '/api/ws/live';
     ws = new WebSocket(url);
+
+    ws.onopen = () => {
+      delay = MIN_DELAY; // reset backoff on success
+    };
 
     ws.onmessage = (e) => {
       try {
         const event: WsEvent = JSON.parse(e.data as string);
-        const listeners = subs.get(event.type);
-        if (listeners) listeners.forEach((cb) => cb(event.data));
+        subs.get(event.type)?.forEach(cb => cb(event.data));
       } catch {
-        // ignore parse errors
+        // ignore malformed frames
       }
     };
 
     ws.onclose = () => {
-      if (!closed) setTimeout(connect, 2000);
+      if (closed) return;
+      // Exponential backoff with jitter
+      const jitter = 1 + (Math.random() * 2 - 1) * JITTER;
+      retryId = setTimeout(connect, Math.min(delay * jitter, MAX_DELAY));
+      delay   = Math.min(delay * 2, MAX_DELAY);
     };
 
-    ws.onerror = () => {
-      ws?.close();
-    };
+    ws.onerror = () => ws?.close();
   }
 
   connect();
@@ -48,6 +59,7 @@ export function createWebSocket(): WebSocketClient {
     },
     close() {
       closed = true;
+      if (retryId !== null) clearTimeout(retryId);
       ws?.close();
     },
   };

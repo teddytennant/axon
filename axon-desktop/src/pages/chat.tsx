@@ -75,7 +75,7 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="flex h-full flex-col bg-[#0a0a0a]">
+    <div className="flex h-full flex-col bg-[#000]">
       {/* messages */}
       <div ref={scrollRef} className="flex-1 overflow-auto px-4 py-4">
         {msgs.length === 0 ? (
@@ -101,7 +101,7 @@ export default function ChatPage() {
       </div>
 
       {/* input */}
-      <div className="border-t border-[#1a1a1a] bg-[#0a0a0a] p-3">
+      <div className="border-t border-[#1a1a1a] bg-[#000] p-3">
         <div className="mx-auto flex max-w-xl items-end gap-2">
           <button
             onClick={() => setMsgs([])}

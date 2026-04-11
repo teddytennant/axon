@@ -4,10 +4,10 @@ import {
   getTrust, getConfig,
 } from '../lib/api';
 
-export const useStatus = () => useQuery({ queryKey: ['status'], queryFn: getStatus, refetchInterval: 5000, retry: 2 });
-export const usePeers = () => useQuery({ queryKey: ['peers'], queryFn: getPeers, refetchInterval: 5000, retry: 2 });
-export const useAgents = () => useQuery({ queryKey: ['agents'], queryFn: getAgents, refetchInterval: 5000, retry: 2 });
-export const useTaskLog = () => useQuery({ queryKey: ['task-log'], queryFn: getTaskLog, refetchInterval: 3000, retry: 2 });
-export const useTaskStats = () => useQuery({ queryKey: ['task-stats'], queryFn: getTaskStats, refetchInterval: 3000, retry: 2 });
-export const useTrust = () => useQuery({ queryKey: ['trust'], queryFn: getTrust, refetchInterval: 10000, retry: 2 });
-export const useConfig = () => useQuery({ queryKey: ['config'], queryFn: getConfig, retry: 2 });
+export const useStatus    = () => useQuery({ queryKey: ['status'],     queryFn: ({ signal }) => getStatus(signal),    refetchInterval: 5000, retry: 1 });
+export const usePeers     = () => useQuery({ queryKey: ['peers'],      queryFn: ({ signal }) => getPeers(signal),     refetchInterval: 5000, retry: 1 });
+export const useAgents    = () => useQuery({ queryKey: ['agents'],     queryFn: ({ signal }) => getAgents(signal),    refetchInterval: 5000, retry: 1 });
+export const useTaskLog   = () => useQuery({ queryKey: ['task-log'],   queryFn: ({ signal }) => getTaskLog(signal),   refetchInterval: 3000, retry: 1 });
+export const useTaskStats = () => useQuery({ queryKey: ['task-stats'], queryFn: ({ signal }) => getTaskStats(signal), refetchInterval: 3000, retry: 1 });
+export const useTrust     = () => useQuery({ queryKey: ['trust'],      queryFn: ({ signal }) => getTrust(signal),     refetchInterval: 10000, retry: 1 });
+export const useConfig    = () => useQuery({ queryKey: ['config'],     queryFn: ({ signal }) => getConfig(signal),    retry: 1 });

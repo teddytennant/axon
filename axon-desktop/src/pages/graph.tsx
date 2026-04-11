@@ -388,38 +388,31 @@ export default function GraphPage() {
   const isConnected = status !== undefined;
 
   return (
-    <div className="flex h-full overflow-hidden bg-[#07070d]">
+    <div className="flex h-full overflow-hidden bg-[#000000]">
       {/* Main canvas */}
       <div
         ref={containerRef}
         className="relative flex-1 overflow-hidden cursor-grab active:cursor-grabbing select-none"
         onMouseDown={onBgDown}
       >
-        {/* Dot grid background */}
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            backgroundImage: 'radial-gradient(circle, #18182a 1px, transparent 1px)',
-            backgroundSize: '32px 32px',
-          }}
-        />
-
-        {/* Radial vignette */}
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background: 'radial-gradient(ellipse at center, transparent 40%, #07070d 100%)',
-          }}
-        />
+        {/* Subtle grid — pure lines, no blobs */}
+        <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ opacity: 0.06 }}>
+          <defs>
+            <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#fff" strokeWidth="0.5" />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#grid)" />
+        </svg>
 
         {nodes.length === 0 && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none">
             <div className="text-center">
-              <p className="font-mono text-sm text-[#252538]">
+              <p className="font-mono text-sm text-[#2a2a2a]">
                 {isConnected ? 'no agents or peers' : 'connecting to axon…'}
               </p>
               {!isConnected && (
-                <p className="mt-1 font-mono text-[10px] text-[#1a1a28]">
+                <p className="mt-1 font-mono text-[10px] text-[#1e1e1e]">
                   make sure axon is running on localhost:3000
                 </p>
               )}
@@ -434,21 +427,8 @@ export default function GraphPage() {
           style={{ overflow: 'visible' }}
         >
           <defs>
-            {/* Glow filters per color */}
-            <filter id="glow-none" x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur stdDeviation="4" result="blur" />
-              <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-            </filter>
-            <filter id="glow-green" x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur stdDeviation="5" result="blur" />
-              <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-            </filter>
-            <filter id="glow-soft" x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur stdDeviation="3" result="blur" />
-              <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-            </filter>
             <style>{`
-              .edge-flow { animation: edge-flow 1.2s linear infinite; }
+              .edge-flow { animation: edge-flow 1.6s linear infinite; }
               @keyframes edge-flow { from { stroke-dashoffset: 20; } to { stroke-dashoffset: 0; } }
             `}</style>
           </defs>
@@ -503,17 +483,11 @@ export default function GraphPage() {
               const isHighlighted = isSelected || isHov;
 
               let color: string;
-              let glowColor: string;
-              let glowFilter: string;
 
               if (node.kind === 'agent' && node.agent) {
                 color = agentStatusColor(node.agent.status);
-                glowColor = color;
-                glowFilter = 'url(#glow-green)';
               } else {
-                color = isHighlighted ? '#555555' : '#3a3a3a';
-                glowColor = '#555555';
-                glowFilter = 'url(#glow-soft)';
+                color = isHighlighted ? '#555555' : '#333333';
               }
 
               const label = node.kind === 'agent'
@@ -530,36 +504,26 @@ export default function GraphPage() {
                   onMouseEnter={() => setHovered(node.id)}
                   onMouseLeave={() => setHovered(null)}
                 >
-                  {/* Outer selection ring */}
+                  {/* Selection ring */}
                   {isSelected && (
                     <circle
                       cx={node.x} cy={node.y}
-                      r={r + 7}
+                      r={r + 6}
                       fill="none"
-                      stroke="#888888"
-                      strokeWidth={1}
-                      strokeOpacity={0.4}
+                      stroke="#ffffff"
+                      strokeWidth={0.5}
+                      strokeOpacity={0.2}
                     />
                   )}
-
-                  {/* Soft outer glow ring */}
-                  <circle
-                    cx={node.x} cy={node.y}
-                    r={r + 4}
-                    fill={`${glowColor}0a`}
-                    stroke={`${glowColor}20`}
-                    strokeWidth={isHighlighted ? 1 : 0.5}
-                    filter={isHighlighted ? glowFilter : undefined}
-                  />
 
                   {/* Main node circle */}
                   <circle
                     cx={node.x} cy={node.y}
                     r={r}
-                    fill={isHighlighted ? `${color}22` : `${color}0d`}
+                    fill={isHighlighted ? `${color}18` : `${color}0a`}
                     stroke={color}
-                    strokeWidth={isHighlighted ? 1.5 : 0.8}
-                    filter={isHighlighted ? glowFilter : undefined}
+                    strokeWidth={isHighlighted ? 1.2 : 0.7}
+                    strokeOpacity={isHighlighted ? 0.9 : 0.6}
                   />
 
                   {/* Inner dot for agents */}
@@ -578,7 +542,7 @@ export default function GraphPage() {
                     y={node.y + r + 14}
                     textAnchor="middle"
                     fontSize={isHighlighted ? 10 : 9}
-                    fill={isHighlighted ? '#c8c8e8' : '#4a4a70'}
+                    fill={isHighlighted ? '#aaaaaa' : '#3a3a3a'}
                     fontFamily="JetBrains Mono, monospace"
                     style={{ pointerEvents: 'none' }}
                   >
@@ -592,8 +556,8 @@ export default function GraphPage() {
                         cx={node.x + r - 1}
                         cy={node.y - r + 1}
                         r={6}
-                        fill="#1a1a2e"
-                        stroke="#2a2a48"
+                        fill="#0e0e0e"
+                        stroke="#1e1e1e"
                         strokeWidth={0.5}
                       />
                       <text
@@ -616,57 +580,51 @@ export default function GraphPage() {
         </svg>
 
         {/* Controls — top right */}
-        <div className="absolute top-3 right-3 flex flex-col gap-1 z-10">
+        <div className="absolute top-3 right-3 flex items-center gap-1 z-10">
           {[
             { label: '+', fn: () => setVp(p => ({ ...p, scale: Math.min(p.scale * 1.2, 8) })), title: 'Zoom in' },
             { label: '−', fn: () => setVp(p => ({ ...p, scale: Math.max(p.scale / 1.2, 0.08) })), title: 'Zoom out' },
-            { label: '⌂', fn: fitView, title: 'Fit view' },
+            { label: '⌂', fn: fitView, title: 'Fit view  f' },
           ].map(({ label, fn, title }) => (
             <button
               key={label}
               onClick={e => { e.stopPropagation(); fn(); }}
               title={title}
-              className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#1c1c1c] bg-black/90 text-[#444] transition-colors hover:border-[#2a2a2a] hover:text-[#888]"
+              className="flex h-6 w-6 items-center justify-center rounded border border-[#161616] bg-[#000] font-mono text-[10px] text-[#333] transition-colors hover:border-[#222] hover:text-[#666]"
             >
               {label}
             </button>
           ))}
         </div>
 
-        {/* Connection status + stats — top left */}
-        <div className="absolute top-3 left-3 z-10 flex items-center gap-2">
-          <div className={clsx(
-            'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[9px] font-medium font-mono backdrop-blur-sm',
-            isConnected
-              ? 'border-[#22c55e]/20 bg-transparent text-[#22c55e]/70'
-              : 'border-[#ef4444]/20 bg-transparent text-[#ef4444]/60',
-          )}>
-            <span
-              className={clsx(
-                'h-1.5 w-1.5 rounded-full',
-                isConnected ? 'bg-[#22c55e]' : 'bg-[#ef4444]',
-              )}
-            />
-            {isConnected ? 'live' : 'offline'}
+        {/* Status + stats — top left */}
+        <div className="absolute top-3 left-3 z-10 flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <span className={clsx(
+              'h-[4px] w-[4px] rounded-full',
+              isConnected ? 'bg-[#22c55e]' : 'bg-[#333]',
+            )} />
+            <span className="font-mono text-[9px] text-[#2a2a2a]">
+              {isConnected ? 'live' : 'offline'}
+            </span>
           </div>
           {nodes.length > 0 && (
-            <span className="font-mono text-[9px] text-[#252538]">
+            <span className="font-mono text-[9px] text-[#222]">
               {agents.length}a · {peers.length}p · {edges.length}e
             </span>
           )}
         </div>
 
         {/* Legend — bottom left */}
-        <div className="absolute bottom-3 left-3 z-10 flex items-center gap-4">
-          <LegendDot color="#22c55e" label="agent (idle)" />
-          <LegendDot color="#f59e0b" label="agent (busy)" />
-          <LegendDot color="#3a3a3a" label="peer" />
-          <span className="font-mono text-[8px] text-[#1e1e30]">edge thickness = trust score</span>
+        <div className="absolute bottom-3 left-3 z-10 flex items-center gap-3">
+          <LegendDot color="#22c55e" label="idle" />
+          <LegendDot color="#f59e0b" label="busy" />
+          <LegendDot color="#333" label="peer" />
         </div>
 
-        {/* Scale */}
-        <div className="absolute bottom-3 right-3 z-10">
-          <span className="font-mono text-[8px] text-[#1e1e30]">{Math.round(vp.scale * 100)}%</span>
+        {/* Scale — bottom right */}
+        <div className="absolute bottom-3 right-3 z-10 flex items-center gap-1">
+          <span className="font-mono text-[8px] text-[#1e1e1e]">{Math.round(vp.scale * 100)}%</span>
         </div>
 
         {/* Hover tooltip — appears near cursor, not edge of screen */}
@@ -721,13 +679,13 @@ function HoverTooltip({
         className="absolute z-20 pointer-events-none animate-fade-in"
         style={{ left, top: screenY - 40, width: tooltipWidth }}
       >
-        <div className="rounded-lg border border-[#1c1c1c] bg-[#0c0c0c]/95 px-3 py-2 shadow-xl">
+        <div className="rounded border border-[#181818] bg-[#080808]/98 px-3 py-2 shadow-xl">
           <div className="mb-1 flex items-center gap-1.5">
             <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
-            <span className="truncate text-[11px] font-semibold text-[#c8c8e8]">{a.name}</span>
+            <span className="truncate text-[11px] font-semibold text-[#aaaaaa]">{a.name}</span>
           </div>
           {a.provider_type && (
-            <p className="font-mono text-[9px] text-[#4a4a70]">{a.provider_type} · {a.model_name}</p>
+            <p className="font-mono text-[9px] text-[#3a3a3a]">{a.provider_type} · {a.model_name}</p>
           )}
           <p className="mt-1 font-mono text-[9px] text-[#3a3a3a]">{a.capabilities.slice(0, 3).join(' · ')}</p>
         </div>
@@ -742,7 +700,7 @@ function HoverTooltip({
         className="absolute z-20 pointer-events-none animate-fade-in"
         style={{ left, top: screenY - 30, width: tooltipWidth }}
       >
-        <div className="rounded-lg border border-[#1c1c1c] bg-[#0c0c0c]/95 px-3 py-2 shadow-xl">
+        <div className="rounded border border-[#181818] bg-[#080808]/98 px-3 py-2 shadow-xl">
           <p className="font-mono text-[9px] text-[#555555]">{p.peer_id.slice(0, 20)}…</p>
           <p className="mt-0.5 font-mono text-[8px] text-[#3a3a3a]">{p.addr}</p>
           <p className="mt-0.5 text-[8px] text-[#2a2a2a]">{p.last_seen_ago}</p>
@@ -775,8 +733,8 @@ function DetailPanel({ node, tasks, trust, onClose }: {
       <Panel onClose={onClose} accentColor={color}>
         <PanelHeader onClose={onClose}>
           <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color, boxShadow: `0 0 8px ${color}60` }} />
-            <span className="truncate font-semibold text-[#e0e0f4]">{a.name}</span>
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+            <span className="truncate font-semibold text-[#e0e0e0]">{a.name}</span>
           </div>
         </PanelHeader>
         <div className="flex-1 space-y-5 overflow-y-auto p-4">
@@ -788,12 +746,12 @@ function DetailPanel({ node, tasks, trust, onClose }: {
               )}
             </div>
             {a.last_heartbeat_secs_ago != null && (
-              <p className="mt-1 font-mono text-[9px] text-[#2e2e4a]">♡ {a.last_heartbeat_secs_ago}s ago</p>
+              <p className="mt-1 font-mono text-[9px] text-[#2a2a2a]">♡ {a.last_heartbeat_secs_ago}s ago</p>
             )}
           </Sec>
           {a.provider_type && (
             <Sec label="Model">
-              <p className="font-mono text-xs text-[#5a5a88]">{a.provider_type} / {a.model_name}</p>
+              <p className="font-mono text-xs text-[#555555]">{a.provider_type} / {a.model_name}</p>
             </Sec>
           )}
           <Sec label="Metrics">
@@ -803,9 +761,9 @@ function DetailPanel({ node, tasks, trust, onClose }: {
                 { l: 'Success', v: successRate != null ? `${successRate}%` : '—' },
                 { l: 'Avg ms', v: a.avg_latency_ms > 0 ? String(a.avg_latency_ms) : '—' },
               ].map(({ l, v }) => (
-                <div key={l} className="rounded-lg border border-[#141414] bg-[#0c0c18] p-2.5">
-                  <p className="text-[8px] uppercase tracking-widest text-[#2e2e4a]">{l}</p>
-                  <p className="mt-0.5 font-mono text-sm text-[#d0d0f0]">{v}</p>
+                <div key={l} className="rounded-lg border border-[#141414] bg-[#0a0a0a] p-2.5">
+                  <p className="text-[8px] uppercase tracking-widest text-[#2a2a2a]">{l}</p>
+                  <p className="mt-0.5 font-mono text-sm text-[#cccccc]">{v}</p>
                 </div>
               ))}
             </div>
@@ -814,7 +772,7 @@ function DetailPanel({ node, tasks, trust, onClose }: {
             <Sec label="Capabilities">
               <div className="flex flex-wrap gap-1.5">
                 {a.capabilities.map(c => (
-                  <span key={c} className="rounded-md border border-[#141414] bg-[#0c0c18] px-2 py-0.5 font-mono text-[10px] text-[#5a5a88]">{c}</span>
+                  <span key={c} className="rounded-md border border-[#141414] bg-[#0a0a0a] px-2 py-0.5 font-mono text-[10px] text-[#555555]">{c}</span>
                 ))}
               </div>
             </Sec>
@@ -839,23 +797,23 @@ function DetailPanel({ node, tasks, trust, onClose }: {
         <PanelHeader onClose={onClose}>
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-[#3a3a3a]" />
-            <span className="font-semibold text-[#e0e0f4]">Peer</span>
+            <span className="font-semibold text-[#e0e0e0]">Peer</span>
           </div>
         </PanelHeader>
         <div className="flex-1 space-y-4 overflow-y-auto p-4">
           <Sec label="Peer ID">
             <div className="flex items-start gap-2">
-              <p className="flex-1 break-all font-mono text-[10px] leading-relaxed text-[#5a5a88]">{p.peer_id}</p>
-              <button onClick={() => copy(p.peer_id)} className="mt-0.5 shrink-0 text-[#2e2e4a] transition-colors hover:text-[#8888b0]">
+              <p className="flex-1 break-all font-mono text-[10px] leading-relaxed text-[#555555]">{p.peer_id}</p>
+              <button onClick={() => copy(p.peer_id)} className="mt-0.5 shrink-0 text-[#2a2a2a] transition-colors hover:text-[#888]">
                 {copied ? <Check size={12} className="text-[#22c55e]" /> : <Copy size={12} />}
               </button>
             </div>
           </Sec>
           <Sec label="Address">
-            <p className="font-mono text-xs text-[#5a5a88]">{p.addr}</p>
+            <p className="font-mono text-xs text-[#555555]">{p.addr}</p>
           </Sec>
           <Sec label="Last Seen">
-            <p className="text-xs text-[#5a5a88]">{p.last_seen_ago}</p>
+            <p className="text-xs text-[#555555]">{p.last_seen_ago}</p>
           </Sec>
           {t && (
             <Sec label="Trust">
@@ -867,9 +825,9 @@ function DetailPanel({ node, tasks, trust, onClose }: {
                   { l: 'Availability', v: t.availability },
                   { l: 'Quality', v: t.quality },
                 ].map(({ l, v }) => (
-                  <div key={l} className="flex items-center justify-between rounded bg-[#0c0c18] px-2 py-1">
-                    <span className="text-[#2e2e4a]">{l}</span>
-                    <span className="font-mono text-[#5a5a88]">{Math.round(v * 100)}%</span>
+                  <div key={l} className="flex items-center justify-between rounded bg-[#0a0a0a] px-2 py-1">
+                    <span className="text-[#2a2a2a]">{l}</span>
+                    <span className="font-mono text-[#555555]">{Math.round(v * 100)}%</span>
                   </div>
                 ))}
               </div>
@@ -879,7 +837,7 @@ function DetailPanel({ node, tasks, trust, onClose }: {
             <Sec label="Capabilities">
               <div className="flex flex-wrap gap-1.5">
                 {p.capabilities.map(c => (
-                  <span key={c} className="rounded-md border border-[#141414] bg-[#0c0c18] px-2 py-0.5 font-mono text-[10px] text-[#5a5a88]">{c}</span>
+                  <span key={c} className="rounded-md border border-[#141414] bg-[#0a0a0a] px-2 py-0.5 font-mono text-[10px] text-[#555555]">{c}</span>
                 ))}
               </div>
             </Sec>
@@ -901,7 +859,7 @@ function Panel({ children, accentColor, onClose }: {
 }) {
   return (
     <div
-      className="flex w-[280px] shrink-0 flex-col overflow-hidden border-l border-[#1c1c1c] bg-[#0c0c0c] animate-fade-in"
+      className="flex w-[280px] shrink-0 flex-col overflow-hidden border-l border-[#1c1c1c] bg-[#000] animate-fade-in"
       onClick={e => e.stopPropagation()}
     >
       <div className="h-px" style={{ background: `linear-gradient(90deg, ${accentColor}40, transparent)` }} />
@@ -914,7 +872,7 @@ function PanelHeader({ children, onClose }: { children: React.ReactNode; onClose
   return (
     <div className="flex items-center justify-between border-b border-[#141414] px-4 py-3">
       <div className="min-w-0 flex-1">{children}</div>
-      <button onClick={onClose} className="ml-2 shrink-0 text-[#2e2e4a] transition-colors hover:text-[#8888b0]">
+      <button onClick={onClose} className="ml-2 shrink-0 text-[#2a2a2a] transition-colors hover:text-[#888]">
         <X size={14} />
       </button>
     </div>
@@ -935,8 +893,8 @@ function TrustBar({ score }: { score: number }) {
   const color = score >= 0.6 ? '#22c55e' : score >= 0.4 ? '#f59e0b' : '#ef4444';
   return (
     <div className="flex items-center gap-2">
-      <div className="relative flex-1 h-1.5 rounded-full bg-[#141414] overflow-hidden">
-        <div className="absolute left-0 top-0 h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
+      <div className="relative flex-1 h-1.5 bg-[#111] overflow-hidden">
+        <div className="absolute left-0 top-0 h-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
       </div>
       <span className="font-mono text-[10px]" style={{ color }}>{pct}%</span>
     </div>
@@ -944,17 +902,17 @@ function TrustBar({ score }: { score: number }) {
 }
 
 function TaskRow({ task }: { task: TaskLogEntry }) {
-  const color = { completed: '#22c55e', running: '#ffffff', failed: '#ef4444', pending: '#555555', cancelled: '#f59e0b' }[task.status] ?? '#4a4a70';
+  const color = { completed: '#22c55e', running: '#ffffff', failed: '#ef4444', pending: '#555555', cancelled: '#f59e0b' }[task.status] ?? '#3a3a3a';
   const dur = task.duration_ms > 0
     ? task.duration_ms < 1000 ? `${task.duration_ms}ms` : `${(task.duration_ms / 1000).toFixed(1)}s`
     : '—';
   return (
-    <div className="flex items-center justify-between gap-2 rounded-lg bg-[#0c0c18] px-2.5 py-1.5">
+    <div className="flex items-center justify-between gap-2 rounded-lg bg-[#0a0a0a] px-2.5 py-1.5">
       <div className="flex min-w-0 items-center gap-2">
         <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-        <span className="truncate font-mono text-[10px] text-[#5a5a88]">{task.capability}</span>
+        <span className="truncate font-mono text-[10px] text-[#555555]">{task.capability}</span>
       </div>
-      <span className="shrink-0 font-mono text-[9px] text-[#2e2e4a]">{dur}</span>
+      <span className="shrink-0 font-mono text-[9px] text-[#2a2a2a]">{dur}</span>
     </div>
   );
 }
@@ -966,7 +924,7 @@ function LegendDot({ color, label }: { color: string; label: string }) {
         className="h-2 w-2 rounded-full border"
         style={{ backgroundColor: `${color}18`, borderColor: `${color}60` }}
       />
-      <span className="font-mono text-[8px] text-[#252538]">{label}</span>
+      <span className="font-mono text-[8px] text-[#2a2a2a]">{label}</span>
     </div>
   );
 }
