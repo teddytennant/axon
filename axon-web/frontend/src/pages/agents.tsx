@@ -79,10 +79,33 @@ function AgentCard({ agent }: { agent: AgentInfo }) {
         <Stat label="Avg ms" value={agent.avg_latency_ms > 0 ? String(agent.avg_latency_ms) : '—'} />
       </div>
 
+      {agent.lifecycle_state && (
+        <div className="mt-2 flex items-center gap-2">
+          <LifecycleBadge state={agent.lifecycle_state} />
+          {agent.last_heartbeat_secs_ago != null && (
+            <span className="text-[10px] text-[#444]">hb: {agent.last_heartbeat_secs_ago}s ago</span>
+          )}
+        </div>
+      )}
       {agent.provider_type && (
-        <p className="mt-2 text-[10px] text-[#555]">{agent.provider_type} · {agent.model_name}</p>
+        <p className="mt-1 text-[10px] text-[#555]">{agent.provider_type} · {agent.model_name}</p>
       )}
     </div>
+  );
+}
+
+function LifecycleBadge({ state }: { state: string }) {
+  const config: Record<string, { color: string; bg: string }> = {
+    Running:  { color: '#50dc78', bg: 'bg-[#50dc78]/10' },
+    Paused:   { color: '#f0c83c', bg: 'bg-[#f0c83c]/10' },
+    Stopped:  { color: '#f05050', bg: 'bg-[#f05050]/10' },
+    Created:  { color: '#555',    bg: 'bg-[#555]/10' },
+  };
+  const c = config[state] ?? config.Created;
+  return (
+    <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${c.bg}`} style={{ color: c.color }}>
+      {state}
+    </span>
   );
 }
 
