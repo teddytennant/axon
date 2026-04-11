@@ -1,0 +1,38 @@
+{
+  "productName": "axon",
+  "version": "0.1.0",
+  "identifier": "dev.axon.desktop",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1421"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "axon",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 920,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [],
+    "linux": {
+      "deb": {
+        "depends": []
+      },
+      "appimage": {
+        "bundleMediaFramework": true
+      }
+    }
+  }
+}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Share2, X, Copy, Check } from 'lucide-react';
+import { Share2, X, Copy, Check, ZoomIn, ZoomOut, Home, Maximize2 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useAgents, usePeers, useTaskLog } from '../hooks/use-api';
 import { useWebSocket } from '../hooks/use-websocket';
@@ -29,17 +29,17 @@ interface SimEdge {
 }
 
 // ——— Card dimensions ———
-const AW = 180;
-const AH = 96;
-const PW = 156;
-const PH = 68;
+const AW = 184;
+const AH = 100;
+const PW = 160;
+const PH = 72;
 
 // ——— Simulation constants ———
-const REPULSION = 16000;
-const SPRING_K = 0.05;
-const SPRING_REST = 220;
-const DAMPING = 0.80;
-const GRAVITY = 0.022;
+const REPULSION = 18000;
+const SPRING_K = 0.045;
+const SPRING_REST = 240;
+const DAMPING = 0.78;
+const GRAVITY = 0.020;
 const ALPHA_DECAY = 0.0228;
 
 // ——— Helpers ———
@@ -75,7 +75,7 @@ function mergeNodes(
 ): SimNode[] {
   const prev = new Map(current.map(n => [n.id, n]));
   const total = agents.length + peers.length;
-  const r = Math.max(100, Math.min(cx, cy) * 0.45);
+  const r = Math.max(100, Math.min(cx, cy) * 0.42);
   let idx = 0;
   const spawn = (id: string, kind: NodeKind) => {
     const p = prev.get(id);
@@ -96,13 +96,10 @@ function mergeNodes(
 }
 
 // ——— Force simulation hook ———
-// Returns rendered state (shallow copies for React) plus a stable ref to the
-// live simulation nodes for imperative drag operations.
 
 interface SimReturn {
   nodes: SimNode[];
   edges: SimEdge[];
-  /** Direct access to live sim nodes — use for drag (fx/fy mutation). */
   simRef: React.RefObject<SimNode[]>;
   kickAlpha: () => void;
 }
@@ -118,7 +115,6 @@ function useSim(agents: AgentInfo[], peers: PeerResponse[], cx: number, cy: numb
 
   useEffect(() => { centerRef.current = { cx, cy }; }, [cx, cy]);
 
-  // Sync agents/peers into sim, preserving existing velocities/positions
   useEffect(() => {
     edgesRef.current = buildEdges(agents, peers);
     nodesRef.current = mergeNodes(agents, peers, nodesRef.current, cx, cy);
@@ -128,7 +124,6 @@ function useSim(agents: AgentInfo[], peers: PeerResponse[], cx: number, cy: numb
 
   const kickAlpha = useCallback(() => { alphaRef.current = Math.max(alphaRef.current, 0.8); }, []);
 
-  // Single long-lived rAF loop
   useEffect(() => {
     let live = true;
     const tick = () => {
@@ -138,12 +133,10 @@ function useSim(agents: AgentInfo[], peers: PeerResponse[], cx: number, cy: numb
       const { cx: ccx, cy: ccy } = centerRef.current;
       const alpha = alphaRef.current;
 
-      // Keep alpha alive while any node is pinned (being dragged)
       const anyPinned = ns.some(n => n.fx !== null);
       if (anyPinned) alphaRef.current = Math.max(alphaRef.current, 0.08);
 
       if (alpha > 0.001 && ns.length > 0) {
-        // Repulsion
         for (let i = 0; i < ns.length; i++) {
           for (let j = i + 1; j < ns.length; j++) {
             const dx = ns[j].x - ns[i].x || 0.01;
@@ -158,7 +151,6 @@ function useSim(agents: AgentInfo[], peers: PeerResponse[], cx: number, cy: numb
           }
         }
 
-        // Spring forces
         const nm = new Map(ns.map(n => [n.id, n]));
         for (const e of es) {
           const s = nm.get(e.source);
@@ -174,7 +166,6 @@ function useSim(agents: AgentInfo[], peers: PeerResponse[], cx: number, cy: numb
           if (t.fx === null) { t.vx -= fx; t.vy -= fy; }
         }
 
-        // Center gravity
         for (const n of ns) {
           if (n.fx === null) {
             n.vx += (ccx - n.x) * GRAVITY * alpha;
@@ -182,7 +173,6 @@ function useSim(agents: AgentInfo[], peers: PeerResponse[], cx: number, cy: numb
           }
         }
 
-        // Integrate
         for (const n of ns) {
           if (n.fx !== null) { n.x = n.fx; n.vx = 0; }
           else { n.vx *= DAMPING; n.x += n.vx; }
@@ -198,7 +188,7 @@ function useSim(agents: AgentInfo[], peers: PeerResponse[], cx: number, cy: numb
     };
     requestAnimationFrame(tick);
     return () => { live = false; };
-  }, []); // intentionally empty — refs carry all dynamic data
+  }, []);
 
   return { nodes: renderState.nodes, edges: renderState.edges, simRef: nodesRef, kickAlpha };
 }
@@ -222,7 +212,6 @@ export default function GraphPage() {
   useEffect(() => subscribe('peers', d => setPeers(d as PeerResponse[])), [subscribe]);
   useEffect(() => subscribe('tasks', d => setTasks((d as WsTasksData).recent)), [subscribe]);
 
-  // Canvas sizing
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
   useEffect(() => {
@@ -248,7 +237,6 @@ export default function GraphPage() {
 
   const [selected, setSelected] = useState<string | null>(null);
 
-  // Wheel zoom
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -267,14 +255,11 @@ export default function GraphPage() {
     return () => el.removeEventListener('wheel', onWheel);
   }, []);
 
-  // Global mouse handlers for pan + node drag
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
-      // Pan
       if (panState.current.active) {
         setTransform(prev => ({ ...prev, x: panState.current.tx + (e.clientX - panState.current.sx), y: panState.current.ty + (e.clientY - panState.current.sy) }));
       }
-      // Node drag — mutate sim directly via simRef
       if (dragState.current.id) {
         const dx = e.clientX - dragState.current.sx;
         const dy = e.clientY - dragState.current.sy;
@@ -318,26 +303,38 @@ export default function GraphPage() {
 
   const selectedNode = nodes.find(n => n.id === selected) ?? null;
 
-  // Highlight edges connected to selected node
   const activeEdgeKeys = new Set(
     selected
       ? edges.filter(e => e.source === selected || e.target === selected).map(e => `${e.source}\0${e.target}`)
       : [],
   );
 
+  const zoom = (factor: number) =>
+    setTransform(p => ({ ...p, scale: Math.min(Math.max(p.scale * factor, 0.1), 6) }));
+
   return (
     <div className="flex h-full overflow-hidden">
       {/* Canvas */}
       <div
         ref={containerRef}
-        className="relative flex-1 overflow-hidden bg-[#080808] cursor-grab active:cursor-grabbing select-none"
+        className="relative flex-1 overflow-hidden cursor-grab active:cursor-grabbing select-none"
+        style={{ background: '#070709' }}
         onMouseDown={onBgMouseDown}
         onClick={() => setSelected(null)}
       >
+        {/* Dot-grid background */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage: 'radial-gradient(circle, #1c1c24 1px, transparent 1px)',
+            backgroundSize: '28px 28px',
+          }}
+        />
+
         {nodes.length === 0 && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-[#2a2a2a]">
-            <Share2 size={40} />
-            <p className="text-sm font-mono">no agents or peers</p>
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-[#252530]">
+            <Share2 size={36} />
+            <p className="font-mono text-sm">no agents or peers</p>
           </div>
         )}
 
@@ -354,6 +351,19 @@ export default function GraphPage() {
             className="absolute pointer-events-none"
             style={{ left: 0, top: 0, width: 1, height: 1, overflow: 'visible' }}
           >
+            <defs>
+              <style>{`
+                .edge-flow { animation: flow-dash 0.9s linear infinite; }
+                @keyframes flow-dash { from { stroke-dashoffset: 18; } to { stroke-dashoffset: 0; } }
+              `}</style>
+              {/* Glow filter for active edges */}
+              <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur stdDeviation="3" result="blur" />
+                <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+              </filter>
+            </defs>
+
+            {/* Base edges */}
             {edges.map(edge => {
               const s = nodes.find(n => n.id === edge.source);
               const t = nodes.find(n => n.id === edge.target);
@@ -361,14 +371,25 @@ export default function GraphPage() {
               const key = `${edge.source}\0${edge.target}`;
               const active = activeEdgeKeys.has(key);
               return (
-                <line
-                  key={key}
-                  x1={s.x} y1={s.y}
-                  x2={t.x} y2={t.y}
-                  stroke={active ? '#00c8c8' : '#1c1c1c'}
-                  strokeWidth={active ? 1.5 : 1}
-                  strokeOpacity={active ? 0.55 : 1}
-                />
+                <g key={key}>
+                  {/* Glow layer for active edges */}
+                  {active && (
+                    <line
+                      x1={s.x} y1={s.y} x2={t.x} y2={t.y}
+                      stroke="#00c8c8"
+                      strokeWidth={6}
+                      strokeOpacity={0.06}
+                    />
+                  )}
+                  <line
+                    x1={s.x} y1={s.y} x2={t.x} y2={t.y}
+                    stroke={active ? '#00c8c8' : '#1e1e28'}
+                    strokeWidth={active ? 1.5 : 1}
+                    strokeOpacity={active ? 0.65 : 1}
+                    strokeDasharray={active ? '6 6' : undefined}
+                    className={active ? 'edge-flow' : undefined}
+                  />
+                </g>
               );
             })}
           </svg>
@@ -383,13 +404,21 @@ export default function GraphPage() {
                 key={node.id}
                 data-node="true"
                 className={clsx(
-                  'absolute rounded-lg border cursor-pointer',
+                  'absolute rounded-xl border cursor-pointer transition-shadow duration-150',
                   isSelected
-                    ? 'border-[#00c8c8] shadow-[0_0_20px_rgba(0,200,200,0.10)]'
-                    : 'border-[#1c1c1c] hover:border-[#2a2a2a]',
-                  node.kind === 'agent' ? 'bg-[#0e0e0e]' : 'bg-[#0b0b0b]',
+                    ? 'border-[#00c8c8]/50 shadow-[0_0_0_1px_rgba(0,200,200,0.2),0_0_24px_rgba(0,200,200,0.12)]'
+                    : node.kind === 'agent'
+                      ? 'border-[#1e1e28] hover:border-[#2c2c3c] hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)]'
+                      : 'border-[#181820] hover:border-[#26263a] hover:shadow-[0_4px_20px_rgba(0,0,0,0.3)]',
                 )}
-                style={{ left: node.x - w / 2, top: node.y - h / 2, width: w }}
+                style={{
+                  left: node.x - w / 2,
+                  top: node.y - h / 2,
+                  width: w,
+                  background: node.kind === 'agent'
+                    ? 'linear-gradient(135deg, #0e0e16 0%, #0c0c14 100%)'
+                    : 'linear-gradient(135deg, #0b0b11 0%, #0a0a0f 100%)',
+                }}
                 onMouseDown={e => onNodeMouseDown(e, node.id)}
                 onClick={e => { e.stopPropagation(); setSelected(node.id); }}
               >
@@ -403,29 +432,47 @@ export default function GraphPage() {
           })}
         </div>
 
-        {/* Zoom buttons */}
-        <div className="absolute bottom-4 right-4 flex flex-col gap-1 z-10">
-          {([
-            ['+', () => setTransform(p => ({ ...p, scale: Math.min(p.scale * 1.2, 6) }))],
-            ['−', () => setTransform(p => ({ ...p, scale: Math.max(p.scale / 1.2, 0.1) }))],
-            ['⌂', () => setTransform({ x: 0, y: 0, scale: 1 })],
-          ] as [string, () => void][]).map(([label, fn]) => (
+        {/* Toolbar — top right */}
+        <div className="absolute top-4 right-4 flex flex-col gap-1 z-10">
+          {[
+            { icon: ZoomIn, fn: () => zoom(1.25), title: 'Zoom in' },
+            { icon: ZoomOut, fn: () => zoom(1 / 1.25), title: 'Zoom out' },
+            { icon: Home, fn: () => setTransform({ x: 0, y: 0, scale: 1 }), title: 'Reset view' },
+            { icon: Maximize2, fn: () => zoom(1 / transform.scale), title: 'Fit' },
+          ].map(({ icon: Icon, fn, title }) => (
             <button
-              key={label}
+              key={title}
               onClick={e => { e.stopPropagation(); fn(); }}
-              className="h-8 w-8 rounded border border-[#222] bg-[#111] font-mono text-xs text-[#666] transition-colors hover:border-[#333] hover:text-[#f5f5f5]"
+              title={title}
+              className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#1e1e28] bg-[#0e0e16]/90 text-[#444] backdrop-blur-sm transition-colors hover:border-[#2c2c3c] hover:text-[#888]"
             >
-              {label}
+              <Icon size={13} />
             </button>
           ))}
         </div>
 
-        {/* Legend */}
-        <div className="absolute bottom-4 left-4 z-10 flex items-center gap-4">
-          <LegendItem color="#00c8c8" label="agent" />
-          <LegendItem color="#444" label="peer" />
-          <span className="font-mono text-[9px] text-[#2a2a2a]">— shared capability</span>
+        {/* Scale indicator — top left */}
+        <div className="absolute top-4 left-4 z-10">
+          <span className="font-mono text-[9px] text-[#2a2a38]">
+            {Math.round(transform.scale * 100)}%
+          </span>
         </div>
+
+        {/* Legend — bottom left */}
+        <div className="absolute bottom-4 left-4 z-10 flex items-center gap-3">
+          <LegendItem color="#00c8c8" label="agent" />
+          <LegendItem color="#3a3a50" label="peer" />
+          <span className="font-mono text-[9px] text-[#252530]">── shared capability</span>
+        </div>
+
+        {/* Node count — bottom center */}
+        {nodes.length > 0 && (
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10">
+            <span className="font-mono text-[9px] text-[#2a2a38]">
+              {agents.length} agent{agents.length !== 1 ? 's' : ''} · {peers.length} peer{peers.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Detail panel */}
@@ -436,36 +483,47 @@ export default function GraphPage() {
   );
 }
 
-// ——— Compact node card components ———
+// ——— Node card components ———
 
 function AgentCard({ agent }: { agent: AgentInfo }) {
   const dotColor = { idle: '#50dc78', busy: '#f0c83c', err: '#f05050' }[agent.status.toLowerCase()] ?? '#888';
   const successRate = agent.tasks_handled > 0
     ? Math.round((agent.tasks_succeeded / agent.tasks_handled) * 100)
     : null;
+
   return (
-    <div className="p-3">
-      <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span className="truncate text-[11px] font-semibold leading-none text-[#e8e8e8]">{agent.name}</span>
-        <span className="h-2 w-2 shrink-0 rounded-full ring-2 ring-black/60" style={{ backgroundColor: dotColor }} />
-      </div>
-      <p className="mb-2 truncate font-mono text-[9px] text-[#444]">
-        {agent.provider_type ? `${agent.provider_type} · ${agent.model_name}` : 'no model'}
-      </p>
-      {agent.capabilities.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-1">
-          {agent.capabilities.slice(0, 3).map(c => (
-            <span key={c} className="rounded bg-[#151515] px-1.5 py-0.5 font-mono text-[8px] text-[#555]">{c}</span>
-          ))}
-          {agent.capabilities.length > 3 && (
-            <span className="self-center text-[8px] text-[#333]">+{agent.capabilities.length - 3}</span>
-          )}
+    <div>
+      {/* Top accent bar — color matches status */}
+      <div
+        className="h-0.5 rounded-t-xl opacity-70"
+        style={{ background: `linear-gradient(90deg, ${dotColor}60, transparent)` }}
+      />
+      <div className="p-3">
+        <div className="mb-1.5 flex items-center justify-between gap-2">
+          <span className="truncate text-[11px] font-semibold leading-none text-[#e4e4f0]">{agent.name}</span>
+          <span
+            className="h-2 w-2 shrink-0 rounded-full ring-1 ring-black/50"
+            style={{ backgroundColor: dotColor, boxShadow: `0 0 6px ${dotColor}60` }}
+          />
         </div>
-      )}
-      <div className="flex gap-3 border-t border-[#161616] pt-1.5">
-        <MiniStat label="tasks" value={String(agent.tasks_handled)} />
-        <MiniStat label="ok" value={successRate !== null ? `${successRate}%` : '—'} />
-        <MiniStat label="ms" value={agent.avg_latency_ms > 0 ? String(agent.avg_latency_ms) : '—'} />
+        <p className="mb-2 truncate font-mono text-[9px] text-[#3a3a50]">
+          {agent.provider_type ? `${agent.provider_type} · ${agent.model_name}` : 'no model'}
+        </p>
+        {agent.capabilities.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1">
+            {agent.capabilities.slice(0, 3).map(c => (
+              <span key={c} className="rounded-md bg-[#141420] px-1.5 py-0.5 font-mono text-[8px] text-[#4a4a68]">{c}</span>
+            ))}
+            {agent.capabilities.length > 3 && (
+              <span className="self-center text-[8px] text-[#2e2e40]">+{agent.capabilities.length - 3}</span>
+            )}
+          </div>
+        )}
+        <div className="flex gap-3 border-t border-[#141420] pt-1.5">
+          <MiniStat label="tasks" value={String(agent.tasks_handled)} />
+          <MiniStat label="ok" value={successRate !== null ? `${successRate}%` : '—'} />
+          <MiniStat label="ms" value={agent.avg_latency_ms > 0 ? String(agent.avg_latency_ms) : '—'} />
+        </div>
       </div>
     </div>
   );
@@ -475,14 +533,17 @@ function PeerCard({ peer }: { peer: PeerResponse }) {
   return (
     <div className="p-3">
       <div className="mb-1 flex items-center justify-between gap-2">
-        <span className="truncate font-mono text-[10px] text-[#666]">{peer.peer_id.slice(0, 14)}…</span>
-        <span className="shrink-0 text-[9px] text-[#333]">{peer.last_seen_ago}</span>
+        <div className="flex items-center gap-1.5">
+          <span className="h-1.5 w-1.5 rounded-full bg-[#3a3a50]" />
+          <span className="truncate font-mono text-[10px] text-[#4a4a68]">{peer.peer_id.slice(0, 14)}…</span>
+        </div>
+        <span className="shrink-0 text-[9px] text-[#2a2a38]">{peer.last_seen_ago}</span>
       </div>
-      <p className="mb-2 truncate font-mono text-[9px] text-[#444]">{peer.addr}</p>
+      <p className="mb-2 truncate font-mono text-[9px] text-[#303040]">{peer.addr}</p>
       {peer.capabilities.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {peer.capabilities.slice(0, 4).map(c => (
-            <span key={c} className="rounded bg-[#131313] px-1.5 py-0.5 font-mono text-[8px] text-[#444]">{c}</span>
+            <span key={c} className="rounded-md bg-[#111118] px-1.5 py-0.5 font-mono text-[8px] text-[#3a3a50]">{c}</span>
           ))}
         </div>
       )}
@@ -493,8 +554,8 @@ function PeerCard({ peer }: { peer: PeerResponse }) {
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-[8px] uppercase tracking-widest text-[#333]">{label}</p>
-      <p className="font-mono text-[9px] text-[#888]">{value}</p>
+      <p className="text-[8px] uppercase tracking-widest text-[#2e2e40]">{label}</p>
+      <p className="font-mono text-[9px] text-[#6868a0]">{value}</p>
     </div>
   );
 }
@@ -502,8 +563,11 @@ function MiniStat({ label, value }: { label: string; value: string }) {
 function LegendItem({ color, label }: { color: string; label: string }) {
   return (
     <div className="flex items-center gap-1.5">
-      <span className="h-2 w-2 rounded-sm border" style={{ backgroundColor: `${color}22`, borderColor: color }} />
-      <span className="font-mono text-[9px] text-[#333]">{label}</span>
+      <span
+        className="h-2 w-2 rounded-sm border"
+        style={{ backgroundColor: `${color}18`, borderColor: `${color}60` }}
+      />
+      <span className="font-mono text-[9px] text-[#2a2a38]">{label}</span>
     </div>
   );
 }
@@ -530,18 +594,26 @@ function DetailPanel({ node, tasks, onClose }: {
     const relatedTasks = tasks.filter(t => a.capabilities.includes(t.capability)).slice(0, 12);
 
     return (
-      <div className="flex w-[300px] shrink-0 flex-col overflow-hidden border-l border-[#1a1a1a] bg-[#090909]">
-        <div className="flex items-center justify-between border-b border-[#1a1a1a] px-4 py-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: dotColor }} />
-            <span className="truncate text-sm font-medium text-[#f5f5f5]">{a.name}</span>
+      <div className="flex w-72 shrink-0 flex-col overflow-hidden border-l border-[#141420] bg-[#08080f] animate-fade-in">
+        {/* Header with accent */}
+        <div className="relative border-b border-[#141420]">
+          <div className="h-0.5" style={{ background: `linear-gradient(90deg, ${dotColor}50, transparent)` }} />
+          <div className="flex items-center justify-between px-4 py-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <span
+                className="h-2 w-2 shrink-0 rounded-full"
+                style={{ backgroundColor: dotColor, boxShadow: `0 0 8px ${dotColor}50` }}
+              />
+              <span className="truncate text-sm font-semibold text-[#e4e4f0]">{a.name}</span>
+            </div>
+            <CloseBtn onClose={onClose} />
           </div>
-          <CloseBtn onClose={onClose} />
         </div>
+
         <div className="flex-1 space-y-5 overflow-y-auto p-4">
           {a.provider_type && (
             <Sec label="Model">
-              <p className="font-mono text-xs text-[#888]">{a.provider_type} / {a.model_name}</p>
+              <p className="font-mono text-xs text-[#5a5a80]">{a.provider_type} / {a.model_name}</p>
             </Sec>
           )}
           <Sec label="Status">
@@ -552,7 +624,7 @@ function DetailPanel({ node, tasks, onClose }: {
               )}
             </div>
             {a.last_heartbeat_secs_ago != null && (
-              <p className="mt-1 font-mono text-[10px] text-[#444]">heartbeat {a.last_heartbeat_secs_ago}s ago</p>
+              <p className="mt-1 font-mono text-[10px] text-[#333345]">heartbeat {a.last_heartbeat_secs_ago}s ago</p>
             )}
           </Sec>
           <Sec label="Metrics">
@@ -562,9 +634,9 @@ function DetailPanel({ node, tasks, onClose }: {
                 { l: 'Success', v: successRate !== null ? `${successRate}%` : '—' },
                 { l: 'Avg ms', v: a.avg_latency_ms > 0 ? String(a.avg_latency_ms) : '—' },
               ].map(({ l, v }) => (
-                <div key={l} className="rounded border border-[#1a1a1a] bg-[#111] p-2.5">
-                  <p className="text-[9px] uppercase tracking-widest text-[#444]">{l}</p>
-                  <p className="mt-0.5 font-mono text-sm text-[#f5f5f5]">{v}</p>
+                <div key={l} className="rounded-lg border border-[#141420] bg-[#0e0e18] p-2.5">
+                  <p className="text-[9px] uppercase tracking-widest text-[#333345]">{l}</p>
+                  <p className="mt-0.5 font-mono text-sm text-[#d4d4f0]">{v}</p>
                 </div>
               ))}
             </div>
@@ -573,14 +645,14 @@ function DetailPanel({ node, tasks, onClose }: {
             <Sec label="Capabilities">
               <div className="flex flex-wrap gap-1.5">
                 {a.capabilities.map(c => (
-                  <span key={c} className="rounded border border-[#1a1a1a] bg-[#111] px-2 py-0.5 font-mono text-[10px] text-[#888]">{c}</span>
+                  <span key={c} className="rounded-md border border-[#141420] bg-[#0e0e18] px-2 py-0.5 font-mono text-[10px] text-[#5a5a80]">{c}</span>
                 ))}
               </div>
             </Sec>
           )}
           <Sec label="Recent Activity">
             {relatedTasks.length === 0 ? (
-              <p className="text-[10px] text-[#333]">No recent tasks</p>
+              <p className="text-[10px] text-[#252530]">No recent tasks</p>
             ) : (
               <div className="space-y-1">
                 {relatedTasks.map(t => <TaskRow key={t.id} task={t} />)}
@@ -595,31 +667,34 @@ function DetailPanel({ node, tasks, onClose }: {
   if (node.kind === 'peer' && node.peer) {
     const p = node.peer;
     return (
-      <div className="flex w-[300px] shrink-0 flex-col overflow-hidden border-l border-[#1a1a1a] bg-[#090909]">
-        <div className="flex items-center justify-between border-b border-[#1a1a1a] px-4 py-3">
-          <span className="text-sm font-medium text-[#f5f5f5]">Peer</span>
+      <div className="flex w-72 shrink-0 flex-col overflow-hidden border-l border-[#141420] bg-[#08080f] animate-fade-in">
+        <div className="flex items-center justify-between border-b border-[#141420] px-4 py-3">
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-[#3a3a50]" />
+            <span className="text-sm font-semibold text-[#e4e4f0]">Peer</span>
+          </div>
           <CloseBtn onClose={onClose} />
         </div>
         <div className="flex-1 space-y-4 overflow-y-auto p-4">
           <Sec label="Peer ID">
             <div className="flex items-start gap-2">
-              <p className="flex-1 break-all font-mono text-[10px] leading-relaxed text-[#888]">{p.peer_id}</p>
-              <button onClick={() => copy(p.peer_id)} className="mt-0.5 shrink-0 text-[#444] transition-colors hover:text-[#f5f5f5]">
+              <p className="flex-1 break-all font-mono text-[10px] leading-relaxed text-[#5a5a80]">{p.peer_id}</p>
+              <button onClick={() => copy(p.peer_id)} className="mt-0.5 shrink-0 text-[#333345] transition-colors hover:text-[#888]">
                 {copied ? <Check size={12} className="text-[#50dc78]" /> : <Copy size={12} />}
               </button>
             </div>
           </Sec>
           <Sec label="Address">
-            <p className="font-mono text-xs text-[#888]">{p.addr}</p>
+            <p className="font-mono text-xs text-[#5a5a80]">{p.addr}</p>
           </Sec>
           <Sec label="Last Seen">
-            <p className="text-xs text-[#888]">{p.last_seen_ago}</p>
+            <p className="text-xs text-[#5a5a80]">{p.last_seen_ago}</p>
           </Sec>
           {p.capabilities.length > 0 && (
             <Sec label="Capabilities">
               <div className="flex flex-wrap gap-1.5">
                 {p.capabilities.map(c => (
-                  <span key={c} className="rounded border border-[#1a1a1a] bg-[#111] px-2 py-0.5 font-mono text-[10px] text-[#888]">{c}</span>
+                  <span key={c} className="rounded-md border border-[#141420] bg-[#0e0e18] px-2 py-0.5 font-mono text-[10px] text-[#5a5a80]">{c}</span>
                 ))}
               </div>
             </Sec>
@@ -635,7 +710,7 @@ function DetailPanel({ node, tasks, onClose }: {
 function Sec({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="mb-2 text-[10px] uppercase tracking-widest text-[#3a3a3a]">{label}</p>
+      <p className="mb-2 text-[9px] uppercase tracking-widest text-[#2e2e40]">{label}</p>
       {children}
     </div>
   );
@@ -643,24 +718,24 @@ function Sec({ label, children }: { label: string; children: React.ReactNode }) 
 
 function CloseBtn({ onClose }: { onClose: () => void }) {
   return (
-    <button onClick={onClose} className="text-[#444] transition-colors hover:text-[#f5f5f5]">
-      <X size={15} />
+    <button onClick={onClose} className="text-[#333345] transition-colors hover:text-[#888]">
+      <X size={14} />
     </button>
   );
 }
 
 function TaskRow({ task }: { task: TaskLogEntry }) {
-  const color = { completed: '#50dc78', running: '#00c8c8', failed: '#f05050', pending: '#888', cancelled: '#f0c83c' }[task.status] ?? '#555';
+  const color = { completed: '#50dc78', running: '#00c8c8', failed: '#f05050', pending: '#666688', cancelled: '#f0c83c' }[task.status] ?? '#444';
   const dur = task.duration_ms > 0
     ? task.duration_ms < 1000 ? `${task.duration_ms}ms` : `${(task.duration_ms / 1000).toFixed(1)}s`
     : '—';
   return (
-    <div className="flex items-center justify-between gap-2 rounded bg-[#0f0f0f] px-2.5 py-1.5">
+    <div className="flex items-center justify-between gap-2 rounded-lg bg-[#0c0c14] px-2.5 py-1.5">
       <div className="flex min-w-0 items-center gap-2">
         <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-        <span className="truncate font-mono text-[10px] text-[#888]">{task.capability}</span>
+        <span className="truncate font-mono text-[10px] text-[#5a5a80]">{task.capability}</span>
       </div>
-      <span className="shrink-0 font-mono text-[9px] text-[#444]">{dur}</span>
+      <span className="shrink-0 font-mono text-[9px] text-[#333345]">{dur}</span>
     </div>
   );
 }

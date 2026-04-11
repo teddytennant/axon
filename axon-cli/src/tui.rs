@@ -7,7 +7,7 @@ use crossterm::{
 use ratatui::{
     prelude::*,
     widgets::{
-        Block, Borders, Cell, List, ListItem, Padding, Paragraph, Row, Scrollbar,
+        Block, BorderType, Borders, Cell, List, ListItem, Padding, Paragraph, Row, Scrollbar,
         ScrollbarOrientation, ScrollbarState, Sparkline, Table, Tabs, Wrap,
     },
 };
@@ -312,14 +312,15 @@ impl DashboardState {
 // Theme constants
 // ---------------------------------------------------------------------------
 
-const BRAND_CYAN: Color = Color::Rgb(110, 110, 118);
-const BRAND_GREEN: Color = Color::Rgb(95, 140, 105);
-const BRAND_YELLOW: Color = Color::Rgb(150, 135, 70);
-const BRAND_RED: Color = Color::Rgb(150, 70, 70);
-const BRAND_DIM: Color = Color::Rgb(70, 70, 78);
+const BRAND_CYAN: Color = Color::Rgb(0, 200, 200);    // #00c8c8
+const BRAND_GREEN: Color = Color::Rgb(80, 220, 120);   // #50dc78
+const BRAND_YELLOW: Color = Color::Rgb(240, 200, 60);  // #f0c83c
+const BRAND_RED: Color = Color::Rgb(240, 80, 80);      // #f05050
+const BRAND_DIM: Color = Color::Rgb(72, 72, 82);
 const BRAND_BG: Color = Color::Reset;
-const ACCENT_BLUE: Color = Color::Rgb(100, 115, 150);
+const ACCENT_BLUE: Color = Color::Rgb(100, 150, 240);
 const SURFACE: Color = Color::Reset;
+const SEPARATOR: Color = Color::Rgb(38, 38, 48);
 
 // ---------------------------------------------------------------------------
 // Dashboard
@@ -535,6 +536,7 @@ impl Dashboard {
         let header = Paragraph::new(Line::from(header_spans)).block(
             Block::default()
                 .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
                 .border_style(Style::default().fg(BRAND_DIM))
                 .style(Style::default().bg(SURFACE)),
         );
@@ -552,7 +554,10 @@ impl Dashboard {
             .map(|(i, t)| {
                 if *t == active_tab {
                     Line::from(vec![
-                        Span::styled(format!(" {} ", t.icon()), Style::default().fg(BRAND_CYAN)),
+                        Span::styled(
+                            format!(" {} ", t.icon()),
+                            Style::default().fg(BRAND_CYAN),
+                        ),
                         Span::styled(
                             format!("{} {} ", i + 1, t.title()),
                             Style::default().fg(BRAND_CYAN).bold(),
@@ -567,11 +572,17 @@ impl Dashboard {
 
         let tabs = Tabs::new(tab_titles)
             .select(active_tab.index())
-            .highlight_style(Style::default().fg(BRAND_CYAN).bold())
-            .divider(Span::styled(" \u{2502} ", Style::default().fg(BRAND_DIM)))
+            .highlight_style(
+                Style::default()
+                    .fg(BRAND_CYAN)
+                    .bold()
+                    .underlined(),
+            )
+            .divider(Span::styled("  ", Style::default().fg(BRAND_DIM)))
             .block(
                 Block::default()
                     .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
                     .border_style(Style::default().fg(BRAND_DIM))
                     .style(Style::default().bg(SURFACE)),
             );
@@ -593,7 +604,7 @@ impl Dashboard {
             Span::styled(" j/k", Style::default().fg(BRAND_CYAN).bold()),
             Span::styled(" scroll ", Style::default().fg(BRAND_DIM)),
             Span::styled("\u{2502}", Style::default().fg(BRAND_DIM)),
-            Span::styled(" 1-6", Style::default().fg(BRAND_CYAN).bold()),
+            Span::styled(" 1-7", Style::default().fg(BRAND_CYAN).bold()),
             Span::styled(" jump ", Style::default().fg(BRAND_DIM)),
             Span::styled("\u{2502}", Style::default().fg(BRAND_DIM)),
             Span::styled(" g/G", Style::default().fg(BRAND_CYAN).bold()),
@@ -749,6 +760,7 @@ impl Dashboard {
         .block(
             Block::default()
                 .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
                 .border_style(Style::default().fg(BRAND_DIM))
                 .title(Span::styled(
                     " Mesh Peers ",
@@ -816,6 +828,7 @@ impl Dashboard {
         .block(
             Block::default()
                 .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
                 .border_style(Style::default().fg(BRAND_GREEN))
                 .padding(Padding::horizontal(1))
                 .style(Style::default().bg(SURFACE)),
@@ -889,6 +902,7 @@ impl Dashboard {
         .block(
             Block::default()
                 .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
                 .border_style(Style::default().fg(BRAND_DIM))
                 .padding(Padding::horizontal(1))
                 .style(Style::default().bg(SURFACE)),
@@ -1017,12 +1031,13 @@ impl Dashboard {
             // Separator
             lines.push(Line::from(Span::styled(
                 "      \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}",
-                Style::default().fg(Color::Rgb(50, 50, 56)),
+                Style::default().fg(SEPARATOR),
             )));
         }
 
         let block = Block::default()
             .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(BRAND_DIM))
             .title(Span::styled(
                 format!(" Agents ({}) ", state.agent_info.len()),

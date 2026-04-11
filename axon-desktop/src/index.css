@@ -1,0 +1,83 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #07070d;
+  --color-surface: #0e0e18;
+  --color-surface-raised: #13131f;
+  --color-border: #1a1a28;
+  --color-border-hover: #26263c;
+  --color-text-primary: #e8e8f4;
+  --color-text-secondary: #6868a0;
+  --color-text-tertiary: #3a3a58;
+  --color-accent: #00c8c8;
+  --color-accent-dim: #008888;
+  --color-success: #50dc78;
+  --color-warning: #f0c83c;
+  --color-error: #f05050;
+  --color-purple: #9060f0;
+
+  --font-body: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-hover) transparent;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  font-family: var(--font-body);
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-accent) 25%, transparent);
+}
+
+/* Animations */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
+@keyframes orbit-pulse {
+  0%, 100% { r: 6; opacity: 0.8; }
+  50% { r: 9; opacity: 0.4; }
+}
+@keyframes edge-flow {
+  from { stroke-dashoffset: 20; }
+  to { stroke-dashoffset: 0; }
+}
+@keyframes edge-glow-pulse {
+  0%, 100% { opacity: 0.06; }
+  50% { opacity: 0.14; }
+}
+
+.animate-fade-up { animation: fade-up 0.2s ease-out both; }
+.animate-fade-in { animation: fade-in 0.15s ease-out both; }
+
+/* Tauri drag region */
+[data-tauri-drag-region] {
+  -webkit-app-region: drag;
+  cursor: default;
+}
+[data-tauri-drag-region] * {
+  -webkit-app-region: no-drag;
+}

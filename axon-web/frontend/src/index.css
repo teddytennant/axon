@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap");
 @import "tailwindcss";
 
 @theme {
@@ -37,10 +38,73 @@ body {
 }
 
 ::selection {
-  background-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
+  background-color: color-mix(in srgb, var(--color-accent) 25%, transparent);
 }
 
 input::placeholder,
 textarea::placeholder {
   color: var(--color-text-tertiary);
+}
+
+/* Focus ring */
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-accent) 60%, transparent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Page enter animation */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes flow-dash {
+  from { stroke-dashoffset: 24; }
+  to { stroke-dashoffset: 0; }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.18s ease-out both;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.15s ease-out both;
+}
+
+/* Accent glow on interactive elements */
+.glow-accent {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 40%, transparent),
+              0 0 20px color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+
+/* Edge animation for graph */
+.edge-active {
+  animation: flow-dash 0.7s linear infinite;
+}
+
+/* Subtle grid background for graph views */
+.graph-bg {
+  background-image:
+    linear-gradient(var(--color-border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-border) 1px, transparent 1px);
+  background-size: 40px 40px;
+  background-color: #080808;
+  opacity: 0.4;
 }
