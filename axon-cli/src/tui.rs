@@ -231,15 +231,13 @@ pub struct DashboardState {
     // Rich agent info (populated by main.rs if available, else derived from agent_names)
     pub agent_info: Vec<AgentInfo>,
 
-    // CRDT state fields
-    // TODO(main.rs): populate these from the node's CRDT store on each sync tick.
-    // Example: iterate GCounter/LWWRegister/ORSet instances and push (key, value) tuples.
+    // CRDT state fields — populated from node metrics on each sync tick.
     pub crdt_counters: Vec<(String, u64)>,
     pub crdt_registers: Vec<(String, String)>,
     pub crdt_sets: Vec<(String, Vec<String>)>,
 
     // Peer trust scores (peer_id_hex -> overall trust 0.0..1.0)
-    // TODO(main.rs): populate from TrustStore on each sync tick.
+    // Populated from TrustStore on each sync tick.
     pub peer_trust: Vec<(String, f64)>,
 
     // Task throughput history (tasks completed per second, last 60 samples)

@@ -1547,7 +1547,9 @@ async fn run_node(
     let sync_conns = active_connections.clone();
     let sync_metrics = metrics.clone();
     let sync_web = web_state.clone();
+    let sync_trust = trust_store.clone();
     let mut sync_shutdown = shutdown_tx.subscribe();
+    let mut sync_last_tasks: u64 = 0;
     tokio::spawn(async move {
         loop {
             tokio::select! {
@@ -1555,11 +1557,51 @@ async fn run_node(
                     let table = sync_pt.read().await;
                     let peers = table.all_peers_owned();
                     drop(table);
+
+                    let tasks_now = sync_metrics.tasks_processed.load(Ordering::Relaxed);
+                    let tasks_delta = tasks_now.saturating_sub(sync_last_tasks);
+                    sync_last_tasks = tasks_now;
+
+                    let tasks_failed = sync_metrics.tasks_failed.load(Ordering::Relaxed);
+                    let msgs_in = sync_metrics.messages_received.load(Ordering::Relaxed);
+                    let msgs_out = sync_metrics.messages_sent.load(Ordering::Relaxed);
+
+                    // Snapshot trust scores outside the dashboard write lock.
+                    let trust_scores: Vec<(String, f64)> = {
+                        let ts = sync_trust.lock().await;
+                        ts.ranked_peers()
+                            .into_iter()
+                            .map(|(id, score)| {
+                                let hex: String =
+                                    id.iter().map(|b| format!("{:02x}", b)).collect();
+                                (hex, score.overall)
+                            })
+                            .collect()
+                    };
+
                     let mut state = sync_ds.write().await;
                     state.peers = peers;
                     state.uptime_secs = sync_metrics.uptime_secs();
-                    state.tasks_total = sync_metrics.tasks_processed.load(Ordering::Relaxed);
-                    state.tasks_failed = sync_metrics.tasks_failed.load(Ordering::Relaxed);
+                    state.tasks_total = tasks_now;
+                    state.tasks_failed = tasks_failed;
+
+                    // Populate CRDT counter view from node metrics.
+                    state.crdt_counters = vec![
+                        ("tasks.processed".to_string(), tasks_now),
+                        ("tasks.failed".to_string(), tasks_failed),
+                        ("messages.received".to_string(), msgs_in),
+                        ("messages.sent".to_string(), msgs_out),
+                    ];
+
+                    // Populate peer trust scores.
+                    state.peer_trust = trust_scores;
+
+                    // Update throughput history (tasks/sec, capped at 60 samples).
+                    state.throughput_history.push_back(tasks_delta);
+                    if state.throughput_history.len() > 60 {
+                        state.throughput_history.pop_front();
+                    }
+
                     drop(state);
 
                     // Sync web state
