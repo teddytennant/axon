@@ -35,7 +35,11 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        .invoke_handler(tauri::generate_handler![get_axon_url, get_version, probe_axon_ports])
+        .invoke_handler(tauri::generate_handler![
+            get_axon_url,
+            get_version,
+            probe_axon_ports
+        ])
         .setup(|app| {
             let win = app.get_webview_window("main").unwrap();
             win.show().ok();

@@ -312,10 +312,10 @@ impl DashboardState {
 // Theme constants
 // ---------------------------------------------------------------------------
 
-const BRAND_CYAN: Color = Color::Rgb(0, 200, 200);    // #00c8c8
-const BRAND_GREEN: Color = Color::Rgb(80, 220, 120);   // #50dc78
-const BRAND_YELLOW: Color = Color::Rgb(240, 200, 60);  // #f0c83c
-const BRAND_RED: Color = Color::Rgb(240, 80, 80);      // #f05050
+const BRAND_CYAN: Color = Color::Rgb(0, 200, 200); // #00c8c8
+const BRAND_GREEN: Color = Color::Rgb(80, 220, 120); // #50dc78
+const BRAND_YELLOW: Color = Color::Rgb(240, 200, 60); // #f0c83c
+const BRAND_RED: Color = Color::Rgb(240, 80, 80); // #f05050
 const BRAND_DIM: Color = Color::Rgb(72, 72, 82);
 const BRAND_BG: Color = Color::Reset;
 const ACCENT_BLUE: Color = Color::Rgb(100, 150, 240);
@@ -554,10 +554,7 @@ impl Dashboard {
             .map(|(i, t)| {
                 if *t == active_tab {
                     Line::from(vec![
-                        Span::styled(
-                            format!(" {} ", t.icon()),
-                            Style::default().fg(BRAND_CYAN),
-                        ),
+                        Span::styled(format!(" {} ", t.icon()), Style::default().fg(BRAND_CYAN)),
                         Span::styled(
                             format!("{} {} ", i + 1, t.title()),
                             Style::default().fg(BRAND_CYAN).bold(),
@@ -572,12 +569,7 @@ impl Dashboard {
 
         let tabs = Tabs::new(tab_titles)
             .select(active_tab.index())
-            .highlight_style(
-                Style::default()
-                    .fg(BRAND_CYAN)
-                    .bold()
-                    .underlined(),
-            )
+            .highlight_style(Style::default().fg(BRAND_CYAN).bold().underlined())
             .divider(Span::styled("  ", Style::default().fg(BRAND_DIM)))
             .block(
                 Block::default()
