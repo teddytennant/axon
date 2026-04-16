@@ -1,6 +1,5 @@
 use std::sync::Arc;
 use std::time::Instant;
-use thiserror::Error;
 use uuid::Uuid;
 
 use crate::protocol::{Capability, TaskRequest, TaskResponse, TaskStatus};
@@ -10,105 +9,7 @@ use super::lifecycle::ManagedAgent;
 use super::trace::{
     emit_step_complete, emit_step_start, emit_workflow_complete, emit_workflow_error, WorkflowSpan,
 };
-
-pub type WorkflowId = Uuid;
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-/// How to transform the output payload between pipeline steps.
-#[derive(Debug, Clone)]
-pub enum PayloadTransform {
-    /// Pass the previous step's output payload as-is to the next step.
-    PassThrough,
-    /// Extract a JSON field from the payload. Supports dotted paths ("user.name").
-    ExtractField(String),
-}
-
-/// A single step in a pipeline workflow.
-#[derive(Debug, Clone)]
-pub struct WorkflowStep {
-    pub capability: Capability,
-    pub transform: PayloadTransform,
-    pub timeout_ms: u64,
-}
-
-impl WorkflowStep {
-    pub fn new(capability: Capability) -> Self {
-        Self {
-            capability,
-            transform: PayloadTransform::PassThrough,
-            timeout_ms: 30_000,
-        }
-    }
-
-    pub fn with_transform(mut self, transform: PayloadTransform) -> Self {
-        self.transform = transform;
-        self
-    }
-
-    pub fn with_timeout(mut self, timeout_ms: u64) -> Self {
-        self.timeout_ms = timeout_ms;
-        self
-    }
-}
-
-/// Result of a completed workflow execution.
-#[derive(Debug)]
-pub struct WorkflowResult {
-    pub workflow_id: WorkflowId,
-    pub steps_completed: usize,
-    pub steps_total: usize,
-    pub final_response: Option<TaskResponse>,
-    /// All responses collected (fan-out fills this with N entries; pipeline fills it sequentially).
-    pub all_responses: Vec<TaskResponse>,
-    pub duration_ms: u64,
-}
-
-impl WorkflowResult {
-    fn success(workflow_id: WorkflowId, responses: Vec<TaskResponse>, duration_ms: u64) -> Self {
-        let steps = responses.len();
-        let final_response = responses.last().cloned();
-        Self {
-            workflow_id,
-            steps_completed: steps,
-            steps_total: steps,
-            final_response,
-            all_responses: responses,
-            duration_ms,
-        }
-    }
-
-    fn partial(
-        workflow_id: WorkflowId,
-        completed: usize,
-        total: usize,
-        responses: Vec<TaskResponse>,
-        duration_ms: u64,
-    ) -> Self {
-        let final_response = responses.last().cloned();
-        Self {
-            workflow_id,
-            steps_completed: completed,
-            steps_total: total,
-            final_response,
-            all_responses: responses,
-            duration_ms,
-        }
-    }
-}
-
-/// Error during workflow execution.
-#[derive(Debug, Error)]
-pub enum WorkflowError {
-    #[error("step {step} failed: {reason}")]
-    StepFailed { step: usize, reason: String },
-    #[error("all fan-out tasks failed")]
-    AllFanOutFailed,
-    #[error("workflow timed out")]
-    Timeout,
-}
+use super::types::{PayloadTransform, WorkflowError, WorkflowId, WorkflowResult, WorkflowStep};
 
 // ---------------------------------------------------------------------------
 // PayloadTransform

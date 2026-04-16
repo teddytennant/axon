@@ -4,9 +4,7 @@ use uuid::Uuid;
 
 use crate::protocol::{Capability, TaskStatus};
 
-use super::workflow::{WorkflowError, WorkflowResult};
-
-pub type WorkflowId = Uuid;
+use super::types::{WorkflowError, WorkflowId, WorkflowResult};
 
 /// Tracks state and timing for a single workflow execution.
 /// Correlation IDs flow from workflow functions into tracing spans
