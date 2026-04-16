@@ -936,9 +936,3 @@ function LegendDot({ color, label }: { color: string; label: string }) {
     </div>
   );
 }
-  style={{ backgroundColor: `${color}15`, borderColor: `${color}55` }}
-      />
-      <span className="font-mono text-[8px] tracking-wider text-[#242424]">{label}</span>
-    </div>
-  );
-}
