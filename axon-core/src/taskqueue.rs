@@ -119,9 +119,7 @@ pub struct TaskQueue {
     _db: sled::Db,
 }
 
-// ---------------------------------------------------------------------------
 // helpers
-// ---------------------------------------------------------------------------
 
 fn now_millis() -> u64 {
     SystemTime::now()
@@ -152,9 +150,7 @@ fn uuid_from_ivec(v: &sled::IVec) -> Result<Uuid, QueueError> {
     })
 }
 
-// ---------------------------------------------------------------------------
 // TaskQueue
-// ---------------------------------------------------------------------------
 
 impl TaskQueue {
     /// Open (or create) a persistent task queue at `path`.
@@ -203,7 +199,7 @@ impl TaskQueue {
         self.seq.fetch_add(1, Ordering::SeqCst)
     }
 
-    // -- core operations --------------------------------------------------
+    // core operations
 
     /// Enqueue a task. Persists the record and adds it to the pending index.
     pub fn enqueue(&self, request: TaskRequest) -> Result<Uuid, QueueError> {
@@ -353,7 +349,7 @@ impl TaskQueue {
         }
     }
 
-    // -- queries -----------------------------------------------------------
+    // queries
 
     /// Get a task record by ID.
     pub fn get(&self, task_id: Uuid) -> Result<Option<TaskRecord>, QueueError> {
@@ -390,7 +386,7 @@ impl TaskQueue {
         Ok(s)
     }
 
-    // -- maintenance -------------------------------------------------------
+    // maintenance
 
     /// Recover tasks that were Running when the node crashed.
     /// Re-enqueues them as Pending. Returns the count recovered.
@@ -462,7 +458,7 @@ impl TaskQueue {
         Ok(())
     }
 
-    // -- internal ----------------------------------------------------------
+    // internal
 
     fn set_state(
         &self,
@@ -486,9 +482,7 @@ impl TaskQueue {
     }
 }
 
-// ---------------------------------------------------------------------------
 // tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -521,7 +515,7 @@ mod tests {
         TaskQueue::open_temporary(config).unwrap()
     }
 
-    // -- basic operations -------------------------------------------------
+    // basic operations
 
     #[test]
     fn empty_queue() {
@@ -586,7 +580,7 @@ mod tests {
         assert!(q.get(Uuid::new_v4()).unwrap().is_none());
     }
 
-    // -- completion -------------------------------------------------------
+    // completion
 
     #[test]
     fn complete_task() {
@@ -612,7 +606,7 @@ mod tests {
         assert!(matches!(err, QueueError::NotFound(_)));
     }
 
-    // -- failure and retry ------------------------------------------------
+    // failure and retry
 
     #[test]
     fn fail_with_retries_remaining() {
@@ -686,7 +680,7 @@ mod tests {
         ));
     }
 
-    // -- timeout and retry ------------------------------------------------
+    // timeout and retry
 
     #[test]
     fn timeout_with_retries_remaining() {
@@ -734,7 +728,7 @@ mod tests {
         assert!(matches!(err, QueueError::NotFound(_)));
     }
 
-    // -- capacity ---------------------------------------------------------
+    // capacity
 
     #[test]
     fn queue_full_rejects() {
@@ -762,7 +756,7 @@ mod tests {
         assert_eq!(q.pending_count(), 100);
     }
 
-    // -- recovery ---------------------------------------------------------
+    // recovery
 
     #[test]
     fn recover_running_tasks() {
@@ -802,7 +796,7 @@ mod tests {
         assert_eq!(q.recover().unwrap(), 0);
     }
 
-    // -- cleanup ----------------------------------------------------------
+    // cleanup
 
     #[test]
     fn cleanup_removes_old_terminal_tasks() {
@@ -835,7 +829,7 @@ mod tests {
         assert_eq!(q.total_count(), 1);
     }
 
-    // -- stats ------------------------------------------------------------
+    // stats
 
     #[test]
     fn stats_reflect_state() {
@@ -867,7 +861,7 @@ mod tests {
         assert_eq!(stats.total(), 3);
     }
 
-    // -- state transitions ------------------------------------------------
+    // state transitions
 
     #[test]
     fn task_state_is_terminal() {
@@ -878,7 +872,7 @@ mod tests {
         assert!(TaskState::TimedOut.is_terminal());
     }
 
-    // -- pending key ordering ---------------------------------------------
+    // pending key ordering
 
     #[test]
     fn pending_key_orders_by_seq() {
@@ -905,7 +899,7 @@ mod tests {
         assert_eq!(seq_from_pending_key(&key), seq);
     }
 
-    // -- flush ------------------------------------------------------------
+    // flush
 
     #[test]
     fn flush_succeeds() {
@@ -914,7 +908,7 @@ mod tests {
         q.flush().unwrap();
     }
 
-    // -- payload preservation ---------------------------------------------
+    // payload preservation
 
     #[test]
     fn payload_survives_roundtrip() {
@@ -929,7 +923,7 @@ mod tests {
         assert_eq!(record.request.payload, vec![0xDE, 0xAD, 0xBE, 0xEF]);
     }
 
-    // -- retry cycle integration ------------------------------------------
+    // retry cycle integration
 
     #[test]
     fn full_retry_cycle() {
@@ -962,7 +956,7 @@ mod tests {
         assert_eq!(q.pending_count(), 0);
     }
 
-    // -- edge cases -------------------------------------------------------
+    // edge cases
 
     #[test]
     fn dequeue_empty_after_drain() {

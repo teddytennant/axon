@@ -32,14 +32,8 @@ impl SchemaDetail {
 
 /// An MCP tool schema — the standard definition of a tool exposed by an MCP server.
 ///
-/// Maps directly to the MCP `tools/list` response format:
-/// - `name`: unique tool identifier within its server
-/// - `description`: human-readable explanation of what the tool does
-/// - `input_schema`: JSON Schema string describing the tool's expected input
-/// - `server_name`: which MCP server exposes this tool (e.g., "filesystem", "github")
-///
-/// The `input_schema` is stored as a JSON string rather than a parsed Value
-/// for bincode wire compatibility (bincode doesn't support serde_json::Value).
+/// `input_schema` is stored as a JSON string rather than a parsed `Value`
+/// because bincode (used on the wire) doesn't support `serde_json::Value`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct McpToolSchema {
     /// Tool name (e.g., "read_file", "search_code")

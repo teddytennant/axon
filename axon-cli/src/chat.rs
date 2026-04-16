@@ -15,9 +15,7 @@ use std::io::stdout;
 use std::time::{Duration, Instant};
 use tokio::sync::oneshot;
 
-// ---------------------------------------------------------------------------
 // Theme
-// ---------------------------------------------------------------------------
 
 const ACCENT: Color = Color::Rgb(110, 110, 118);
 const DIM: Color = Color::Rgb(70, 70, 78);
@@ -28,9 +26,7 @@ const LABEL: Color = Color::Rgb(130, 130, 138);
 const POPUP_BG: Color = Color::Rgb(18, 18, 22);
 const SPINNER: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
-// ---------------------------------------------------------------------------
 // Command registry — single source of truth
-// ---------------------------------------------------------------------------
 
 struct CmdDef {
     name: &'static str,
@@ -204,9 +200,7 @@ fn filtered_suggestions(input: &str) -> Vec<&'static CmdDef> {
         .collect()
 }
 
-// ---------------------------------------------------------------------------
 // Messages
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
 enum Role {
@@ -223,9 +217,7 @@ struct ChatMessage {
     tokens: Option<(u32, u32)>,
 }
 
-// ---------------------------------------------------------------------------
 // Model picker
-// ---------------------------------------------------------------------------
 
 struct ModelPicker {
     models: Vec<ModelInfo>,
@@ -252,9 +244,7 @@ impl ModelPicker {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Background jobs
-// ---------------------------------------------------------------------------
 
 #[allow(dead_code)]
 struct BackgroundJob {
@@ -266,9 +256,7 @@ struct BackgroundJob {
     result: Option<Result<String, String>>,
 }
 
-// ---------------------------------------------------------------------------
 // Chat state
-// ---------------------------------------------------------------------------
 
 struct ChatState {
     messages: Vec<ChatMessage>,
@@ -383,9 +371,7 @@ impl ChatState {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Public entry
-// ---------------------------------------------------------------------------
 
 pub async fn run_chat() -> anyhow::Result<()> {
     let cfg = config::load_config();
@@ -444,9 +430,7 @@ pub async fn run_chat() -> anyhow::Result<()> {
     Ok(())
 }
 
-// ---------------------------------------------------------------------------
 // Event loop
-// ---------------------------------------------------------------------------
 
 async fn event_loop(
     terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
@@ -783,9 +767,7 @@ fn handle_picker_key(key: KeyEvent, state: &mut ChatState) -> bool {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Command dispatch
-// ---------------------------------------------------------------------------
 
 async fn handle_command(name: &str, arg: &str, state: &mut ChatState, raw: &str) -> bool {
     match name {
@@ -854,7 +836,7 @@ async fn handle_command(name: &str, arg: &str, state: &mut ChatState, raw: &str)
             }
         }
 
-        // --- Agent orchestration ---
+        // Agent orchestration
         "run" => {
             if arg.is_empty() {
                 state.sys_msg("usage: /run <capability> [payload]\n  /run system.info\n  /run echo.ping hello\n  /run llm.chat explain QUIC".into());
@@ -1029,9 +1011,7 @@ async fn handle_command(name: &str, arg: &str, state: &mut ChatState, raw: &str)
     false
 }
 
-// ---------------------------------------------------------------------------
 // Agent execution
-// ---------------------------------------------------------------------------
 
 fn parse_cap_payload(arg: &str) -> (String, String) {
     let mut parts = arg.splitn(2, ' ');
@@ -1263,9 +1243,7 @@ fn send_message(state: &mut ChatState, user_msg: &str) {
     state.spinner_tick = 0;
 }
 
-// ---------------------------------------------------------------------------
 // Rendering
-// ---------------------------------------------------------------------------
 
 fn render(frame: &mut Frame, state: &mut ChatState) {
     let area = frame.area();
@@ -1698,9 +1676,7 @@ fn render_model_picker(frame: &mut Frame, state: &ChatState, area: Rect) {
     frame.render_widget(Paragraph::new(lines).block(block), popup);
 }
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 fn help_line(cmd: &CmdDef) -> Line<'static> {
     let args = if cmd.args.is_empty() {

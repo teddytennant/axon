@@ -32,9 +32,7 @@
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-// ---------------------------------------------------------------------------
 // Observation — the atomic unit of trust data
-// ---------------------------------------------------------------------------
 
 /// Outcome of a task interaction with a peer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -102,9 +100,7 @@ impl TrustObservation {
     }
 }
 
-// ---------------------------------------------------------------------------
 // TrustRecord — per-peer observation history
-// ---------------------------------------------------------------------------
 
 /// Trust record for a single peer, maintained by the local node.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -205,9 +201,7 @@ impl TrustRecord {
     }
 }
 
-// ---------------------------------------------------------------------------
 // TrustScore — computed aggregate trust
-// ---------------------------------------------------------------------------
 
 /// Computed trust score for a peer. All fields are 0.0–1.0.
 #[derive(Debug, Clone, Copy)]
@@ -262,9 +256,7 @@ impl Default for TrustScore {
     }
 }
 
-// ---------------------------------------------------------------------------
 // TrustScorer — configurable scoring engine
-// ---------------------------------------------------------------------------
 
 /// Configuration for how trust scores are computed.
 #[derive(Debug, Clone)]
@@ -452,9 +444,7 @@ impl Default for TrustScorer {
     }
 }
 
-// ---------------------------------------------------------------------------
 // TrustStore — per-node trust state
-// ---------------------------------------------------------------------------
 
 /// Per-node storage of trust records for all known peers.
 pub struct TrustStore {
@@ -594,9 +584,7 @@ impl Default for TrustStore {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Trust-weighted bid scoring
-// ---------------------------------------------------------------------------
 
 /// Applies trust modulation to bid scores from the Negotiator.
 ///
@@ -638,9 +626,7 @@ impl Default for TrustWeightedScoring {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Trust gossip — share observations between peers
-// ---------------------------------------------------------------------------
 
 /// A trust observation shared between peers via gossip.
 /// The receiving node discounts this by their trust in the sender.
@@ -715,9 +701,7 @@ impl Default for TrustGossipProcessor {
     }
 }
 
-// ---------------------------------------------------------------------------
 // PersistentTrustStore — sled-backed durable trust storage
-// ---------------------------------------------------------------------------
 
 /// Errors from persistent trust operations.
 #[derive(Debug, thiserror::Error)]
@@ -832,7 +816,7 @@ impl PersistentTrustStore {
         self.tree.len()
     }
 
-    // -- Delegated methods from TrustStore --
+    // Delegated methods from TrustStore
 
     /// Get the trust score for a peer.
     pub fn score(&self, peer_id: &[u8]) -> TrustScore {
@@ -890,9 +874,7 @@ impl PersistentTrustStore {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -905,7 +887,7 @@ mod tests {
             .as_secs()
     }
 
-    // -- TrustObservation --
+    // TrustObservation
 
     #[test]
     fn observation_latency_accuracy_perfect() {
@@ -943,7 +925,7 @@ mod tests {
         assert_eq!(obs.quality, Some(1.0));
     }
 
-    // -- TrustRecord --
+    // TrustRecord
 
     #[test]
     fn record_new_is_empty() {
@@ -988,7 +970,7 @@ mod tests {
         assert_eq!(record.last_observation().unwrap().timestamp, 200);
     }
 
-    // -- TrustScorer --
+    // TrustScorer
 
     #[test]
     fn scorer_decay_weight_at_zero() {
@@ -1182,7 +1164,7 @@ mod tests {
         assert!(score.overall < 0.86, "overall = {}", score.overall);
     }
 
-    // -- TrustScore --
+    // TrustScore
 
     #[test]
     fn trust_score_neutral() {
@@ -1219,7 +1201,7 @@ mod tests {
         assert!(!score.is_distrusted(0.5));
     }
 
-    // -- TrustStore --
+    // TrustStore
 
     #[test]
     fn store_unknown_peer_neutral() {
@@ -1305,7 +1287,7 @@ mod tests {
         assert!(store.get_record(&[3]).is_some());
     }
 
-    // -- TrustWeightedScoring --
+    // TrustWeightedScoring
 
     #[test]
     fn trust_weighted_no_influence() {
@@ -1357,7 +1339,7 @@ mod tests {
         assert!(score > 0.8 && score < 1.0, "score = {}", score);
     }
 
-    // -- TrustGossipProcessor --
+    // TrustGossipProcessor
 
     #[test]
     fn gossip_processor_rejects_untrusted_sender() {
@@ -1438,7 +1420,7 @@ mod tests {
         assert!(store.get_record(&[2]).is_none());
     }
 
-    // -- Integration tests --
+    // Integration tests
 
     #[test]
     fn integration_trust_builds_over_time() {
@@ -1576,7 +1558,7 @@ mod tests {
         );
     }
 
-    // ---- PersistentTrustStore tests ----
+    // PersistentTrustStore tests
 
     #[test]
     fn persistent_open_and_record() {
@@ -1810,7 +1792,7 @@ mod tests {
         assert_eq!(inner.peer_count(), 1);
     }
 
-    // -- TrustRecord::recent_observations --
+    // TrustRecord::recent_observations
 
     #[test]
     fn recent_observations_within_window() {
@@ -1859,7 +1841,7 @@ mod tests {
         assert!(recent.is_empty());
     }
 
-    // -- TrustStore::recent_observations_all --
+    // TrustStore::recent_observations_all
 
     #[test]
     fn store_recent_observations_all() {

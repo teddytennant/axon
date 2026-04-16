@@ -23,9 +23,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-// ---------------------------------------------------------------------------
 // Bid scoring
-// ---------------------------------------------------------------------------
 
 /// How to rank competing bids.
 #[derive(Debug, Clone, PartialEq)]
@@ -84,9 +82,7 @@ impl ReceivedBid {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Negotiator
-// ---------------------------------------------------------------------------
 
 /// Scores and selects winning bids for task negotiations.
 pub struct Negotiator {
@@ -191,9 +187,7 @@ impl Default for Negotiator {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Negotiation state tracker
-// ---------------------------------------------------------------------------
 
 /// State of a single active negotiation.
 #[derive(Debug)]
@@ -407,9 +401,7 @@ impl Default for NegotiationState {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Bidding strategy
-// ---------------------------------------------------------------------------
 
 /// Trait for agents to decide whether and how to bid on task offers.
 pub trait BiddingStrategy: Send + Sync {
@@ -542,9 +534,7 @@ impl BiddingStrategy for LoadAwareBidder {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -564,7 +554,7 @@ mod tests {
         ReceivedBid::new(request_id, vec![peer], latency, load, confidence)
     }
 
-    // -- BidScoring -------------------------------------------------------
+    // BidScoring
 
     #[test]
     fn score_lowest_latency_prefers_fast() {
@@ -642,7 +632,7 @@ mod tests {
         assert!((s0 - 1.0).abs() < f64::EPSILON);
     }
 
-    // -- Negotiator selection ---------------------------------------------
+    // Negotiator selection
 
     #[test]
     fn select_winner_empty_bids() {
@@ -735,7 +725,7 @@ mod tests {
         assert_eq!(eligible.len(), 2);
     }
 
-    // -- ActiveNegotiation ------------------------------------------------
+    // ActiveNegotiation
 
     #[test]
     fn active_negotiation_tracks_bids() {
@@ -797,7 +787,7 @@ mod tests {
         assert!(neg.time_remaining() > Duration::from_secs(59));
     }
 
-    // -- NegotiationState -------------------------------------------------
+    // NegotiationState
 
     #[test]
     fn state_start_and_get() {
@@ -935,7 +925,7 @@ mod tests {
         assert!(!ready.contains(&id3));
     }
 
-    // -- BiddingStrategy: EagerBidder ------------------------------------
+    // BiddingStrategy: EagerBidder
 
     #[test]
     fn eager_bidder_always_bids_on_matching_capability() {
@@ -996,7 +986,7 @@ mod tests {
         assert!((bid.load_factor - 0.0).abs() < f64::EPSILON);
     }
 
-    // -- BiddingStrategy: LoadAwareBidder --------------------------------
+    // BiddingStrategy: LoadAwareBidder
 
     #[test]
     fn load_aware_bidder_refuses_when_overloaded() {
@@ -1043,7 +1033,7 @@ mod tests {
         assert!(idle_bid.confidence > loaded_bid.confidence);
     }
 
-    // -- ReceivedBid clamping --------------------------------------------
+    // ReceivedBid clamping
 
     #[test]
     fn bid_clamps_load_factor() {
@@ -1063,7 +1053,7 @@ mod tests {
         assert!((bid2.confidence - 0.0).abs() < f64::EPSILON);
     }
 
-    // -- Default Negotiator -----------------------------------------------
+    // Default Negotiator
 
     #[test]
     fn default_negotiator_uses_weighted_scoring() {
@@ -1084,7 +1074,7 @@ mod tests {
         assert!((n.max_load - 0.0).abs() < f64::EPSILON);
     }
 
-    // -- Integration: full negotiation flow --------------------------------
+    // Integration: full negotiation flow
 
     #[test]
     fn full_negotiation_flow() {
@@ -1158,7 +1148,7 @@ mod tests {
         assert_eq!(winner.peer_id, vec![2]);
     }
 
-    // -- ActiveNegotiation with stored request --------------------------------
+    // ActiveNegotiation with stored request
 
     fn make_task_request(cap: &Capability) -> TaskRequest {
         TaskRequest {
@@ -1211,7 +1201,7 @@ mod tests {
         assert!(neg.take_request().is_none());
     }
 
-    // -- NegotiationState with stored request ---------------------------------
+    // NegotiationState with stored request
 
     #[test]
     fn state_start_with_request_stores_and_retrieves() {

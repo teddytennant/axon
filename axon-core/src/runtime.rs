@@ -324,8 +324,8 @@ mod tests {
 
         let req = make_request("test", "slow");
         let resp = rt.dispatch(req).await;
-        // Duration should be set (>= 0)
-        assert!(resp.duration_ms < 1000); // shouldn't take more than 1s
+        // MockAgent returns immediately; the dispatch loop should take <1s.
+        assert!(resp.duration_ms < 1000);
     }
 
     struct SlowAgent;
@@ -384,7 +384,7 @@ mod tests {
 
         let req = make_request("echo", "ping");
         let resp = rt.dispatch(req).await;
-        // First registered agent should handle it
+        // When several agents match, dispatch picks the first-registered one.
         assert_eq!(resp.payload, b"first");
     }
 }

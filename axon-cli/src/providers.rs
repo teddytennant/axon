@@ -85,7 +85,7 @@ impl std::str::FromStr for ProviderKind {
     }
 }
 
-// --- Ollama Provider ---
+// Ollama Provider
 
 pub struct OllamaProvider {
     endpoint: String,
@@ -140,19 +140,8 @@ impl LlmProvider for OllamaProvider {
     }
 }
 
-// --- OpenAI-compatible Provider (used by xAI, OpenRouter, and custom endpoints) ---
-//
-// OpenRouter is the recommended way to access models from every provider:
-//   Anthropic:  openrouter model "anthropic/claude-sonnet-4-6"
-//   OpenAI:     openrouter model "openai/gpt-5.4"
-//   Gemini:     openrouter model "google/gemini-3.1-pro"
-//   Mistral:    openrouter model "mistralai/mistral-large-latest"
-//   DeepSeek:   openrouter model "deepseek/deepseek-chat"
-//   Groq:       openrouter model "groq/llama-4-scout"
-//   Cohere:     openrouter model "cohere/command-a"
-//   Perplexity: openrouter model "perplexity/sonar-pro"
-//   Meta:       openrouter model "meta-llama/llama-4-maverick"
-//   ... and 200+ more at https://openrouter.ai/models
+// OpenAI-compatible provider used for xAI, OpenRouter, and custom endpoints.
+// See https://openrouter.ai/models for the full OpenRouter model catalog.
 
 pub struct OpenAiCompatibleProvider {
     label: String,
@@ -330,11 +319,14 @@ pub fn resolve_api_key(explicit: &str, kind: &ProviderKind) -> String {
 }
 
 /// Return the default model for a provider.
+///
+/// Users are expected to override these via `axon setup` or the settings
+/// UI; the defaults are only used when no config exists.
 pub fn default_model(kind: &ProviderKind) -> &'static str {
     match kind {
-        ProviderKind::Ollama => "llama4-maverick",
-        ProviderKind::Xai => "grok-4.20",
-        ProviderKind::OpenRouter => "x-ai/grok-4.20-beta",
+        ProviderKind::Ollama => "llama3",
+        ProviderKind::Xai => "grok-2-latest",
+        ProviderKind::OpenRouter => "anthropic/claude-sonnet-4",
         ProviderKind::Custom => "default",
     }
 }
@@ -349,9 +341,7 @@ pub fn default_endpoint(kind: &ProviderKind) -> &'static str {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Model listing
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelInfo {
@@ -370,7 +360,7 @@ pub async fn fetch_models(
     match kind {
         ProviderKind::Ollama => fetch_ollama_models(endpoint).await,
         ProviderKind::OpenRouter => fetch_openrouter_models(api_key).await,
-        ProviderKind::Xai => Ok(xai_models()),
+        ProviderKind::Xai => fetch_xai_models(api_key).await,
         ProviderKind::Custom => Ok(vec![ModelInfo {
             id: "default".into(),
             name: "Custom Model".into(),
@@ -492,27 +482,50 @@ async fn fetch_openrouter_models(api_key: &str) -> Result<Vec<ModelInfo>, Provid
     Ok(models)
 }
 
-fn xai_models() -> Vec<ModelInfo> {
-    vec![
-        ModelInfo {
-            id: "grok-4.20".into(),
-            name: "Grok 4.20".into(),
-            description: "Latest flagship model".into(),
-            context_length: Some(131072),
-        },
-        ModelInfo {
-            id: "grok-4.20-mini".into(),
-            name: "Grok 4.20 Mini".into(),
-            description: "Smaller, faster model".into(),
-            context_length: Some(131072),
-        },
-        ModelInfo {
-            id: "grok-3-beta".into(),
-            name: "Grok 3 Beta".into(),
-            description: "Previous generation".into(),
-            context_length: Some(131072),
-        },
-    ]
+/// Query the xAI /v1/models endpoint.
+///
+/// xAI returns `{ "data": [ { "id": "...", ... } ] }`. An empty / missing
+/// API key yields `ProviderError::Config` rather than a silent placeholder
+/// list, so callers see why discovery failed.
+async fn fetch_xai_models(api_key: &str) -> Result<Vec<ModelInfo>, ProviderError> {
+    if api_key.is_empty() {
+        return Err(ProviderError::Config(
+            "xAI model discovery requires an API key".into(),
+        ));
+    }
+    let client = reqwest::Client::new();
+    let resp = client
+        .get("https://api.x.ai/v1/models")
+        .bearer_auth(api_key)
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        return Err(ProviderError::Api(format!(
+            "xAI API returned {}",
+            resp.status()
+        )));
+    }
+
+    let json: serde_json::Value = resp.json().await?;
+    let models = json["data"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .map(|m| {
+                    let id = m["id"].as_str().unwrap_or("").to_string();
+                    ModelInfo {
+                        name: id.clone(),
+                        id,
+                        description: String::new(),
+                        context_length: None,
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(models)
 }
 
 /// Validate an API key by making a lightweight request.
@@ -642,25 +655,25 @@ mod tests {
 
     #[test]
     fn build_xai_requires_key() {
-        let p = build_provider(&ProviderKind::Xai, "", "", "grok-4.20");
+        let p = build_provider(&ProviderKind::Xai, "", "", "grok-2");
         assert!(p.is_err());
     }
 
     #[test]
     fn build_openrouter_requires_key() {
-        let p = build_provider(&ProviderKind::OpenRouter, "", "", "x-ai/grok-4.20-beta");
+        let p = build_provider(&ProviderKind::OpenRouter, "", "", "x-ai/grok-2");
         assert!(p.is_err());
     }
 
     #[test]
     fn build_with_valid_keys() {
-        let p = build_provider(&ProviderKind::Xai, "", "xai-test", "grok-4.20");
+        let p = build_provider(&ProviderKind::Xai, "", "xai-test", "grok-2");
         assert!(p.is_ok());
         let p = build_provider(
             &ProviderKind::OpenRouter,
             "",
             "or-test",
-            "anthropic/claude-sonnet-4-6",
+            "anthropic/claude-sonnet-4",
         );
         assert!(p.is_ok());
     }
@@ -683,16 +696,15 @@ mod tests {
     }
 
     #[test]
-    fn xai_default_model_is_latest() {
-        assert_eq!(default_model(&ProviderKind::Xai), "grok-4.20");
+    fn xai_default_model_starts_with_grok() {
+        assert!(default_model(&ProviderKind::Xai).starts_with("grok-"));
     }
 
     #[test]
-    fn openrouter_default_model_is_latest() {
-        assert_eq!(
-            default_model(&ProviderKind::OpenRouter),
-            "x-ai/grok-4.20-beta"
-        );
+    fn openrouter_default_model_is_namespaced() {
+        // OpenRouter IDs are `<vendor>/<model>`; we don't pin a specific name
+        // because the "current best" changes frequently.
+        assert!(default_model(&ProviderKind::OpenRouter).contains('/'));
     }
 
     #[test]

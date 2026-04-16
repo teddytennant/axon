@@ -13,9 +13,7 @@ use super::trace::{
 
 pub type WorkflowId = Uuid;
 
-// ---------------------------------------------------------------------------
 // Types
-// ---------------------------------------------------------------------------
 
 /// How to transform the output payload between pipeline steps.
 #[derive(Debug, Clone)]
@@ -110,9 +108,7 @@ pub enum WorkflowError {
     Timeout,
 }
 
-// ---------------------------------------------------------------------------
 // PayloadTransform
-// ---------------------------------------------------------------------------
 
 fn apply_transform(transform: &PayloadTransform, payload: &[u8]) -> Vec<u8> {
     match transform {
@@ -142,9 +138,7 @@ fn extract_json_field(payload: &[u8], path: &str) -> Vec<u8> {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Orchestration patterns
-// ---------------------------------------------------------------------------
 
 /// Pipeline: A → B → C.
 ///
@@ -407,9 +401,7 @@ pub async fn swarm_dispatch(
     delegate(runtime, capability, payload, timeout_ms, workflow_id).await
 }
 
-// ---------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -515,7 +507,7 @@ mod tests {
         Uuid::new_v4()
     }
 
-    // ---- pipeline tests ----
+    // pipeline tests
 
     #[tokio::test]
     async fn pipeline_two_steps_chains_payloads() {
@@ -623,7 +615,7 @@ mod tests {
         assert_eq!(s, "hello world");
     }
 
-    // ---- fan_out tests ----
+    // fan_out tests
 
     #[tokio::test]
     async fn fan_out_collects_all_results() {
@@ -700,7 +692,7 @@ mod tests {
         assert!(matches!(err, WorkflowError::AllFanOutFailed));
     }
 
-    // ---- delegate tests ----
+    // delegate tests
 
     #[tokio::test]
     async fn delegate_routes_to_capable_agent() {
@@ -732,7 +724,7 @@ mod tests {
         assert!(matches!(err, WorkflowError::StepFailed { step: 0, .. }));
     }
 
-    // ---- workflow result ----
+    // workflow result
 
     #[tokio::test]
     async fn workflow_result_tracks_duration() {
@@ -743,7 +735,7 @@ mod tests {
         let _ = result.duration_ms; // just verifying it compiles and is accessible
     }
 
-    // ---- payload transform ----
+    // payload transform
 
     #[test]
     fn payload_transform_passthrough() {

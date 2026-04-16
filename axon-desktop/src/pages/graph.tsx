@@ -1,16 +1,9 @@
-/**
- * Obsidian-style force-directed graph for the axon desktop app.
- *
- * Nodes are glowing circles (not DOM cards) rendered via SVG.
- * Agents are larger (r=20) with a cyan/status glow.
- * Peers are smaller (r=13) with a grey glow.
- * Edges curve with trust-weighted opacity.
- * Hovering a node shows a floating detail card.
- */
+// Force-directed agent/peer graph rendered as SVG. Agents are drawn larger
+// (with status colour) than peers; edge opacity is weighted by mutual trust.
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { clsx } from 'clsx';
-import { Copy, Check, X, RefreshCw } from 'lucide-react';
+import { Copy, Check, X } from 'lucide-react';
 import { useAgents, usePeers, useTaskLog, useTrust, useStatus } from '../hooks/use-api';
 import { useWebSocket } from '../hooks/use-websocket';
 import type { AgentInfo, PeerResponse, TaskLogEntry, TrustEntry, WsTasksData } from '../lib/types';
@@ -938,6 +931,12 @@ function LegendDot({ color, label }: { color: string; label: string }) {
       <div
         className="h-[7px] w-[7px] rounded-full border"
         style={{ backgroundColor: `${color}15`, borderColor: `${color}55` }}
+      />
+      <span className="font-mono text-[8px] tracking-wider text-[#242424]">{label}</span>
+    </div>
+  );
+}
+  style={{ backgroundColor: `${color}15`, borderColor: `${color}55` }}
       />
       <span className="font-mono text-[8px] tracking-wider text-[#242424]">{label}</span>
     </div>
