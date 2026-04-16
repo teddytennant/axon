@@ -24,7 +24,8 @@ use uuid::Uuid;
 
 use agents::{EchoAgent, LlmAgent, SystemInfoAgent};
 use providers::ProviderKind;
-use tui::{Dashboard, DashboardState, TaskLogEntry};
+use axon_core::TaskLogEntry;
+use tui::{Dashboard, DashboardState};
 
 /// Atomic counters for node-level metrics.
 pub struct NodeMetrics {
@@ -358,12 +359,7 @@ async fn main() -> anyhow::Result<()> {
             let effective_health_port = health_port.or(file_config.node.health_port);
             let effective_web_port = web_port.or(file_config.node.web_port);
 
-            let mcp_configs: Vec<_> = file_config
-                .mcp
-                .servers
-                .iter()
-                .map(|s| s.to_server_config())
-                .collect();
+            let mcp_configs: Vec<_> = file_config.mcp.servers.clone();
 
             run_node(
                 effective_listen,
@@ -465,12 +461,8 @@ async fn main() -> anyhow::Result<()> {
 
             // Load config
             let file_config = config::load_config();
-            let mcp_configs: Vec<axon_core::McpServerConfig> = file_config
-                .mcp
-                .servers
-                .iter()
-                .map(|s| s.to_server_config())
-                .collect();
+            let mcp_configs: Vec<axon_core::McpServerConfig> =
+                file_config.mcp.servers.clone();
 
             if mcp_configs.is_empty() && !mesh {
                 eprintln!("No MCP servers configured.");
@@ -1537,6 +1529,7 @@ async fn run_node(
     let sync_metrics = metrics.clone();
     let sync_web = web_state.clone();
     let sync_trust = trust_store.clone();
+    let sync_runtime = runtime.clone();
     let mut sync_shutdown = shutdown_tx.subscribe();
     let mut sync_last_tasks: u64 = 0;
     tokio::spawn(async move {
@@ -1568,7 +1561,12 @@ async fn run_node(
                             .collect()
                     };
 
+                    // Snapshot basic agent info from the runtime. Runtime doesn't
+                    // track per-agent latency metrics yet, so fields are zeroed.
+                    let agent_infos = sync_runtime.agent_infos().await;
+
                     let mut state = sync_ds.write().await;
+                    state.agent_info = agent_infos;
                     state.peers = peers;
                     state.uptime_secs = sync_metrics.uptime_secs();
                     state.tasks_total = tasks_now;
@@ -1593,14 +1591,41 @@ async fn run_node(
 
                     drop(state);
 
-                    // Sync web state
+                    // Sync web state. These fields used to diverge: the
+                    // DashboardState copy was populated, but the WebState
+                    // counterparts were declared and never written, so every
+                    // `/api/tasks/log`, `/api/agents`, and the WS `log`
+                    // stream returned an empty body. We now mirror the
+                    // canonical snapshot from the TUI state on every tick.
                     {
+                        // Re-read the freshly updated dashboard snapshot
+                        // without holding the write lock.
+                        let ds = sync_ds.read().await;
+                        let task_log_snapshot = ds.task_log.clone();
+                        let logs_snapshot: std::collections::VecDeque<String> =
+                            ds.logs.iter().cloned().collect();
+                        let agent_info_snapshot = ds.agent_info.clone();
+                        let workflows_snapshot = ds.active_workflows.clone();
+                        let completed_snapshot: std::collections::VecDeque<_> =
+                            ds.completed_workflows.iter().cloned().collect();
+                        let blackboard_snapshot = ds.blackboard_entries.clone();
+                        let throughput_snapshot: std::collections::VecDeque<u64> =
+                            ds.throughput_history.iter().copied().collect();
+                        drop(ds);
+
                         let mut ws = sync_web.write().await;
                         ws.uptime_secs = sync_metrics.uptime_secs();
                         ws.tasks_total = sync_metrics.tasks_processed.load(Ordering::Relaxed);
                         ws.tasks_failed = sync_metrics.tasks_failed.load(Ordering::Relaxed);
                         ws.messages_received = sync_metrics.messages_received.load(Ordering::Relaxed);
                         ws.messages_sent = sync_metrics.messages_sent.load(Ordering::Relaxed);
+                        ws.task_log = task_log_snapshot;
+                        ws.logs = logs_snapshot;
+                        ws.agent_info = agent_info_snapshot;
+                        ws.active_workflows = workflows_snapshot;
+                        ws.completed_workflows = completed_snapshot;
+                        ws.blackboard_entries = blackboard_snapshot;
+                        ws.throughput_history = throughput_snapshot;
                     }
 
                     // Prune closed connections to prevent memory leaks.

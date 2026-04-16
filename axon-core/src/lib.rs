@@ -1,4 +1,5 @@
 pub mod crdt;
+pub mod dashboard;
 pub mod discovery;
 pub mod gossip;
 pub mod identity;
@@ -14,6 +15,9 @@ pub mod transport;
 pub mod trust;
 
 pub use crdt::{GCounter, LWWRegister, ORSet};
+pub use dashboard::{
+    AgentInfo, AgentStatus, BlackboardEntry, StepSnapshot, TaskLogEntry, WorkflowSnapshot,
+};
 pub use discovery::PeerTable;
 pub use gossip::{
     broadcast_tool_catalog, run_gossip, send_tool_catalog, GossipConfig, LocalToolCatalog,

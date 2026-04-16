@@ -3,6 +3,13 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
+// Re-export the shared dashboard types owned by `axon_core::dashboard` so
+// existing `axon_web::state::{AgentInfo, TaskLogEntry, WorkflowSnapshot,
+// StepSnapshot, BlackboardEntry}` imports keep resolving. These used to be
+// duplicate definitions that silently drifted from the CLI's copies; they are
+// now a single source of truth.
+pub use axon_core::{AgentInfo, BlackboardEntry, StepSnapshot, TaskLogEntry, WorkflowSnapshot};
+
 /// Shared state between the web server and the running axon node.
 ///
 /// All core fields are `Arc`-wrapped handles to the same state objects that
@@ -87,54 +94,4 @@ impl WebState {
             self.task_log.remove(0);
         }
     }
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct AgentInfo {
-    pub name: String,
-    pub capabilities: Vec<String>,
-    pub provider_type: String,
-    pub model_name: String,
-    pub status: String,
-    pub tasks_handled: u64,
-    pub tasks_succeeded: u64,
-    pub avg_latency_ms: u64,
-    pub lifecycle_state: String,
-    pub last_heartbeat_secs_ago: Option<u64>,
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct TaskLogEntry {
-    pub id: String,
-    pub capability: String,
-    pub status: String,
-    pub duration_ms: u64,
-    pub peer: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct WorkflowSnapshot {
-    pub id: String,
-    pub pattern: String,
-    pub steps_completed: usize,
-    pub steps_total: usize,
-    pub status: String,
-    pub duration_ms: u64,
-    pub started_at: String,
-    pub steps: Vec<StepSnapshot>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct StepSnapshot {
-    pub capability: String,
-    pub status: String,
-    pub latency_ms: u64,
-    pub payload_bytes: usize,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct BlackboardEntry {
-    pub key: String,
-    pub value: String,
-    pub timestamp_ms: u64,
 }

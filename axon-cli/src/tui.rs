@@ -1,4 +1,7 @@
-use axon_core::{Capability, PeerInfo};
+use axon_core::{
+    dashboard::AgentStatus, AgentInfo, BlackboardEntry, Capability, PeerInfo, TaskLogEntry,
+    WorkflowSnapshot,
+};
 use crossterm::{
     event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
@@ -143,73 +146,41 @@ impl LogFilter {
 }
 
 // ---------------------------------------------------------------------------
-// Workflow snapshots for the Workflows tab
+// Dashboard types (shared with axon-web)
+//
+// `AgentInfo`, `TaskLogEntry`, `WorkflowSnapshot`, `StepSnapshot` and
+// `BlackboardEntry` are defined in `axon_core::dashboard` and re-exported at
+// the top of this file. They used to be duplicated here with slightly
+// different serde derives; the web copies never got populated, so every
+// `/api/agents`, `/api/tasks/log`, `/api/workflows`, `/api/blackboard`
+// response was empty. Centralising them means the sync loop in `main.rs`
+// fills a single snapshot consumed by both the TUI and the web/desktop UI.
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct WorkflowSnapshot {
-    pub id: String,
-    pub pattern: String,
-    pub steps_completed: usize,
-    pub steps_total: usize,
-    pub status: String,
-    pub duration_ms: u64,
-    pub started_at: String,
-    pub steps: Vec<StepSnapshot>,
-}
-
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct StepSnapshot {
-    pub capability: String,
-    pub status: String,
-    pub latency_ms: u64,
-    pub payload_bytes: usize,
-}
-
-// ---------------------------------------------------------------------------
-// Agent info for rich agent cards
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone)]
-pub struct AgentInfo {
-    pub name: String,
-    pub capabilities: Vec<String>,
-    pub provider_type: String,
-    pub model_name: String,
-    pub status: AgentStatus,
-    pub tasks_handled: u64,
-    pub tasks_succeeded: u64,
-    pub avg_latency_ms: u64,
-    pub lifecycle_state: String,
-    pub last_heartbeat_secs_ago: Option<u64>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AgentStatus {
-    Idle,
-    #[allow(dead_code)]
-    Processing,
-    #[allow(dead_code)]
-    Error,
-}
-
-impl AgentStatus {
-    fn label(self) -> &'static str {
-        match self {
-            AgentStatus::Idle => "IDLE",
-            AgentStatus::Processing => "BUSY",
-            AgentStatus::Error => "ERR",
-        }
+/// Parse the string status stored on [`AgentInfo::status`] back into the TUI
+/// enum for rendering colour + short label. Unknown values fall back to
+/// `Idle` (matches the previous default).
+fn parse_agent_status(s: &str) -> AgentStatus {
+    match s {
+        "busy" | "processing" => AgentStatus::Processing,
+        "err" | "error" => AgentStatus::Error,
+        _ => AgentStatus::Idle,
     }
+}
 
-    fn color(self) -> Color {
-        match self {
-            AgentStatus::Idle => Color::Green,
-            AgentStatus::Processing => Color::Yellow,
-            AgentStatus::Error => Color::Red,
-        }
+fn agent_status_label(s: AgentStatus) -> &'static str {
+    match s {
+        AgentStatus::Idle => "IDLE",
+        AgentStatus::Processing => "BUSY",
+        AgentStatus::Error => "ERR",
+    }
+}
+
+fn agent_status_color(s: AgentStatus) -> Color {
+    match s {
+        AgentStatus::Idle => Color::Green,
+        AgentStatus::Processing => Color::Yellow,
+        AgentStatus::Error => Color::Red,
     }
 }
 
@@ -256,18 +227,9 @@ pub struct DashboardState {
     pub active_workflows: Vec<WorkflowSnapshot>,
     pub completed_workflows: VecDeque<WorkflowSnapshot>,
 
-    // Blackboard entries: (key, value_preview, timestamp_ms)
+    // Blackboard entries — now shared with axon-web, see axon_core::dashboard.
     // Populated from Blackboard::snapshot() on each sync tick.
-    pub blackboard_entries: Vec<(String, String, u64)>,
-}
-
-#[derive(Debug, Clone)]
-pub struct TaskLogEntry {
-    pub id: String,
-    pub capability: String,
-    pub status: String,
-    pub duration_ms: u64,
-    pub peer: String,
+    pub blackboard_entries: Vec<BlackboardEntry>,
 }
 
 impl DashboardState {
@@ -930,11 +892,12 @@ impl Dashboard {
                 break;
             }
 
+            let status_enum = parse_agent_status(&agent.status);
             let status_indicator = Span::styled(
-                format!(" {} ", agent.status.label()),
+                format!(" {} ", agent_status_label(status_enum)),
                 Style::default()
                     .fg(Color::Black)
-                    .bg(agent.status.color())
+                    .bg(agent_status_color(status_enum))
                     .bold(),
             );
 
@@ -1060,7 +1023,7 @@ impl Dashboard {
                         Style::default().fg(Color::White),
                     ),
                     Span::styled(
-                        format!("  {}", AgentStatus::Idle.label()),
+                        format!("  {}", agent_status_label(AgentStatus::Idle)),
                         Style::default().fg(BRAND_GREEN),
                     ),
                 ]))
@@ -1492,13 +1455,13 @@ impl Dashboard {
                 "  \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}",
                 Style::default().fg(Color::Rgb(50, 50, 56)),
             )));
-            for (key, preview, ts_ms) in &state.blackboard_entries {
-                let ts_secs = ts_ms / 1000;
+            for entry in &state.blackboard_entries {
+                let ts_secs = entry.timestamp_ms / 1000;
                 lines.push(Line::from(vec![
                     Span::styled("    ", Style::default()),
-                    Span::styled(key, Style::default().fg(Color::White)),
+                    Span::styled(&entry.key, Style::default().fg(Color::White)),
                     Span::styled(" \u{2190} ", Style::default().fg(BRAND_DIM)),
-                    Span::styled(preview, Style::default().fg(BRAND_YELLOW)),
+                    Span::styled(&entry.value, Style::default().fg(BRAND_YELLOW)),
                     Span::styled(format!("  ({}s)", ts_secs), Style::default().fg(BRAND_DIM)),
                 ]));
             }
@@ -1875,13 +1838,13 @@ impl Dashboard {
             state
                 .blackboard_entries
                 .iter()
-                .map(|(key, preview, ts_ms)| {
-                    let age_secs = ts_ms / 1000;
+                .map(|entry| {
+                    let age_secs = entry.timestamp_ms / 1000;
                     Line::from(vec![
                         Span::styled("  ", Style::default()),
-                        Span::styled(key, Style::default().fg(Color::White)),
+                        Span::styled(&entry.key, Style::default().fg(Color::White)),
                         Span::styled(" \u{2190} ", Style::default().fg(BRAND_DIM)),
-                        Span::styled(preview, Style::default().fg(BRAND_YELLOW)),
+                        Span::styled(&entry.value, Style::default().fg(BRAND_YELLOW)),
                         Span::styled(format!("  ({}s)", age_secs), Style::default().fg(BRAND_DIM)),
                     ])
                 })
