@@ -105,8 +105,6 @@ struct WizardState {
     api_key_input: String,
     api_key_cursor: usize,
     api_key_show: bool,
-    #[allow(dead_code)]
-    api_key_validating: bool,
     api_key_error: Option<String>,
     // Model selection
     models: Vec<ModelInfo>,
@@ -131,7 +129,6 @@ impl WizardState {
             api_key_input: String::new(),
             api_key_cursor: 0,
             api_key_show: false,
-            api_key_validating: false,
             api_key_error: None,
             models: Vec::new(),
             models_loading: false,
