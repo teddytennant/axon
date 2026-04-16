@@ -205,30 +205,40 @@ pub struct UpdateNodeConfig {
     pub web_port: Option<u16>,
 }
 
-pub async fn put_config(
-    State(_state): State<Arc<SharedWebState>>,
-    Json(req): Json<UpdateConfigRequest>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
-    let path = config_path().ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+/// Error type for config-merge operations, suitable for HTTP-status mapping.
+#[derive(Debug)]
+pub(crate) enum ConfigMergeError {
+    Parse(toml::de::Error),
+    MalformedDocument,
+}
+
+impl std::fmt::Display for ConfigMergeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConfigMergeError::Parse(e) => write!(f, "invalid TOML: {e}"),
+            ConfigMergeError::MalformedDocument => {
+                write!(f, "existing config has a non-table section where a table was expected")
+            }
+        }
     }
+}
 
-    // Load existing
-    let contents = if path.exists() {
-        std::fs::read_to_string(&path).unwrap_or_default()
-    } else {
-        String::new()
-    };
-
-    let mut doc: toml::Table = toml::from_str(&contents).unwrap_or_default();
+/// Pure merge of an update request onto an existing TOML document.
+///
+/// Refuses to parse a malformed existing document — that prevents silently
+/// clobbering the user's config when the TOML on disk is corrupt.
+pub(crate) fn merge_config(
+    existing: &str,
+    req: UpdateConfigRequest,
+) -> Result<toml::Table, ConfigMergeError> {
+    let mut doc: toml::Table = toml::from_str(existing).map_err(ConfigMergeError::Parse)?;
 
     if let Some(node) = req.node {
         let node_table = doc
             .entry("node")
             .or_insert_with(|| toml::Value::Table(toml::Table::new()))
             .as_table_mut()
-            .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+            .ok_or(ConfigMergeError::MalformedDocument)?;
 
         if let Some(listen) = node.listen {
             node_table.insert("listen".into(), toml::Value::String(listen));
@@ -255,7 +265,7 @@ pub async fn put_config(
             .entry("llm")
             .or_insert_with(|| toml::Value::Table(toml::Table::new()))
             .as_table_mut()
-            .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+            .ok_or(ConfigMergeError::MalformedDocument)?;
 
         llm_table.insert("provider".into(), toml::Value::String(llm.provider));
         llm_table.insert("endpoint".into(), toml::Value::String(llm.endpoint));
@@ -265,6 +275,34 @@ pub async fn put_config(
             llm_table.insert("api_key".into(), toml::Value::String(llm.api_key));
         }
     }
+
+    Ok(doc)
+}
+
+pub async fn put_config(
+    State(_state): State<Arc<SharedWebState>>,
+    Json(req): Json<UpdateConfigRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let path = config_path().ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    }
+
+    // Load existing. Both reads matter: a silent fallback would clobber the
+    // user's config with defaults on transient read failure or malformed TOML.
+    let contents = if path.exists() {
+        std::fs::read_to_string(&path).map_err(|e| {
+            tracing::error!("failed to read existing config at {}: {e}", path.display());
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+    } else {
+        String::new()
+    };
+
+    let doc = merge_config(&contents, req).map_err(|e| {
+        tracing::error!("refusing to overwrite config at {}: {e}", path.display());
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     let header = "# Axon node configuration\n\
                   # Managed by axon CLI — edit freely or re-run `axon setup`\n\
@@ -288,4 +326,72 @@ pub async fn put_llm_config(
         }),
     )
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn llm_req() -> UpdateConfigRequest {
+        UpdateConfigRequest {
+            node: None,
+            llm: Some(LlmConfigResponse {
+                provider: "ollama".into(),
+                endpoint: "http://localhost:11434".into(),
+                api_key: "newkey".into(),
+                model: "llama4".into(),
+            }),
+        }
+    }
+
+    #[test]
+    fn merge_config_rejects_malformed_toml() {
+        // Ensures a corrupt config on disk errors out rather than silently being
+        // replaced with defaults.
+        let err = merge_config("this is ][ not toml", llm_req()).unwrap_err();
+        assert!(matches!(err, ConfigMergeError::Parse(_)));
+    }
+
+    #[test]
+    fn merge_config_preserves_unrelated_keys() {
+        // Merging an LLM update must not drop unrelated sections.
+        let existing = "\
+            [node]\n\
+            listen = \"0.0.0.0:4242\"\n\
+            \n\
+            [other]\n\
+            keep = true\n";
+        let doc = merge_config(existing, llm_req()).unwrap();
+        assert!(doc.get("node").is_some());
+        assert!(doc.get("other").is_some());
+        assert_eq!(
+            doc["llm"]["provider"].as_str(),
+            Some("ollama"),
+            "llm section should have been added"
+        );
+    }
+
+    #[test]
+    fn merge_config_masked_key_is_not_written() {
+        // `***` is the mask sent in GETs; writing it back should not overwrite
+        // the stored key.
+        let existing = "[llm]\napi_key = \"real-secret\"\n";
+        let req = UpdateConfigRequest {
+            node: None,
+            llm: Some(LlmConfigResponse {
+                provider: "ollama".into(),
+                endpoint: "".into(),
+                api_key: "***".into(),
+                model: "".into(),
+            }),
+        };
+        let doc = merge_config(existing, req).unwrap();
+        assert_eq!(doc["llm"]["api_key"].as_str(), Some("real-secret"));
+    }
+
+    #[test]
+    fn merge_config_empty_document_creates_sections() {
+        let doc = merge_config("", llm_req()).unwrap();
+        assert_eq!(doc["llm"]["provider"].as_str(), Some("ollama"));
+    }
 }

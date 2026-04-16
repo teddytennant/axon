@@ -70,12 +70,22 @@ pub async fn put_key(
     }
 
     let contents = if path.exists() {
-        std::fs::read_to_string(&path).unwrap_or_default()
+        // Filesystem race (file removed between exists() and read) is the only
+        // way this fails; surface it rather than silently clobbering the config.
+        std::fs::read_to_string(&path).map_err(|e| {
+            tracing::error!("failed to read existing config at {}: {e}", path.display());
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
     } else {
         String::new()
     };
 
-    let mut doc: toml::Table = toml::from_str(&contents).unwrap_or_default();
+    // Refuse to overwrite a corrupt config — that would silently destroy the
+    // user's settings. Surface the parse error so they can fix the file.
+    let mut doc: toml::Table = toml::from_str(&contents).map_err(|e| {
+        tracing::error!("existing config at {} is not valid TOML: {e}", path.display());
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     let llm_table = doc
         .entry("llm")

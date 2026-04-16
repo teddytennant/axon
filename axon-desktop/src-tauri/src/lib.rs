@@ -17,13 +17,12 @@ fn get_version() -> &'static str {
 #[tauri::command]
 async fn probe_axon_ports() -> String {
     for port in [3000u16, 3001, 4000, 8080, 8000, 9000] {
-        let addr = format!("127.0.0.1:{port}");
-        if let Ok(sock) = addr.parse::<std::net::SocketAddr>() {
-            if std::net::TcpStream::connect_timeout(&sock, std::time::Duration::from_millis(80))
-                .is_ok()
-            {
-                return format!("http://localhost:{port}");
-            }
+        // 127.0.0.1:<u16> is always a valid SocketAddr literal.
+        let sock = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+        if std::net::TcpStream::connect_timeout(&sock, std::time::Duration::from_millis(80))
+            .is_ok()
+        {
+            return format!("http://localhost:{port}");
         }
     }
     String::new()
@@ -41,8 +40,10 @@ pub fn run() {
             probe_axon_ports
         ])
         .setup(|app| {
-            let win = app.get_webview_window("main").unwrap();
-            win.show().ok();
+            let win = app
+                .get_webview_window("main")
+                .expect("tauri.conf.json must define a 'main' window");
+            win.show()?;
             Ok(())
         })
         .run(tauri::generate_context!())

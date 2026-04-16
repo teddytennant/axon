@@ -68,8 +68,12 @@ function ConnectionSection() {
       } else if (!found) {
         toast.error('No node found on common ports');
       }
-    } catch { /* invoke may fail in dev */ }
-    setProbing(false);
+    } catch (e) {
+      // Tauri invoke only fails if the command isn't registered (dev / web build).
+      toast.error(`Probe unavailable: ${String(e)}`);
+    } finally {
+      setProbing(false);
+    }
   }
 
   function save() {
@@ -209,8 +213,12 @@ function LlmSection() {
       const list = await getModels(provider);
       setModelList(list);
       if (list.length && !model) setModel(list[0]?.id ?? '');
-    } catch { /* */ }
-    setLoadingModels(false);
+    } catch (e) {
+      // User explicitly asked to refresh — surface the failure instead of pretending nothing happened.
+      toast.error(`Couldn't fetch models: ${String(e)}`);
+    } finally {
+      setLoadingModels(false);
+    }
   }
 
   async function validate() {

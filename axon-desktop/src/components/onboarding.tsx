@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { clsx } from 'clsx';
 import { Check, Loader2, ChevronRight, RefreshCw, Eye, EyeOff } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { toast } from 'sonner';
 import { setAxonBase, getAxonBase, getConfig, validateApiKey, putLlmConfig, getModels } from '../lib/api';
 import { markOnboarded } from '../lib/onboarding-events';
 import { useQueryClient } from '@tanstack/react-query';
@@ -247,8 +248,11 @@ function LlmStep({ onNext, onBack }: { onNext: () => void; onBack: () => void })
       const list = await getModels(provider);
       setModels(list);
       if (list.length && !model) setModel(list[0]?.id ?? '');
-    } catch { /* */ }
-    setLoadingModels(false);
+    } catch (e) {
+      toast.error(`Couldn't fetch models: ${String(e)}`);
+    } finally {
+      setLoadingModels(false);
+    }
   }
 
   async function validate() {
@@ -269,8 +273,12 @@ function LlmStep({ onNext, onBack }: { onNext: () => void; onBack: () => void })
       const llm: LlmConfigSection = { provider, endpoint, api_key: apiKey, model };
       await putLlmConfig(llm);
       onNext();
-    } catch { /* */ }
-    setSaving(false);
+    } catch (e) {
+      // Save failed — the user was about to assume "ready", so tell them.
+      toast.error(`Save failed: ${String(e)}`);
+    } finally {
+      setSaving(false);
+    }
   }
 
   const needsKey = PROVIDERS.find(p => p.id === provider)?.needsKey ?? false;

@@ -94,8 +94,15 @@ async fn handle_ws(socket: WebSocket, state: Arc<SharedWebState>) {
                 return;
             }
 
-            // Tasks
-            let stats = push_state.task_queue.stats().unwrap_or_default();
+            // Tasks — if stats fails, log it and send an empty-stats frame rather than
+            // crashing the websocket stream. sled errors shouldn't be silently zeroed.
+            let stats = match push_state.task_queue.stats() {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::error!("task_queue.stats() failed during ws push: {e}");
+                    Default::default()
+                }
+            };
             let tasks_msg = serde_json::json!({
                 "type": "tasks",
                 "data": {
