@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { clsx } from 'clsx';
 import { useTaskLog, useTaskStats } from '../hooks/use-api';
 import { useWebSocket } from '../hooks/use-websocket';
-import type { TaskLogEntry, TaskStatsResponse, WsTasksData } from '../lib/types';
+import type { TaskLogEntry, TaskStatsResponse } from '../lib/types';
 
 export default function TasksPage() {
   const { data: initTasks, isLoading: tl } = useTaskLog();
@@ -11,7 +11,7 @@ export default function TasksPage() {
   const [tasks, setTasks]                   = useState<TaskLogEntry[]>([]);
 
   useEffect(() => { if (initTasks) setTasks(initTasks); }, [initTasks]);
-  useEffect(() => subscribe('tasks', d => setTasks((d as WsTasksData).recent)), [subscribe]);
+  useEffect(() => subscribe('tasks', d => setTasks(d.recent)), [subscribe]);
 
   if (tl || sl) return <Skeleton />;
 

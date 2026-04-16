@@ -9,7 +9,7 @@ export default function TrustPage() {
   const [entries, setEntries]     = useState<TrustEntry[]>([]);
 
   useEffect(() => { if (init) setEntries(init); }, [init]);
-  useEffect(() => subscribe('trust', d => setEntries(d as TrustEntry[])), [subscribe]);
+  useEffect(() => subscribe('trust', d => setEntries(d)), [subscribe]);
 
   const sorted = [...entries].sort((a, b) => b.overall - a.overall);
 

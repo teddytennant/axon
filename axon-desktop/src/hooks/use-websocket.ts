@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { createWebSocket } from '../lib/ws';
 import type { WebSocketClient } from '../lib/ws';
-import type { WsEventType } from '../lib/types';
+import type { WsEventDataFor, WsEventType } from '../lib/types';
 
 let globalWs: WebSocketClient | null = null;
 
@@ -10,12 +10,17 @@ function getGlobalWs(): WebSocketClient {
   return globalWs;
 }
 
-export function useWebSocket() {
+export function useWebSocket(): {
+  subscribe: <T extends WsEventType>(type: T, cb: (data: WsEventDataFor<T>) => void) => () => void;
+} {
   useEffect(() => {
     getGlobalWs();
   }, []);
 
-  function subscribe(type: WsEventType, cb: (data: unknown) => void) {
+  function subscribe<T extends WsEventType>(
+    type: T,
+    cb: (data: WsEventDataFor<T>) => void,
+  ): () => void {
     return getGlobalWs().subscribe(type, cb);
   }
 

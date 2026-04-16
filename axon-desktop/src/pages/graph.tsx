@@ -6,7 +6,7 @@ import { clsx } from 'clsx';
 import { Copy, Check, X } from 'lucide-react';
 import { useAgents, usePeers, useTaskLog, useTrust, useStatus } from '../hooks/use-api';
 import { useWebSocket } from '../hooks/use-websocket';
-import type { AgentInfo, PeerResponse, TaskLogEntry, TrustEntry, WsTasksData } from '../lib/types';
+import type { AgentInfo, PeerResponse, TaskLogEntry, TrustEntry } from '../lib/types';
 
 // ——— Types ———
 
@@ -256,10 +256,10 @@ export default function GraphPage() {
   useEffect(() => { if (initPeers) setPeers(initPeers); }, [initPeers]);
   useEffect(() => { if (initTasks) setTasks(initTasks); }, [initTasks]);
   useEffect(() => { if (initTrust) setTrust(initTrust); }, [initTrust]);
-  useEffect(() => subscribe('agents', d => setAgents(d as AgentInfo[])), [subscribe]);
-  useEffect(() => subscribe('peers', d => setPeers(d as PeerResponse[])), [subscribe]);
-  useEffect(() => subscribe('tasks', d => setTasks((d as WsTasksData).recent)), [subscribe]);
-  useEffect(() => subscribe('trust', d => setTrust(d as TrustEntry[])), [subscribe]);
+  useEffect(() => subscribe('agents', d => setAgents(d)), [subscribe]);
+  useEffect(() => subscribe('peers', d => setPeers(d)), [subscribe]);
+  useEffect(() => subscribe('tasks', d => setTasks(d.recent)), [subscribe]);
+  useEffect(() => subscribe('trust', d => setTrust(d)), [subscribe]);
 
   // Canvas size
   const svgRef = useRef<SVGSVGElement>(null);
