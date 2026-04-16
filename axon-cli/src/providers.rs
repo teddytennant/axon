@@ -515,35 +515,6 @@ fn xai_models() -> Vec<ModelInfo> {
     ]
 }
 
-/// Validate an API key by making a lightweight request.
-#[allow(dead_code)]
-pub async fn validate_api_key(kind: &ProviderKind, api_key: &str) -> Result<bool, ProviderError> {
-    match kind {
-        ProviderKind::Ollama => Ok(true), // no key needed
-        ProviderKind::OpenRouter => {
-            let client = reqwest::Client::new();
-            let resp = client
-                .get("https://openrouter.ai/api/v1/models")
-                .bearer_auth(api_key)
-                .timeout(std::time::Duration::from_secs(5))
-                .send()
-                .await?;
-            Ok(resp.status().is_success())
-        }
-        ProviderKind::Xai => {
-            let client = reqwest::Client::new();
-            let resp = client
-                .get("https://api.x.ai/v1/models")
-                .bearer_auth(api_key)
-                .timeout(std::time::Duration::from_secs(5))
-                .send()
-                .await?;
-            Ok(resp.status().is_success())
-        }
-        ProviderKind::Custom => Ok(!api_key.is_empty()),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
