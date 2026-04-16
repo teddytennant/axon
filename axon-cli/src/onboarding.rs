@@ -12,10 +12,7 @@ use ratatui::{
 use std::io::stdout;
 use std::time::Duration;
 
-// ---------------------------------------------------------------------------
-// Theme (matches dashboard)
-// ---------------------------------------------------------------------------
-
+// Theme (matches dashboard).
 const BRAND_CYAN: Color = Color::Rgb(110, 110, 118);
 const BRAND_GREEN: Color = Color::Rgb(95, 140, 105);
 const BRAND_YELLOW: Color = Color::Rgb(150, 135, 70);
@@ -24,10 +21,6 @@ const BRAND_DIM: Color = Color::Rgb(70, 70, 78);
 const BRAND_BG: Color = Color::Reset;
 const ACCENT_BLUE: Color = Color::Rgb(100, 115, 150);
 const SURFACE: Color = Color::Reset;
-
-// ---------------------------------------------------------------------------
-// Wizard steps
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Step {
@@ -53,10 +46,6 @@ impl Step {
         5
     }
 }
-
-// ---------------------------------------------------------------------------
-// Provider option
-// ---------------------------------------------------------------------------
 
 struct ProviderOption {
     kind: ProviderKind,
@@ -91,10 +80,6 @@ const PROVIDERS: &[ProviderOption] = &[
         needs_key: true,
     },
 ];
-
-// ---------------------------------------------------------------------------
-// Wizard state
-// ---------------------------------------------------------------------------
 
 struct WizardState {
     step: Step,
@@ -191,10 +176,6 @@ impl WizardState {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
 /// Run the onboarding wizard. Returns Ok(true) if config was saved.
 pub async fn run_onboarding() -> anyhow::Result<bool> {
     enable_raw_mode()?;
@@ -245,10 +226,6 @@ pub async fn run_auth(provider: &ProviderKind) -> anyhow::Result<bool> {
     stdout().execute(LeaveAlternateScreen)?;
     result
 }
-
-// ---------------------------------------------------------------------------
-// Main loop
-// ---------------------------------------------------------------------------
 
 async fn run_wizard_loop(
     terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
@@ -509,36 +486,40 @@ async fn fetch_models_for_state(state: &mut WizardState) {
     }
 }
 
+/// Offline fallback list shown when the live /models endpoint is unreachable.
+///
+/// This is a small, representative set — not an authoritative catalog.
+/// Users are expected to refetch once they fix connectivity/key issues.
 fn popular_openrouter_models() -> Vec<ModelInfo> {
     vec![
         ModelInfo {
-            id: "anthropic/claude-sonnet-4-6".into(),
-            name: "Claude Sonnet 4.6".into(),
-            description: "Anthropic's latest balanced model".into(),
+            id: "anthropic/claude-sonnet-4".into(),
+            name: "Claude Sonnet 4".into(),
+            description: "Anthropic balanced model".into(),
             context_length: Some(200000),
         },
         ModelInfo {
-            id: "anthropic/claude-opus-4-6".into(),
-            name: "Claude Opus 4.6".into(),
-            description: "Anthropic's most capable model".into(),
-            context_length: Some(1000000),
+            id: "anthropic/claude-opus-4".into(),
+            name: "Claude Opus 4".into(),
+            description: "Anthropic flagship model".into(),
+            context_length: Some(200000),
         },
         ModelInfo {
-            id: "openai/gpt-4.1".into(),
-            name: "GPT-4.1".into(),
-            description: "OpenAI's latest model".into(),
-            context_length: Some(1047576),
+            id: "openai/gpt-4o".into(),
+            name: "GPT-4o".into(),
+            description: "OpenAI multimodal flagship".into(),
+            context_length: Some(128000),
         },
         ModelInfo {
-            id: "google/gemini-2.5-pro-preview".into(),
+            id: "google/gemini-2.5-pro".into(),
             name: "Gemini 2.5 Pro".into(),
-            description: "Google's advanced reasoning model".into(),
+            description: "Google advanced reasoning model".into(),
             context_length: Some(1000000),
         },
         ModelInfo {
-            id: "x-ai/grok-4.20-beta".into(),
-            name: "Grok 4.20".into(),
-            description: "xAI's latest flagship".into(),
+            id: "x-ai/grok-2".into(),
+            name: "Grok 2".into(),
+            description: "xAI flagship".into(),
             context_length: Some(131072),
         },
         ModelInfo {
@@ -548,23 +529,19 @@ fn popular_openrouter_models() -> Vec<ModelInfo> {
             context_length: Some(65536),
         },
         ModelInfo {
-            id: "meta-llama/llama-4-maverick".into(),
-            name: "Llama 4 Maverick".into(),
-            description: "Meta's open model".into(),
-            context_length: Some(1048576),
+            id: "meta-llama/llama-3.3-70b-instruct".into(),
+            name: "Llama 3.3 70B".into(),
+            description: "Meta open model".into(),
+            context_length: Some(131072),
         },
         ModelInfo {
             id: "mistralai/mistral-large-latest".into(),
             name: "Mistral Large".into(),
-            description: "Mistral's flagship".into(),
+            description: "Mistral flagship".into(),
             context_length: Some(128000),
         },
     ]
 }
-
-// ---------------------------------------------------------------------------
-// Rendering
-// ---------------------------------------------------------------------------
 
 fn render(frame: &mut Frame, state: &WizardState) {
     let area = frame.area();

@@ -11,11 +11,10 @@ import type { LlmConfigSection, ModelResponse } from '../lib/types';
 type Step = 'connect' | 'llm' | 'done';
 
 const PROVIDERS = [
-  { id: 'ollama',      label: 'Ollama',       endpoint: 'http://localhost:11434', needsKey: false },
-  { id: 'openrouter',  label: 'OpenRouter',   endpoint: 'https://openrouter.ai/api/v1', needsKey: true },
-  { id: 'xai',         label: 'xAI / Grok',  endpoint: 'https://api.x.ai/v1',   needsKey: true },
-  { id: 'anthropic',   label: 'Anthropic',    endpoint: 'https://api.anthropic.com', needsKey: true },
-  { id: 'custom',      label: 'Custom',       endpoint: '',                        needsKey: false },
+  { id: 'ollama',      label: 'Ollama',       endpoint: 'http://localhost:11434',       needsKey: false },
+  { id: 'openrouter',  label: 'OpenRouter',   endpoint: 'https://openrouter.ai/api/v1', needsKey: true  },
+  { id: 'xai',         label: 'xAI / Grok',   endpoint: 'https://api.x.ai/v1',          needsKey: true  },
+  { id: 'custom',      label: 'Custom',       endpoint: '',                             needsKey: false },
 ] as const;
 
 interface Props {
@@ -290,7 +289,7 @@ function LlmStep({ onNext, onBack }: { onNext: () => void; onBack: () => void })
       <div className="mt-6 space-y-4">
         {/* Provider */}
         <Field label="Provider">
-          <div className="grid grid-cols-3 gap-1.5">
+          <div className="grid grid-cols-2 gap-1.5">
             {PROVIDERS.map(p => (
               <button
                 key={p.id}

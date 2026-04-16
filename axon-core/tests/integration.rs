@@ -63,9 +63,8 @@ async fn two_node_task_exchange() {
     let node2_handle = tokio::spawn(async move {
         let conn = t2.accept().await.unwrap();
 
-        // Receive the announce
+        // First message is the Announce handshake.
         let msg = Transport::recv(&conn).await.unwrap();
-        // First message should be an Announce
         match &msg {
             Message::Announce(info) => {
                 assert!(!info.peer_id.is_empty());

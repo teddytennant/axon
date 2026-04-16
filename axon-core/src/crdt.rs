@@ -208,7 +208,7 @@ impl<T: Clone + Eq + std::hash::Hash> Default for ORSet<T> {
 mod tests {
     use super::*;
 
-    // ===== GCounter Tests =====
+    // GCounter
 
     #[test]
     fn gcounter_new_is_zero() {
@@ -314,7 +314,7 @@ mod tests {
         assert_eq!(c.value(), u64::MAX);
     }
 
-    // ===== LWWRegister Tests =====
+    // LWWRegister
 
     #[test]
     fn lww_register_new_is_none() {
@@ -394,7 +394,7 @@ mod tests {
         assert_eq!(m1.get(), m2.get());
     }
 
-    // ===== ORSet Tests =====
+    // ORSet
 
     #[test]
     fn orset_new_is_empty() {

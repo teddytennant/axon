@@ -164,26 +164,38 @@ pub async fn get_models(
             models
         }
         "xai" => {
-            vec![
-                ModelResponse {
-                    id: "grok-4.20".into(),
-                    name: "Grok 4.20".into(),
-                    description: "Latest flagship model".into(),
-                    context_length: Some(131072),
-                },
-                ModelResponse {
-                    id: "grok-4.20-mini".into(),
-                    name: "Grok 4.20 Mini".into(),
-                    description: "Smaller, faster model".into(),
-                    context_length: Some(131072),
-                },
-                ModelResponse {
-                    id: "grok-3-beta".into(),
-                    name: "Grok 3 Beta".into(),
-                    description: "Previous generation".into(),
-                    context_length: Some(131072),
-                },
-            ]
+            // xAI requires an API key to list models.
+            if api_key.is_empty() {
+                return Err(StatusCode::UNAUTHORIZED);
+            }
+            let resp = client
+                .get("https://api.x.ai/v1/models")
+                .bearer_auth(&api_key)
+                .timeout(std::time::Duration::from_secs(10))
+                .send()
+                .await
+                .map_err(|_| StatusCode::BAD_GATEWAY)?;
+            if !resp.status().is_success() {
+                return Err(StatusCode::BAD_GATEWAY);
+            }
+            let json: serde_json::Value =
+                resp.json().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+            json["data"]
+                .as_array()
+                .map(|arr| {
+                    arr.iter()
+                        .map(|m| {
+                            let id = m["id"].as_str().unwrap_or("").to_string();
+                            ModelResponse {
+                                name: id.clone(),
+                                id,
+                                description: String::new(),
+                                context_length: None,
+                            }
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
         }
         _ => vec![],
     };

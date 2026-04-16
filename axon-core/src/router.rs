@@ -350,10 +350,6 @@ mod tests {
         let mut s = PeerStats::new();
         s.record_success(50);
         s.record_success(50);
-        // 100% success, 50ms avg latency
-        // success_factor = 1.0
-        // latency_factor = 1/(1+0.05) ≈ 0.952
-        // score = 0.6*1.0 + 0.4*0.952 ≈ 0.981
         assert!(s.score() > 0.9);
     }
 
@@ -362,20 +358,17 @@ mod tests {
         let mut s = PeerStats::new();
         s.record_failure();
         s.record_failure();
-        // 0% success, no successful tasks so avg_latency = u64::MAX
-        // success_factor = 0.0
-        // latency_factor = 1/(1 + u64::MAX/1000) ≈ 0.0
-        // score = 0.6*0 + 0.4*~0 ≈ 0.0
         assert!(s.score() < 0.5);
     }
 
     #[test]
     fn peer_stats_avg_latency_ignores_failures() {
+        // Failures must not dilute avg latency — it's averaged over
+        // successful_tasks, not total_tasks.
         let mut s = PeerStats::new();
         s.record_success(100);
         s.record_success(300);
-        s.record_failure(); // should not affect avg latency
-                            // avg = (100+300)/2 = 200, not (100+300)/3 = 133
+        s.record_failure();
         assert_eq!(s.avg_latency_ms(), 200);
     }
 

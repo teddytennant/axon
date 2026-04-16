@@ -17,9 +17,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
 
-// ---------------------------------------------------------------------------
 // Tab enum
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
@@ -99,9 +97,7 @@ impl Tab {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Log level filter for the Logs tab
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogFilter {
@@ -142,9 +138,7 @@ impl LogFilter {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Workflow snapshots for the Workflows tab
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -168,9 +162,7 @@ pub struct StepSnapshot {
     pub payload_bytes: usize,
 }
 
-// ---------------------------------------------------------------------------
 // Agent info for rich agent cards
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
 pub struct AgentInfo {
@@ -213,9 +205,7 @@ impl AgentStatus {
     }
 }
 
-// ---------------------------------------------------------------------------
 // DashboardState
-// ---------------------------------------------------------------------------
 
 /// Shared state between the TUI and the mesh node.
 pub struct DashboardState {
@@ -308,9 +298,7 @@ impl DashboardState {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Theme constants
-// ---------------------------------------------------------------------------
 
 const BRAND_CYAN: Color = Color::Rgb(0, 200, 200); // #00c8c8
 const BRAND_GREEN: Color = Color::Rgb(80, 220, 120); // #50dc78
@@ -322,9 +310,7 @@ const ACCENT_BLUE: Color = Color::Rgb(100, 150, 240);
 const SURFACE: Color = Color::Reset;
 const SEPARATOR: Color = Color::Rgb(38, 38, 48);
 
-// ---------------------------------------------------------------------------
 // Dashboard
-// ---------------------------------------------------------------------------
 
 pub struct Dashboard {
     state: Arc<RwLock<DashboardState>>,
@@ -436,9 +422,7 @@ impl Dashboard {
         false
     }
 
-    // -----------------------------------------------------------------------
     // Main render
-    // -----------------------------------------------------------------------
 
     fn render(
         frame: &mut Frame,
@@ -478,9 +462,7 @@ impl Dashboard {
         Self::render_status_bar(frame, active_tab, log_filter, chunks[3]);
     }
 
-    // -----------------------------------------------------------------------
     // Header
-    // -----------------------------------------------------------------------
 
     fn render_header(frame: &mut Frame, state: &DashboardState, area: Rect) {
         let uptime = format_uptime(state.uptime_secs);
@@ -543,9 +525,7 @@ impl Dashboard {
         frame.render_widget(header, area);
     }
 
-    // -----------------------------------------------------------------------
     // Tabs
-    // -----------------------------------------------------------------------
 
     fn render_tabs(frame: &mut Frame, active_tab: Tab, area: Rect) {
         let tab_titles: Vec<Line> = Tab::all()
@@ -581,9 +561,7 @@ impl Dashboard {
         frame.render_widget(tabs, area);
     }
 
-    // -----------------------------------------------------------------------
     // Status bar
-    // -----------------------------------------------------------------------
 
     fn render_status_bar(frame: &mut Frame, active_tab: Tab, log_filter: LogFilter, area: Rect) {
         let mut spans = vec![
@@ -617,9 +595,7 @@ impl Dashboard {
         frame.render_widget(bar, area);
     }
 
-    // -----------------------------------------------------------------------
     // Mesh tab
-    // -----------------------------------------------------------------------
 
     fn render_mesh(frame: &mut Frame, state: &DashboardState, area: Rect, scroll: usize) {
         let chunks = Layout::default()
@@ -630,10 +606,10 @@ impl Dashboard {
             ])
             .split(area);
 
-        // --- Local node info & network health ---
+        // Local node info & network health
         Self::render_mesh_header(frame, state, chunks[0]);
 
-        // --- Peer list ---
+        // Peer list
         if state.peers.is_empty() {
             let msg = Paragraph::new(vec![
                 Line::from(""),
@@ -902,9 +878,7 @@ impl Dashboard {
         frame.render_widget(health_card, cols[1]);
     }
 
-    // -----------------------------------------------------------------------
     // Agents tab
-    // -----------------------------------------------------------------------
 
     fn render_agents(frame: &mut Frame, state: &DashboardState, area: Rect, scroll: usize) {
         // If we have rich agent info, use that; otherwise fall back to names+caps
@@ -1104,9 +1078,7 @@ impl Dashboard {
         frame.render_widget(caps_list, inner[1]);
     }
 
-    // -----------------------------------------------------------------------
     // Tasks tab
-    // -----------------------------------------------------------------------
 
     fn render_tasks(frame: &mut Frame, state: &DashboardState, area: Rect, scroll: usize) {
         let chunks = Layout::default()
@@ -1118,13 +1090,13 @@ impl Dashboard {
             ])
             .split(area);
 
-        // --- Summary bar ---
+        // Summary bar
         Self::render_task_summary(frame, state, chunks[0]);
 
-        // --- Throughput sparkline ---
+        // Throughput sparkline
         Self::render_throughput(frame, state, chunks[1]);
 
-        // --- Task table ---
+        // Task table
         if state.task_log.is_empty() {
             let msg = Paragraph::new(vec![
                 Line::from(""),
@@ -1359,9 +1331,7 @@ impl Dashboard {
         frame.render_widget(sparkline, area);
     }
 
-    // -----------------------------------------------------------------------
     // State tab (CRDT viewer)
-    // -----------------------------------------------------------------------
 
     fn render_state(frame: &mut Frame, state: &DashboardState, area: Rect, scroll: usize) {
         let has_data = !state.crdt_counters.is_empty()
@@ -1541,9 +1511,7 @@ impl Dashboard {
         }
     }
 
-    // -----------------------------------------------------------------------
     // Settings tab
-    // -----------------------------------------------------------------------
 
     fn render_settings(frame: &mut Frame, state: &DashboardState, area: Rect) {
         let chunks = Layout::default()
@@ -1555,7 +1523,7 @@ impl Dashboard {
             ])
             .split(area);
 
-        // --- Node Info Card ---
+        // Node Info Card
         let peer_short = if state.peer_id.len() >= 16 {
             &state.peer_id[..16]
         } else {
@@ -1625,7 +1593,7 @@ impl Dashboard {
 
         frame.render_widget(Paragraph::new(node_lines).block(node_block), chunks[0]);
 
-        // --- LLM Config Card ---
+        // LLM Config Card
         let provider_display = if state.provider_name.is_empty() {
             "not configured"
         } else {
@@ -1670,7 +1638,7 @@ impl Dashboard {
 
         frame.render_widget(Paragraph::new(llm_lines).block(llm_block), chunks[1]);
 
-        // --- MCP & Commands Card ---
+        // MCP & Commands Card
         let mcp_lines = vec![
             Line::from(vec![
                 Span::styled("  MCP Servers:  ", Style::default().fg(BRAND_DIM)),
@@ -1734,9 +1702,7 @@ impl Dashboard {
         );
     }
 
-    // -----------------------------------------------------------------------
     // Workflows tab
-    // -----------------------------------------------------------------------
 
     fn render_workflows(frame: &mut Frame, state: &DashboardState, area: Rect, scroll: usize) {
         let all_workflows: Vec<&WorkflowSnapshot> = state
@@ -1784,7 +1750,7 @@ impl Dashboard {
             .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
             .split(area);
 
-        // --- Workflow table ---
+        // Workflow table
         let header = Row::new(vec![
             Cell::from("ID").style(Style::default().fg(BRAND_CYAN).bold()),
             Cell::from("Pattern").style(Style::default().fg(BRAND_CYAN).bold()),
@@ -1862,7 +1828,7 @@ impl Dashboard {
 
         frame.render_widget(wf_table, chunks[0]);
 
-        // --- Blackboard panel ---
+        // Blackboard panel
         let bb_lines: Vec<Line> = if state.blackboard_entries.is_empty() {
             vec![
                 Line::from(""),
@@ -1905,9 +1871,7 @@ impl Dashboard {
         );
     }
 
-    // -----------------------------------------------------------------------
     // Logs tab
-    // -----------------------------------------------------------------------
 
     fn render_logs(
         frame: &mut Frame,
@@ -1971,9 +1935,7 @@ impl Dashboard {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Helper functions
-// ---------------------------------------------------------------------------
 
 fn elapsed_secs(timestamp: u64) -> u64 {
     let now = std::time::SystemTime::now()

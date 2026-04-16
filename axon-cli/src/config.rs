@@ -255,14 +255,14 @@ headless = true
 provider = "xai"
 endpoint = "https://api.x.ai/v1"
 api_key = "xai-test"
-model = "grok-4.20"
+model = "grok-2-latest"
 "#;
         let config: NodeConfig = toml::from_str(toml).unwrap();
         assert_eq!(config.node.listen.to_string(), "127.0.0.1:5555");
         assert_eq!(config.node.peers.len(), 2);
         assert!(config.node.headless);
         assert_eq!(config.llm.provider, "xai");
-        assert_eq!(config.llm.model, "grok-4.20");
+        assert_eq!(config.llm.model, "grok-2-latest");
     }
 
     #[test]

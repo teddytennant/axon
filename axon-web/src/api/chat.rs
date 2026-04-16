@@ -203,9 +203,9 @@ pub async fn completions(
 
 fn default_model(provider: &str) -> String {
     match provider {
-        "ollama" => "llama4-maverick".into(),
-        "xai" => "grok-4.20".into(),
-        "openrouter" => "x-ai/grok-4.20-beta".into(),
+        "ollama" => "llama3".into(),
+        "xai" => "grok-2-latest".into(),
+        "openrouter" => "anthropic/claude-sonnet-4".into(),
         _ => "default".into(),
     }
 }
