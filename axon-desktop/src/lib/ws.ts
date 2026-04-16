@@ -1,10 +1,13 @@
-import type { WsEvent, WsEventType } from './types';
+import type { WsEvent, WsEventDataFor, WsEventType } from './types';
 import { getAxonBase } from './api';
 
-type Callback = (data: unknown) => void;
+type TypedCallback<T extends WsEventType> = (data: WsEventDataFor<T>) => void;
+// Runtime-only holder for heterogeneous callbacks. The public API is still
+// fully type-safe via `subscribe<T>`.
+type RuntimeCallback = (data: WsEvent['data']) => void;
 
 export interface WebSocketClient {
-  subscribe: (type: WsEventType, cb: Callback) => () => void;
+  subscribe: <T extends WsEventType>(type: T, cb: TypedCallback<T>) => () => void;
   close: () => void;
 }
 
@@ -13,13 +16,13 @@ const MAX_DELAY = 30_000;
 const JITTER     = 0.2; // ±20%
 
 export function createWebSocket(): WebSocketClient {
-  const subs  = new Map<WsEventType, Set<Callback>>();
+  const subs  = new Map<WsEventType, Set<RuntimeCallback>>();
   let ws      : WebSocket | null = null;
   let closed  = false;
   let delay   = MIN_DELAY;
   let retryId : ReturnType<typeof setTimeout> | null = null;
 
-  function connect() {
+  function connect(): void {
     if (closed) return;
     const base = getAxonBase();
     const url  = base.replace(/^http/, 'ws') + '/api/ws/live';
@@ -31,8 +34,8 @@ export function createWebSocket(): WebSocketClient {
 
     ws.onmessage = (e) => {
       try {
-        const event: WsEvent = JSON.parse(e.data as string);
-        subs.get(event.type)?.forEach(cb => cb(event.data));
+        const event = JSON.parse(e.data as string) as WsEvent;
+        subs.get(event.type)?.forEach((cb) => cb(event.data));
       } catch {
         // ignore malformed frames
       }
@@ -52,12 +55,13 @@ export function createWebSocket(): WebSocketClient {
   connect();
 
   return {
-    subscribe(type, cb) {
+    subscribe<T extends WsEventType>(type: T, cb: TypedCallback<T>): () => void {
       if (!subs.has(type)) subs.set(type, new Set());
-      subs.get(type)!.add(cb);
-      return () => subs.get(type)?.delete(cb);
+      const runtimeCb = cb as RuntimeCallback;
+      subs.get(type)!.add(runtimeCb);
+      return () => { subs.get(type)?.delete(runtimeCb); };
     },
-    close() {
+    close(): void {
       closed = true;
       if (retryId !== null) clearTimeout(retryId);
       ws?.close();

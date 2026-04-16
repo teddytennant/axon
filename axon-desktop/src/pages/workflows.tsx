@@ -21,7 +21,7 @@ export default function WorkflowsPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    return subscribe('workflows', (d) => setData(d as WorkflowsResponse));
+    return subscribe('workflows', (d) => setData(d));
   }, [subscribe]);
 
   const all = [...data.active, ...data.completed];

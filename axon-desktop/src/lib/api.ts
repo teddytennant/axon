@@ -8,19 +8,20 @@ import type {
   ConfigResponse,
   ChatRequest,
   LlmConfigSection,
+  OkResponse,
   ValidateResponse,
   ModelResponse,
 } from './types';
 
 let AXON_BASE = 'http://localhost:3000';
 
-export function setAxonBase(url: string) {
+export function setAxonBase(url: string): void {
   AXON_BASE = url.replace(/\/$/, '');
   // Persist for next session
   try { localStorage.setItem('axon_base', AXON_BASE); } catch { /* ignore */ }
 }
 
-export function getAxonBase() { return AXON_BASE; }
+export function getAxonBase(): string { return AXON_BASE; }
 
 // Restore persisted base URL on module load
 try {
@@ -51,8 +52,8 @@ export const getConfig    = (s?: AbortSignal) => request<ConfigResponse>('/api/c
 export const getModels    = (provider: string, s?: AbortSignal) =>
   request<ModelResponse[]>(`/api/models/${encodeURIComponent(provider)}`, s);
 
-export const putLlmConfig = (llm: LlmConfigSection) =>
-  request<{ ok: boolean }>('/api/config/llm', undefined, {
+export const putLlmConfig = (llm: LlmConfigSection): Promise<OkResponse> =>
+  request<OkResponse>('/api/config/llm', undefined, {
     method: 'PUT',
     body: JSON.stringify(llm),
   });
@@ -62,6 +63,15 @@ export const validateApiKey = (provider: string, api_key: string) =>
     method: 'POST',
     body: JSON.stringify({ provider, api_key }),
   });
+
+/** Shape of each SSE `message`-event payload emitted by `/api/chat/completions`. */
+interface ChatStreamChunk {
+  content?: string;
+}
+
+function isChatStreamChunk(v: unknown): v is ChatStreamChunk {
+  return typeof v === 'object' && v !== null;
+}
 
 export async function* sendChatStream(req: ChatRequest): AsyncGenerator<string> {
   const res = await fetch(`${AXON_BASE}/api/chat/completions`, {
@@ -87,8 +97,10 @@ export async function* sendChatStream(req: ChatRequest): AsyncGenerator<string> 
       const data = line.slice(6).trim();
       if (data === '[DONE]') return;
       try {
-        const parsed = JSON.parse(data);
-        if (parsed.content) yield parsed.content as string;
+        const parsed: unknown = JSON.parse(data);
+        if (isChatStreamChunk(parsed) && typeof parsed.content === 'string') {
+          yield parsed.content;
+        }
       } catch { /* skip */ }
     }
   }

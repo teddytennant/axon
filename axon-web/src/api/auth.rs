@@ -1,3 +1,4 @@
+use crate::api::OkResponse;
 use crate::state::SharedWebState;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -60,7 +61,7 @@ pub async fn put_key(
     State(_state): State<Arc<SharedWebState>>,
     Path(provider): Path<String>,
     Json(req): Json<SetKeyRequest>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
+) -> Result<Json<OkResponse>, StatusCode> {
     let path = dirs::config_dir()
         .map(|d| d.join("axon").join("config.toml"))
         .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -93,5 +94,5 @@ pub async fn put_key(
     std::fs::write(&path, format!("{}{}", header, serialized))
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Ok(Json(serde_json::json!({"ok": true})))
+    Ok(Json(OkResponse::ok()))
 }

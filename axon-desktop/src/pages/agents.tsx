@@ -9,7 +9,7 @@ export default function AgentsPage() {
   const [agents, setAgents]       = useState<AgentInfo[]>([]);
 
   useEffect(() => { if (init) setAgents(init); }, [init]);
-  useEffect(() => subscribe('agents', d => setAgents(d as AgentInfo[])), [subscribe]);
+  useEffect(() => subscribe('agents', d => setAgents(d)), [subscribe]);
 
   if (isLoading) return <Skeleton />;
 

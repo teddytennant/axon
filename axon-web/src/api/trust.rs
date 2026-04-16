@@ -5,7 +5,7 @@ use axum::Json;
 use serde::Serialize;
 use std::sync::Arc;
 
-#[derive(Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct TrustEntry {
     pub peer_id: String,
     pub reliability: f64,

@@ -1,10 +1,70 @@
-use crate::state::SharedWebState;
+use crate::api::mesh::PeerResponse;
+use crate::api::trust::TrustEntry;
+use crate::state::{
+    AgentInfo, BlackboardEntry, SharedWebState, TaskLogEntry, WorkflowSnapshot,
+};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
 use axum::response::IntoResponse;
 use futures_util::{SinkExt, StreamExt};
+use serde::Serialize;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
+
+/// A single push frame sent over the `/api/ws/live` websocket.
+///
+/// Serialised as `{ "type": "<tag>", "data": <payload> }` so the TypeScript
+/// client can discriminate on `type` and statically narrow `data`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type", content = "data", rename_all = "lowercase")]
+pub enum WsEvent {
+    Metrics(WsMetrics),
+    Peers(Vec<PeerResponse>),
+    Agents(Vec<AgentInfo>),
+    Tasks(WsTasks),
+    Trust(Vec<TrustEntry>),
+    Log(String),
+    Workflows(WsWorkflows),
+    Blackboard(Vec<BlackboardEntry>),
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WsMetrics {
+    pub uptime_secs: u64,
+    pub tasks_total: u64,
+    pub tasks_failed: u64,
+    pub messages_received: u64,
+    pub messages_sent: u64,
+    pub throughput: Vec<u64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WsTaskStats {
+    pub pending: usize,
+    pub running: usize,
+    pub completed: usize,
+    pub failed: usize,
+    pub timed_out: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WsTasks {
+    pub stats: WsTaskStats,
+    pub recent: Vec<TaskLogEntry>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WsWorkflows {
+    pub active: Vec<WorkflowSnapshot>,
+    pub completed: Vec<WorkflowSnapshot>,
+}
+
+/// Encode an event as a websocket text frame. Infallible in practice since
+/// all variants are plain `Serialize` structs over owned data.
+fn encode(event: &WsEvent) -> Message {
+    let text = serde_json::to_string(event).unwrap_or_else(|_| String::from("{}"));
+    Message::Text(text.into())
+}
 
 pub async fn ws_live(
     ws: WebSocketUpgrade,
@@ -29,23 +89,16 @@ async fn handle_ws(socket: WebSocket, state: Arc<SharedWebState>) {
             let ws = push_state.web_state.read().await;
 
             // Status/metrics
-            let metrics = serde_json::json!({
-                "type": "metrics",
-                "data": {
-                    "uptime_secs": ws.uptime_secs,
-                    "tasks_total": ws.tasks_total,
-                    "tasks_failed": ws.tasks_failed,
-                    "messages_received": ws.messages_received,
-                    "messages_sent": ws.messages_sent,
-                    "throughput": ws.throughput_history.iter().copied().collect::<Vec<_>>(),
-                }
+            let metrics = WsEvent::Metrics(WsMetrics {
+                uptime_secs: ws.uptime_secs,
+                tasks_total: ws.tasks_total,
+                tasks_failed: ws.tasks_failed,
+                messages_received: ws.messages_received,
+                messages_sent: ws.messages_sent,
+                throughput: ws.throughput_history.iter().copied().collect(),
             });
 
-            if sender
-                .send(Message::Text(metrics.to_string().into()))
-                .await
-                .is_err()
-            {
+            if sender.send(encode(&metrics)).await.is_err() {
                 return;
             }
 
@@ -55,26 +108,22 @@ async fn handle_ws(socket: WebSocket, state: Arc<SharedWebState>) {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs();
-            let peers_json: Vec<serde_json::Value> = peers
+            let peers_typed: Vec<PeerResponse> = peers
                 .iter()
                 .map(|p| {
                     let diff = now.saturating_sub(p.last_seen);
-                    serde_json::json!({
-                        "peer_id": hex::encode(&p.peer_id),
-                        "addr": p.addr,
-                        "capabilities": p.capabilities.iter().map(|c| c.tag()).collect::<Vec<_>>(),
-                        "last_seen": p.last_seen,
-                        "last_seen_ago": format!("{}s ago", diff),
-                    })
+                    PeerResponse {
+                        peer_id: hex::encode(&p.peer_id),
+                        addr: p.addr.clone(),
+                        capabilities: p.capabilities.iter().map(|c| c.tag()).collect(),
+                        last_seen: p.last_seen,
+                        last_seen_ago: format!("{}s ago", diff),
+                    }
                 })
                 .collect();
 
-            let peers_msg = serde_json::json!({
-                "type": "peers",
-                "data": peers_json,
-            });
             if sender
-                .send(Message::Text(peers_msg.to_string().into()))
+                .send(encode(&WsEvent::Peers(peers_typed)))
                 .await
                 .is_err()
             {
@@ -82,12 +131,8 @@ async fn handle_ws(socket: WebSocket, state: Arc<SharedWebState>) {
             }
 
             // Agents
-            let agents_msg = serde_json::json!({
-                "type": "agents",
-                "data": ws.agent_info,
-            });
             if sender
-                .send(Message::Text(agents_msg.to_string().into()))
+                .send(encode(&WsEvent::Agents(ws.agent_info.clone())))
                 .await
                 .is_err()
             {
@@ -96,41 +141,31 @@ async fn handle_ws(socket: WebSocket, state: Arc<SharedWebState>) {
 
             // Tasks
             let stats = push_state.task_queue.stats().unwrap_or_default();
-            let tasks_msg = serde_json::json!({
-                "type": "tasks",
-                "data": {
-                    "stats": {
-                        "pending": stats.pending,
-                        "running": stats.running,
-                        "completed": stats.completed,
-                        "failed": stats.failed,
-                        "timed_out": stats.timed_out,
-                    },
-                    "recent": ws.task_log,
-                }
+            let tasks = WsEvent::Tasks(WsTasks {
+                stats: WsTaskStats {
+                    pending: stats.pending,
+                    running: stats.running,
+                    completed: stats.completed,
+                    failed: stats.failed,
+                    timed_out: stats.timed_out,
+                },
+                recent: ws.task_log.clone(),
             });
-            if sender
-                .send(Message::Text(tasks_msg.to_string().into()))
-                .await
-                .is_err()
-            {
+            if sender.send(encode(&tasks)).await.is_err() {
                 return;
             }
 
             // New log lines since last push
             let current_log_count = ws.logs.len();
             if current_log_count > last_log_count {
-                let new_logs: Vec<&String> = ws.logs.iter().skip(last_log_count).collect();
+                let new_logs: Vec<String> = ws
+                    .logs
+                    .iter()
+                    .skip(last_log_count)
+                    .cloned()
+                    .collect();
                 for log in new_logs {
-                    let log_msg = serde_json::json!({
-                        "type": "log",
-                        "data": log,
-                    });
-                    if sender
-                        .send(Message::Text(log_msg.to_string().into()))
-                        .await
-                        .is_err()
-                    {
+                    if sender.send(encode(&WsEvent::Log(log))).await.is_err() {
                         return;
                     }
                 }
@@ -138,28 +173,17 @@ async fn handle_ws(socket: WebSocket, state: Arc<SharedWebState>) {
             }
 
             // Workflows
-            let workflows_msg = serde_json::json!({
-                "type": "workflows",
-                "data": {
-                    "active": ws.active_workflows,
-                    "completed": ws.completed_workflows.iter().collect::<Vec<_>>(),
-                }
+            let workflows = WsEvent::Workflows(WsWorkflows {
+                active: ws.active_workflows.clone(),
+                completed: ws.completed_workflows.iter().cloned().collect(),
             });
-            if sender
-                .send(Message::Text(workflows_msg.to_string().into()))
-                .await
-                .is_err()
-            {
+            if sender.send(encode(&workflows)).await.is_err() {
                 return;
             }
 
             // Blackboard
-            let bb_msg = serde_json::json!({
-                "type": "blackboard",
-                "data": ws.blackboard_entries,
-            });
             if sender
-                .send(Message::Text(bb_msg.to_string().into()))
+                .send(encode(&WsEvent::Blackboard(ws.blackboard_entries.clone())))
                 .await
                 .is_err()
             {
@@ -172,24 +196,21 @@ async fn handle_ws(socket: WebSocket, state: Arc<SharedWebState>) {
             let ts = push_state.trust_store.lock().await;
             let ranked = ts.ranked_peers();
             drop(ts);
-            let trust_entries: Vec<serde_json::Value> = ranked
+            let trust_entries: Vec<TrustEntry> = ranked
                 .into_iter()
-                .map(|(peer_id, score)| {
-                    serde_json::json!({
-                        "peer_id": hex::encode(&peer_id),
-                        "overall": score.overall,
-                        "reliability": score.reliability,
-                        "confidence": score.confidence,
-                        "observation_count": score.observation_count,
-                    })
+                .map(|(peer_id, score)| TrustEntry {
+                    peer_id: hex::encode(&peer_id),
+                    reliability: score.reliability,
+                    accuracy: score.accuracy,
+                    availability: score.availability,
+                    quality: score.quality,
+                    overall: score.overall,
+                    confidence: score.confidence,
+                    observation_count: score.observation_count,
                 })
                 .collect();
-            let trust_msg = serde_json::json!({
-                "type": "trust",
-                "data": trust_entries,
-            });
             if sender
-                .send(Message::Text(trust_msg.to_string().into()))
+                .send(encode(&WsEvent::Trust(trust_entries)))
                 .await
                 .is_err()
             {
@@ -213,5 +234,62 @@ async fn handle_ws(socket: WebSocket, state: Arc<SharedWebState>) {
         _ = recv_task => {
             push_task.abort();
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::Value;
+
+    #[test]
+    fn ws_event_metrics_round_trip() {
+        let event = WsEvent::Metrics(WsMetrics {
+            uptime_secs: 42,
+            tasks_total: 10,
+            tasks_failed: 1,
+            messages_received: 5,
+            messages_sent: 6,
+            throughput: vec![1, 2, 3],
+        });
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["type"], "metrics");
+        assert_eq!(json["data"]["uptime_secs"], 42);
+        assert_eq!(json["data"]["throughput"], Value::Array(vec![1.into(), 2.into(), 3.into()]));
+    }
+
+    #[test]
+    fn ws_event_log_tagged_correctly() {
+        let event = WsEvent::Log("hello".into());
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["type"], "log");
+        assert_eq!(json["data"], "hello");
+    }
+
+    #[test]
+    fn ws_event_tasks_shape() {
+        let event = WsEvent::Tasks(WsTasks {
+            stats: WsTaskStats {
+                pending: 1,
+                running: 2,
+                completed: 3,
+                failed: 4,
+                timed_out: 5,
+            },
+            recent: vec![],
+        });
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["type"], "tasks");
+        assert_eq!(json["data"]["stats"]["pending"], 1);
+        assert_eq!(json["data"]["stats"]["timed_out"], 5);
+        assert!(json["data"]["recent"].is_array());
+    }
+
+    #[test]
+    fn ws_event_peers_empty() {
+        let event = WsEvent::Peers(vec![]);
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["type"], "peers");
+        assert!(json["data"].is_array());
     }
 }

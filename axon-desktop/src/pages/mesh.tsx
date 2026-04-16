@@ -9,7 +9,7 @@ export default function MeshPage() {
   const [peers, setPeers]         = useState<PeerResponse[]>([]);
 
   useEffect(() => { if (init) setPeers(init); }, [init]);
-  useEffect(() => subscribe('peers', d => setPeers(d as PeerResponse[])), [subscribe]);
+  useEffect(() => subscribe('peers', d => setPeers(d)), [subscribe]);
 
   if (isLoading) return <Skeleton />;
 

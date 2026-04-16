@@ -2,7 +2,13 @@ use crate::state::{BlackboardEntry, SharedWebState};
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::Json;
+use serde::Deserialize;
 use std::sync::Arc;
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SetBlackboardEntryRequest {
+    pub value: String,
+}
 
 pub async fn list_entries(State(state): State<Arc<SharedWebState>>) -> Json<Vec<BlackboardEntry>> {
     let ws = state.web_state.read().await;
@@ -25,12 +31,8 @@ pub async fn get_entry(
 pub async fn set_entry(
     State(state): State<Arc<SharedWebState>>,
     axum::extract::Path(key): axum::extract::Path<String>,
-    Json(body): Json<serde_json::Value>,
+    Json(req): Json<SetBlackboardEntryRequest>,
 ) -> StatusCode {
-    let value = match body.get("value").and_then(|v| v.as_str()) {
-        Some(v) => v.to_string(),
-        None => return StatusCode::BAD_REQUEST,
-    };
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -38,14 +40,32 @@ pub async fn set_entry(
 
     let mut ws = state.web_state.write().await;
     if let Some(entry) = ws.blackboard_entries.iter_mut().find(|e| e.key == key) {
-        entry.value = value;
+        entry.value = req.value;
         entry.timestamp_ms = ts;
     } else {
         ws.blackboard_entries.push(BlackboardEntry {
             key,
-            value,
+            value: req.value,
             timestamp_ms: ts,
         });
     }
     StatusCode::OK
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn set_request_deserializes() {
+        let req: SetBlackboardEntryRequest =
+            serde_json::from_str(r#"{"value":"hello"}"#).unwrap();
+        assert_eq!(req.value, "hello");
+    }
+
+    #[test]
+    fn set_request_rejects_missing_value() {
+        let res = serde_json::from_str::<SetBlackboardEntryRequest>(r#"{"other":1}"#);
+        assert!(res.is_err());
+    }
 }

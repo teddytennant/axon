@@ -14,7 +14,20 @@ pub mod workflows;
 use crate::state::SharedWebState;
 use axum::routing::{get, post, put};
 use axum::Router;
+use serde::Serialize;
 use std::sync::Arc;
+
+/// Uniform `{ "ok": true }` acknowledgement returned by mutating endpoints.
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct OkResponse {
+    pub ok: bool,
+}
+
+impl OkResponse {
+    pub const fn ok() -> Self {
+        Self { ok: true }
+    }
+}
 
 pub fn api_router() -> Router<Arc<SharedWebState>> {
     Router::new()

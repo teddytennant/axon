@@ -2,14 +2,21 @@ use crate::state::{SharedWebState, WorkflowSnapshot};
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::Json;
+use serde::Serialize;
 use std::sync::Arc;
 
-pub async fn list_workflows(State(state): State<Arc<SharedWebState>>) -> Json<serde_json::Value> {
+#[derive(Debug, Clone, Serialize)]
+pub struct WorkflowsResponse {
+    pub active: Vec<WorkflowSnapshot>,
+    pub completed: Vec<WorkflowSnapshot>,
+}
+
+pub async fn list_workflows(State(state): State<Arc<SharedWebState>>) -> Json<WorkflowsResponse> {
     let ws = state.web_state.read().await;
-    Json(serde_json::json!({
-        "active": ws.active_workflows,
-        "completed": ws.completed_workflows.iter().collect::<Vec<&WorkflowSnapshot>>(),
-    }))
+    Json(WorkflowsResponse {
+        active: ws.active_workflows.clone(),
+        completed: ws.completed_workflows.iter().cloned().collect(),
+    })
 }
 
 pub async fn get_workflow(

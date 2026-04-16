@@ -4,7 +4,7 @@ use axum::Json;
 use serde::Serialize;
 use std::sync::Arc;
 
-#[derive(Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct PeerResponse {
     pub peer_id: String,
     pub addr: String,
