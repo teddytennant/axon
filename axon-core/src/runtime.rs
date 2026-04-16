@@ -81,6 +81,29 @@ impl Runtime {
         self.agents.read().await.len()
     }
 
+    /// Snapshot of basic per-agent info suitable for the TUI's Agents tab and
+    /// the `/api/agents` endpoint. The runtime doesn't currently track
+    /// per-agent latency / success counters, so those fields are zeroed; the
+    /// caller can merge in richer telemetry if available.
+    pub async fn agent_infos(&self) -> Vec<crate::dashboard::AgentInfo> {
+        let agents = self.agents.read().await;
+        agents
+            .iter()
+            .map(|a| crate::dashboard::AgentInfo {
+                name: a.name().to_string(),
+                capabilities: a.capabilities().iter().map(|c| c.tag()).collect(),
+                provider_type: String::new(),
+                model_name: String::new(),
+                status: crate::dashboard::AgentStatus::Idle.as_str().to_string(),
+                tasks_handled: 0,
+                tasks_succeeded: 0,
+                avg_latency_ms: 0,
+                lifecycle_state: "Running".to_string(),
+                last_heartbeat_secs_ago: None,
+            })
+            .collect()
+    }
+
     /// Dispatch a task to the first matching agent.
     ///
     /// Enforces the timeout specified in `request.timeout_ms`. A value of 0

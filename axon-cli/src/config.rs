@@ -1,5 +1,5 @@
+use axon_core::McpServerConfig;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
@@ -77,47 +77,21 @@ impl Default for LlmSection {
 }
 
 /// MCP server configuration section.
+///
+/// `servers` holds full [`McpServerConfig`] entries from `axon-core`: the
+/// canonical struct now has serde derives, so there's no need for a parallel
+/// `McpServerEntry` wrapper.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct McpSection {
     /// List of MCP servers to connect to on startup.
     #[serde(default)]
-    pub servers: Vec<McpServerEntry>,
+    pub servers: Vec<McpServerConfig>,
 }
 
-/// Configuration for a single MCP server.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct McpServerEntry {
-    /// Human-readable name (e.g., "filesystem", "github")
-    pub name: String,
-    /// Command to spawn (e.g., "npx", "uvx")
-    pub command: String,
-    /// Command arguments
-    #[serde(default)]
-    pub args: Vec<String>,
-    /// Environment variables
-    #[serde(default)]
-    pub env: HashMap<String, String>,
-    /// Request timeout in seconds (default: 30)
-    #[serde(default = "default_mcp_timeout")]
-    pub timeout_secs: u64,
-}
-
-fn default_mcp_timeout() -> u64 {
-    30
-}
-
-impl McpServerEntry {
-    /// Convert to the core McpServerConfig type.
-    pub fn to_server_config(&self) -> axon_core::McpServerConfig {
-        let mut config = axon_core::McpServerConfig::new(&self.name, &self.command)
-            .with_args(self.args.clone())
-            .with_timeout(self.timeout_secs);
-        for (k, v) in &self.env {
-            config = config.with_env(k, v);
-        }
-        config
-    }
-}
+/// Historical alias — kept so external code referencing `McpServerEntry`
+/// keeps compiling. Prefer [`axon_core::McpServerConfig`] directly.
+#[allow(dead_code)]
+pub type McpServerEntry = McpServerConfig;
 
 fn default_listen() -> SocketAddr {
     "0.0.0.0:4242".parse().unwrap()
@@ -321,20 +295,25 @@ GITHUB_TOKEN = "ghp_test123"
     }
 
     #[test]
-    fn mcp_server_to_core_config() {
-        let entry = McpServerEntry {
+    fn mcp_server_entry_alias_is_core_type() {
+        // `McpServerEntry` is a type alias for `axon_core::McpServerConfig`,
+        // so a value constructed via the alias is the exact same type the
+        // core MCP client takes. This replaces the old `to_server_config()`
+        // conversion.
+        use std::collections::HashMap;
+        let entry: McpServerEntry = McpServerEntry {
             name: "test".to_string(),
             command: "/usr/bin/test-server".to_string(),
             args: vec!["--flag".to_string()],
             env: HashMap::from([("KEY".to_string(), "val".to_string())]),
             timeout_secs: 45,
         };
-        let config = entry.to_server_config();
-        assert_eq!(config.name, "test");
-        assert_eq!(config.command, "/usr/bin/test-server");
-        assert_eq!(config.args, vec!["--flag"]);
-        assert_eq!(config.timeout_secs, 45);
-        assert_eq!(config.env.get("KEY").unwrap(), "val");
+        let _takes_core: axon_core::McpServerConfig = entry.clone();
+        assert_eq!(entry.name, "test");
+        assert_eq!(entry.command, "/usr/bin/test-server");
+        assert_eq!(entry.args, vec!["--flag"]);
+        assert_eq!(entry.timeout_secs, 45);
+        assert_eq!(entry.env.get("KEY").unwrap(), "val");
     }
 
     #[test]

@@ -1,6 +1,7 @@
 use crate::mcp::jsonrpc::{JsonRpcRequest, JsonRpcResponse};
 use crate::mcp::schema::McpToolSchema;
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Duration;
 use thiserror::Error;
@@ -27,18 +28,30 @@ pub enum McpClientError {
 }
 
 /// Configuration for connecting to an MCP server via stdio.
-#[derive(Debug, Clone)]
+///
+/// Also serves as the canonical on-disk form for `[[mcp.servers]]` entries in
+/// `~/.config/axon/config.toml` — serde derives are included so the CLI's
+/// `NodeConfig` can read this struct directly rather than maintaining a
+/// parallel `McpServerEntry`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpServerConfig {
     /// Human-readable name (e.g., "filesystem", "github")
     pub name: String,
     /// Command to spawn (e.g., "npx", "uvx", "/usr/bin/mcp-server")
     pub command: String,
     /// Command arguments
+    #[serde(default)]
     pub args: Vec<String>,
     /// Additional environment variables
+    #[serde(default)]
     pub env: HashMap<String, String>,
     /// Timeout for individual requests (default: 30s)
+    #[serde(default = "default_mcp_timeout_secs")]
     pub timeout_secs: u64,
+}
+
+fn default_mcp_timeout_secs() -> u64 {
+    30
 }
 
 impl McpServerConfig {
