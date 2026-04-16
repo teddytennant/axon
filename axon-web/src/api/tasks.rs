@@ -1,5 +1,6 @@
 use crate::state::SharedWebState;
 use axum::extract::State;
+use axum::http::StatusCode;
 use axum::Json;
 use serde::Serialize;
 use std::sync::Arc;
@@ -14,16 +15,21 @@ pub struct TaskStatsResponse {
     pub total: usize,
 }
 
-pub async fn get_task_stats(State(state): State<Arc<SharedWebState>>) -> Json<TaskStatsResponse> {
-    let stats = state.task_queue.stats().unwrap_or_default();
-    Json(TaskStatsResponse {
+pub async fn get_task_stats(
+    State(state): State<Arc<SharedWebState>>,
+) -> Result<Json<TaskStatsResponse>, StatusCode> {
+    let stats = state.task_queue.stats().map_err(|e| {
+        tracing::error!("task_queue.stats() failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(TaskStatsResponse {
         pending: stats.pending,
         running: stats.running,
         completed: stats.completed,
         failed: stats.failed,
         timed_out: stats.timed_out,
         total: stats.total(),
-    })
+    }))
 }
 
 pub async fn get_task_log(
