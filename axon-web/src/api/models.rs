@@ -167,8 +167,7 @@ pub async fn get_models(
             if !resp.status().is_success() {
                 return Err(StatusCode::BAD_GATEWAY);
             }
-            let json: XaiModelsResponse =
-                resp.json().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+            let json: XaiModelsResponse = resp.json().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
             json.data
                 .into_iter()
                 .map(|m| ModelResponse {

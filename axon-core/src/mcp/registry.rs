@@ -401,7 +401,6 @@ fn relevance_score(schema: &McpToolSchema, query: &str) -> f64 {
     score.min(1.0)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

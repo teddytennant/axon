@@ -19,8 +19,7 @@ async fn probe_axon_ports() -> String {
     for port in [3000u16, 3001, 4000, 8080, 8000, 9000] {
         // 127.0.0.1:<u16> is always a valid SocketAddr literal.
         let sock = std::net::SocketAddr::from(([127, 0, 0, 1], port));
-        if std::net::TcpStream::connect_timeout(&sock, std::time::Duration::from_millis(80))
-            .is_ok()
+        if std::net::TcpStream::connect_timeout(&sock, std::time::Duration::from_millis(80)).is_ok()
         {
             return format!("http://localhost:{port}");
         }

@@ -84,7 +84,10 @@ pub async fn put_key(
     // Refuse to overwrite a corrupt config — that would silently destroy the
     // user's settings. Surface the parse error so they can fix the file.
     let mut doc: toml::Table = toml::from_str(&contents).map_err(|e| {
-        tracing::error!("existing config at {} is not valid TOML: {e}", path.display());
+        tracing::error!(
+            "existing config at {} is not valid TOML: {e}",
+            path.display()
+        );
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 

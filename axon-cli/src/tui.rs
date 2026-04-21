@@ -386,9 +386,9 @@ impl Dashboard {
         false
     }
 
-    // 
+    //
     // Main render
-    // 
+    //
     fn render(
         frame: &mut Frame,
         state: &DashboardState,
@@ -427,9 +427,9 @@ impl Dashboard {
         Self::render_status_bar(frame, active_tab, log_filter, chunks[3]);
     }
 
-    // 
+    //
     // Header
-    // 
+    //
     fn render_header(frame: &mut Frame, state: &DashboardState, area: Rect) {
         let uptime = format_uptime(state.uptime_secs);
         let success_rate = if state.tasks_total > 0 {
@@ -491,9 +491,9 @@ impl Dashboard {
         frame.render_widget(header, area);
     }
 
-    // 
+    //
     // Tabs
-    // 
+    //
     fn render_tabs(frame: &mut Frame, active_tab: Tab, area: Rect) {
         let tab_titles: Vec<Line> = Tab::all()
             .iter()
@@ -528,9 +528,9 @@ impl Dashboard {
         frame.render_widget(tabs, area);
     }
 
-    // 
+    //
     // Status bar
-    // 
+    //
     fn render_status_bar(frame: &mut Frame, active_tab: Tab, log_filter: LogFilter, area: Rect) {
         let mut spans = vec![
             Span::styled(" q", Style::default().fg(BRAND_CYAN).bold()),
@@ -563,9 +563,9 @@ impl Dashboard {
         frame.render_widget(bar, area);
     }
 
-    // 
+    //
     // Mesh tab
-    // 
+    //
     fn render_mesh(frame: &mut Frame, state: &DashboardState, area: Rect, scroll: usize) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -847,9 +847,9 @@ impl Dashboard {
         frame.render_widget(health_card, cols[1]);
     }
 
-    // 
+    //
     // Agents tab
-    // 
+    //
     fn render_agents(frame: &mut Frame, state: &DashboardState, area: Rect, scroll: usize) {
         // If we have rich agent info, use that; otherwise fall back to names+caps
         if !state.agent_info.is_empty() {
@@ -1049,9 +1049,9 @@ impl Dashboard {
         frame.render_widget(caps_list, inner[1]);
     }
 
-    // 
+    //
     // Tasks tab
-    // 
+    //
     fn render_tasks(frame: &mut Frame, state: &DashboardState, area: Rect, scroll: usize) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -1303,9 +1303,9 @@ impl Dashboard {
         frame.render_widget(sparkline, area);
     }
 
-    // 
+    //
     // State tab (CRDT viewer)
-    // 
+    //
     fn render_state(frame: &mut Frame, state: &DashboardState, area: Rect, scroll: usize) {
         let has_data = !state.crdt_counters.is_empty()
             || !state.crdt_registers.is_empty()
@@ -1484,9 +1484,9 @@ impl Dashboard {
         }
     }
 
-    // 
+    //
     // Settings tab
-    // 
+    //
     fn render_settings(frame: &mut Frame, state: &DashboardState, area: Rect) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -1676,9 +1676,9 @@ impl Dashboard {
         );
     }
 
-    // 
+    //
     // Workflows tab
-    // 
+    //
     fn render_workflows(frame: &mut Frame, state: &DashboardState, area: Rect, scroll: usize) {
         let all_workflows: Vec<&WorkflowSnapshot> = state
             .active_workflows
@@ -1846,9 +1846,9 @@ impl Dashboard {
         );
     }
 
-    // 
+    //
     // Logs tab
-    // 
+    //
     fn render_logs(
         frame: &mut Frame,
         state: &DashboardState,

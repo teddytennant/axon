@@ -55,8 +55,7 @@ mod tests {
 
     #[test]
     fn set_request_deserializes() {
-        let req: SetBlackboardEntryRequest =
-            serde_json::from_str(r#"{"value":"hello"}"#).unwrap();
+        let req: SetBlackboardEntryRequest = serde_json::from_str(r#"{"value":"hello"}"#).unwrap();
         assert_eq!(req.value, "hello");
     }
 

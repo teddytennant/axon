@@ -218,7 +218,10 @@ impl std::fmt::Display for ConfigMergeError {
         match self {
             ConfigMergeError::Parse(e) => write!(f, "invalid TOML: {e}"),
             ConfigMergeError::MalformedDocument => {
-                write!(f, "existing config has a non-table section where a table was expected")
+                write!(
+                    f,
+                    "existing config has a non-table section where a table was expected"
+                )
             }
         }
     }
