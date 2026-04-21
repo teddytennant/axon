@@ -1,3 +1,4 @@
+use crate::api::trust::TrustEntry;
 use crate::state::SharedWebState;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
@@ -14,15 +15,6 @@ struct PeerEntry {
     capabilities: Vec<String>,
     last_seen: u64,
     last_seen_ago: String,
-}
-
-#[derive(Debug, Serialize)]
-struct TrustEntry {
-    peer_id: String,
-    overall: f64,
-    reliability: f64,
-    confidence: f64,
-    observation_count: usize,
 }
 
 pub async fn ws_live(
@@ -199,8 +191,11 @@ async fn handle_ws(socket: WebSocket, state: Arc<SharedWebState>) {
                 .into_iter()
                 .map(|(peer_id, score)| TrustEntry {
                     peer_id: hex::encode(&peer_id),
-                    overall: score.overall,
                     reliability: score.reliability,
+                    accuracy: score.accuracy,
+                    availability: score.availability,
+                    quality: score.quality,
+                    overall: score.overall,
                     confidence: score.confidence,
                     observation_count: score.observation_count,
                 })

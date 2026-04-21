@@ -23,3 +23,4 @@ dirs = "6"
 async-trait = "0.1"
 futures-util = "0.3"
 axum-extra = { version = "0.10", features = ["typed-header"] }
+thiserror = "2"

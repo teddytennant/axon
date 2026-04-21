@@ -393,6 +393,7 @@ dependencies = [
  "rust-embed",
  "serde",
  "serde_json",
+ "thiserror 2.0.18",
  "tokio",
  "tokio-stream",
  "toml 0.8.2",

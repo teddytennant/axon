@@ -1,4 +1,8 @@
 use async_trait::async_trait;
+use axon_web::providers::{
+    self as shared, FetchModelsError, OllamaGenerateResponse, OllamaTagsResponse,
+    OpenAiChatResponse, OpenRouterModelsResponse, XaiModelsResponse,
+};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -11,6 +15,16 @@ pub enum ProviderError {
     Api(String),
     #[error("Invalid configuration: {0}")]
     Config(String),
+}
+
+impl From<FetchModelsError> for ProviderError {
+    fn from(e: FetchModelsError) -> Self {
+        match e {
+            FetchModelsError::Http(err) => ProviderError::Http(err),
+            FetchModelsError::Api(msg) => ProviderError::Api(msg),
+            FetchModelsError::Config(msg) => ProviderError::Config(msg),
+        }
+    }
 }
 
 /// A completion request sent to any provider.
@@ -34,102 +48,6 @@ pub struct CompletionResponse {
 pub struct Usage {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
-}
-
-// Typed provider response bodies. Fields are optional / defaulted because
-// providers occasionally omit keys; prior code tolerated this via
-// `.as_str().unwrap_or("")` on serde_json::Value.
-
-#[derive(Debug, Default, Deserialize)]
-struct OllamaGenerateResponse {
-    #[serde(default)]
-    response: String,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct ChatCompletionMessage {
-    #[serde(default)]
-    content: String,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct ChatCompletionChoice {
-    #[serde(default)]
-    message: ChatCompletionMessage,
-}
-
-#[derive(Debug, Deserialize)]
-struct RawUsage {
-    #[serde(default)]
-    prompt_tokens: u64,
-    #[serde(default)]
-    completion_tokens: u64,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAiChatResponse {
-    #[serde(default)]
-    choices: Vec<ChatCompletionChoice>,
-    #[serde(default)]
-    usage: Option<RawUsage>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct OllamaModelDetails {
-    #[serde(default)]
-    family: String,
-    #[serde(default)]
-    parameter_size: String,
-}
-
-fn unknown_model_name() -> String {
-    "unknown".to_string()
-}
-
-#[derive(Debug, Deserialize)]
-struct OllamaModelEntry {
-    #[serde(default = "unknown_model_name")]
-    name: String,
-    #[serde(default)]
-    size: Option<u64>,
-    #[serde(default)]
-    details: OllamaModelDetails,
-}
-
-#[derive(Debug, Deserialize)]
-struct OllamaTagsResponse {
-    #[serde(default)]
-    models: Vec<OllamaModelEntry>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenRouterModel {
-    #[serde(default)]
-    id: String,
-    #[serde(default)]
-    name: Option<String>,
-    #[serde(default)]
-    description: Option<String>,
-    #[serde(default)]
-    context_length: Option<u64>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenRouterModelsResponse {
-    #[serde(default)]
-    data: Vec<OpenRouterModel>,
-}
-
-#[derive(Debug, Deserialize)]
-struct XaiModel {
-    #[serde(default)]
-    id: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct XaiModelsResponse {
-    #[serde(default)]
-    data: Vec<XaiModel>,
 }
 
 /// Trait that all LLM providers implement.

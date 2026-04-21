@@ -1,5 +1,6 @@
 pub mod api;
 pub mod embed;
+pub mod providers;
 pub mod state;
 pub mod ws;
 
