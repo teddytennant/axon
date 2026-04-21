@@ -3,8 +3,27 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
 use axum::response::IntoResponse;
 use futures_util::{SinkExt, StreamExt};
+use serde::Serialize;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
+
+#[derive(Debug, Serialize)]
+struct PeerEntry {
+    peer_id: String,
+    addr: String,
+    capabilities: Vec<String>,
+    last_seen: u64,
+    last_seen_ago: String,
+}
+
+#[derive(Debug, Serialize)]
+struct TrustEntry {
+    peer_id: String,
+    overall: f64,
+    reliability: f64,
+    confidence: f64,
+    observation_count: usize,
+}
 
 pub async fn ws_live(
     ws: WebSocketUpgrade,
@@ -52,17 +71,17 @@ async fn handle_ws(socket: WebSocket, state: Arc<SharedWebState>) {
             // Peers
             let peers = push_state.peer_table.read().await.all_peers_owned();
             let now = axon_core::util::now_secs();
-            let peers_json: Vec<serde_json::Value> = peers
+            let peers_json: Vec<PeerEntry> = peers
                 .iter()
                 .map(|p| {
                     let diff = now.saturating_sub(p.last_seen);
-                    serde_json::json!({
-                        "peer_id": hex::encode(&p.peer_id),
-                        "addr": p.addr,
-                        "capabilities": p.capabilities.iter().map(|c| c.tag()).collect::<Vec<_>>(),
-                        "last_seen": p.last_seen,
-                        "last_seen_ago": format!("{}s ago", diff),
-                    })
+                    PeerEntry {
+                        peer_id: hex::encode(&p.peer_id),
+                        addr: p.addr.clone(),
+                        capabilities: p.capabilities.iter().map(|c| c.tag()).collect(),
+                        last_seen: p.last_seen,
+                        last_seen_ago: format!("{}s ago", diff),
+                    }
                 })
                 .collect();
 
@@ -176,16 +195,14 @@ async fn handle_ws(socket: WebSocket, state: Arc<SharedWebState>) {
             let ts = push_state.trust_store.lock().await;
             let ranked = ts.ranked_peers();
             drop(ts);
-            let trust_entries: Vec<serde_json::Value> = ranked
+            let trust_entries: Vec<TrustEntry> = ranked
                 .into_iter()
-                .map(|(peer_id, score)| {
-                    serde_json::json!({
-                        "peer_id": hex::encode(&peer_id),
-                        "overall": score.overall,
-                        "reliability": score.reliability,
-                        "confidence": score.confidence,
-                        "observation_count": score.observation_count,
-                    })
+                .map(|(peer_id, score)| TrustEntry {
+                    peer_id: hex::encode(&peer_id),
+                    overall: score.overall,
+                    reliability: score.reliability,
+                    confidence: score.confidence,
+                    observation_count: score.observation_count,
                 })
                 .collect();
             let trust_msg = serde_json::json!({

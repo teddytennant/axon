@@ -102,6 +102,36 @@ struct OllamaTagsResponse {
     models: Vec<OllamaModelEntry>,
 }
 
+#[derive(Debug, Deserialize)]
+struct OpenRouterModel {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    context_length: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenRouterModelsResponse {
+    #[serde(default)]
+    data: Vec<OpenRouterModel>,
+}
+
+#[derive(Debug, Deserialize)]
+struct XaiModel {
+    #[serde(default)]
+    id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct XaiModelsResponse {
+    #[serde(default)]
+    data: Vec<XaiModel>,
+}
+
 /// Trait that all LLM providers implement.
 #[async_trait]
 pub trait LlmProvider: Send + Sync {

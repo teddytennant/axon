@@ -1,3 +1,4 @@
+use crate::api::OkResponse;
 use crate::state::SharedWebState;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -282,7 +283,7 @@ pub(crate) fn merge_config(
 pub async fn put_config(
     State(_state): State<Arc<SharedWebState>>,
     Json(req): Json<UpdateConfigRequest>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
+) -> Result<Json<OkResponse>, StatusCode> {
     let path = config_path().ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -311,13 +312,13 @@ pub async fn put_config(
     std::fs::write(&path, format!("{}{}", header, serialized))
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Ok(Json(serde_json::json!({"ok": true})))
+    Ok(Json(OkResponse::ok()))
 }
 
 pub async fn put_llm_config(
     State(state): State<Arc<SharedWebState>>,
     Json(llm): Json<LlmConfigResponse>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
+) -> Result<Json<OkResponse>, StatusCode> {
     put_config(
         State(state),
         Json(UpdateConfigRequest {

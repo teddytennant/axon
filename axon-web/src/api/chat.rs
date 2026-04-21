@@ -1,12 +1,20 @@
+use crate::api::provider_responses::{OllamaGenerateResponse, OpenAiChatResponse};
 use crate::state::SharedWebState;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::sse::{Event, Sse};
 use axum::Json;
 use futures_util::stream::{self, BoxStream, StreamExt};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use std::sync::Arc;
+
+/// Single message in an OpenAI-compatible chat completion request body.
+#[derive(Debug, Serialize)]
+struct OpenAiRequestMessage<'a> {
+    role: &'a str,
+    content: &'a str,
+}
 
 #[derive(Deserialize)]
 pub struct ChatRequest {
@@ -118,19 +126,18 @@ pub async fn completions(
                 .await
                 .map_err(|_| StatusCode::BAD_GATEWAY)?;
 
-            let json: serde_json::Value = resp.json().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
-            json["response"].as_str().unwrap_or("").to_string()
+            let json: OllamaGenerateResponse =
+                resp.json().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+            json.response
         }
         _ => {
             // OpenAI-compatible (xai, openrouter, custom)
-            let messages: Vec<serde_json::Value> = req
+            let messages: Vec<OpenAiRequestMessage<'_>> = req
                 .messages
                 .iter()
-                .map(|m| {
-                    serde_json::json!({
-                        "role": m.role,
-                        "content": m.content,
-                    })
+                .map(|m| OpenAiRequestMessage {
+                    role: &m.role,
+                    content: &m.content,
                 })
                 .collect();
 
@@ -170,11 +177,13 @@ pub async fn completions(
                 return Ok(Sse::new(s));
             }
 
-            let json: serde_json::Value = resp.json().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
-            json["choices"][0]["message"]["content"]
-                .as_str()
-                .unwrap_or("")
-                .to_string()
+            let json: OpenAiChatResponse =
+                resp.json().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+            json.choices
+                .into_iter()
+                .next()
+                .map(|c| c.message.content)
+                .unwrap_or_default()
         }
     };
 

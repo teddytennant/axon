@@ -112,32 +112,28 @@ pub async fn get_models(
             if !resp.status().is_success() {
                 return Err(StatusCode::BAD_GATEWAY);
             }
-            let json: serde_json::Value = resp.json().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+            let json: OpenRouterModelsResponse =
+                resp.json().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
 
-            let mut models: Vec<ModelResponse> = json["data"]
-                .as_array()
-                .map(|arr| {
-                    arr.iter()
-                        .map(|m| {
-                            let id = m["id"].as_str().unwrap_or("").to_string();
-                            let name = m["name"].as_str().unwrap_or(&id).to_string();
-                            let ctx = m["context_length"].as_u64();
-                            let desc = m["description"]
-                                .as_str()
-                                .unwrap_or("")
-                                .chars()
-                                .take(80)
-                                .collect::<String>();
-                            ModelResponse {
-                                id,
-                                name,
-                                description: desc,
-                                context_length: ctx,
-                            }
-                        })
-                        .collect()
+            let mut models: Vec<ModelResponse> = json
+                .data
+                .into_iter()
+                .map(|m| {
+                    let name = m.name.unwrap_or_else(|| m.id.clone());
+                    let desc = m
+                        .description
+                        .unwrap_or_default()
+                        .chars()
+                        .take(80)
+                        .collect::<String>();
+                    ModelResponse {
+                        id: m.id,
+                        name,
+                        description: desc,
+                        context_length: m.context_length,
+                    }
                 })
-                .unwrap_or_default();
+                .collect();
 
             // Sort popular providers first
             let popular = [
@@ -171,24 +167,17 @@ pub async fn get_models(
             if !resp.status().is_success() {
                 return Err(StatusCode::BAD_GATEWAY);
             }
-            let json: serde_json::Value =
+            let json: XaiModelsResponse =
                 resp.json().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
-            json["data"]
-                .as_array()
-                .map(|arr| {
-                    arr.iter()
-                        .map(|m| {
-                            let id = m["id"].as_str().unwrap_or("").to_string();
-                            ModelResponse {
-                                name: id.clone(),
-                                id,
-                                description: String::new(),
-                                context_length: None,
-                            }
-                        })
-                        .collect()
+            json.data
+                .into_iter()
+                .map(|m| ModelResponse {
+                    name: m.id.clone(),
+                    id: m.id,
+                    description: String::new(),
+                    context_length: None,
                 })
-                .unwrap_or_default()
+                .collect()
         }
         _ => vec![],
     };
