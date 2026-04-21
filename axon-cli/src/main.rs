@@ -23,8 +23,8 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 use agents::{EchoAgent, LlmAgent, SystemInfoAgent};
-use providers::ProviderKind;
 use axon_core::TaskLogEntry;
+use providers::ProviderKind;
 use tui::{Dashboard, DashboardState};
 
 /// Atomic counters for node-level metrics.
@@ -461,8 +461,7 @@ async fn main() -> anyhow::Result<()> {
 
             // Load config
             let file_config = config::load_config();
-            let mcp_configs: Vec<axon_core::McpServerConfig> =
-                file_config.mcp.servers.clone();
+            let mcp_configs: Vec<axon_core::McpServerConfig> = file_config.mcp.servers.clone();
 
             if mcp_configs.is_empty() && !mesh {
                 eprintln!("No MCP servers configured.");
