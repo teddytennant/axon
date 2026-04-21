@@ -1274,6 +1274,13 @@ fn send_message(state: &mut ChatState, user_msg: &str) {
 fn render(frame: &mut Frame, state: &mut ChatState) {
     let area = frame.area();
 
+    if !state.transparent {
+        frame.render_widget(
+            Block::default().style(Style::default().bg(POPUP_BG)),
+            area,
+        );
+    }
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
