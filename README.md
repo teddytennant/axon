@@ -4,6 +4,8 @@
 
 A peer-to-peer runtime for AI agents to discover, communicate, and collaborate without central infrastructure. Built in Rust with QUIC transport, capability-based routing, CRDT shared state, and a full web dashboard.
 
+> **Status: early.** Axon is under active development. Protocols, CLI flags, config formats, and on-disk state may change between commits without migration shims. Expect rough edges — and please file issues when you hit them. See [CHANGELOG.md](CHANGELOG.md) for the latest updates.
+
 ## Why
 
 Current AI agent frameworks are centralized — a single orchestrator dispatches tasks to workers. This creates single points of failure, bottlenecks, and doesn't scale. Axon takes a different approach: agents form a self-organizing mesh where any node can initiate work, discover capabilities, and route tasks without a coordinator.
@@ -128,12 +130,13 @@ axon chat
 
 Full-featured interactive chat with:
 
-- Slash commands: `/model`, `/clear`, `/export`, `/agent`, `/orchestrate`, `/job`
-- Async streaming responses
+- Slash commands: `/model`, `/provider`, `/clear`, `/run`, `/spawn`, `/jobs`, `/kill`, `/agents`, `/auto`, `/task`, `/tools`, `/status`, `/trust`, `/route`, `/transparent` (toggle popup background), `/help`, `/quit`
+- Async streaming responses with a minimal braille spinner (via [rattles](https://github.com/vyfor/rattles))
 - Conversation history
 - Background job scheduling
 - Auto-agent mode (continuous background task execution)
 - Multi-agent orchestration commands
+- Monochrome palette — black/white/gray, emphasis via weight and italics instead of hue
 
 ## MCP Gateway
 
