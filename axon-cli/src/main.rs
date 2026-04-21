@@ -277,7 +277,7 @@ async fn main() -> anyhow::Result<()> {
             // First-run detection: if no config exists, offer setup
             if !config::config_exists() && !headless && atty::is(atty::Stream::Stdin) {
                 eprintln!(
-                    "\x1b[36m▲ AXON\x1b[0m  No configuration found. Running setup wizard...\n"
+                    "\x1b[36mAXON\x1b[0m  No configuration found. Running setup wizard...\n"
                 );
                 match onboarding::run_onboarding().await {
                     Ok(true) => {
@@ -803,7 +803,7 @@ async fn main() -> anyhow::Result<()> {
 
                 let llm = providers::build_provider(&kind, &endpoint, &api_key, &model)?;
 
-                eprintln!("\x1b[36m▲\x1b[0m {} · {}\n", kind, model);
+                eprintln!("\x1b[36maxon\x1b[0m {} · {}\n", kind, model);
 
                 let resp = llm
                     .complete(providers::CompletionRequest {
@@ -2772,7 +2772,7 @@ async fn run_chat_remote(peer_addr: SocketAddr) -> anyhow::Result<()> {
     let transport = Transport::bind("0.0.0.0:0".parse()?, &identity).await?;
 
     println!(
-        "\x1b[36m▲ AXON Chat\x1b[0m · remote node {}\n\
+        "\x1b[36mAXON Chat\x1b[0m · remote node {}\n\
          Type your message and press Enter. Empty line or Ctrl-C to quit.\n",
         peer_addr
     );

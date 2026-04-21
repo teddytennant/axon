@@ -1326,7 +1326,7 @@ fn render_header(frame: &mut Frame, state: &ChatState, area: Rect) {
     } else {
         format!("{} {} ", state.provider_kind, model_short)
     };
-    let left = " ▲ axon ";
+    let left = " axon ";
     let w = area.width as usize;
     let pad = w.saturating_sub(left.len()).saturating_sub(right.len());
 

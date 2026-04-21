@@ -582,8 +582,7 @@ fn render(frame: &mut Frame, state: &WizardState) {
 
 fn render_logo(frame: &mut Frame, area: Rect) {
     let logo = vec![Line::from(vec![
-        Span::styled("  ▲ ", Style::default().fg(BRAND_CYAN).bold()),
-        Span::styled("A X O N", Style::default().fg(BRAND_CYAN).bold()),
+        Span::styled("  A X O N", Style::default().fg(BRAND_CYAN).bold()),
         Span::styled(
             "  ·  Decentralized AI Agent Mesh",
             Style::default().fg(BRAND_DIM),

@@ -449,7 +449,7 @@ impl Dashboard {
         };
 
         let header_spans = vec![
-            Span::styled(" \u{25b2} AXON ", Style::default().fg(BRAND_CYAN).bold()),
+            Span::styled(" AXON ", Style::default().fg(BRAND_CYAN).bold()),
             Span::styled("\u{2502} ", Style::default().fg(BRAND_DIM)),
             Span::styled(peer_short, Style::default().fg(Color::White).bold()),
             Span::styled(
