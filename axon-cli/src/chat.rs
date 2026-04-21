@@ -24,7 +24,11 @@ const TEXT: Color = Color::Rgb(170, 170, 178);
 const TEXT_DIM: Color = Color::Rgb(145, 145, 152);
 const LABEL: Color = Color::Rgb(130, 130, 138);
 const POPUP_BG: Color = Color::Rgb(18, 18, 22);
-const SPINNER: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+fn spinner_frame() -> &'static str {
+    use rattles::presets::prelude as presets;
+    presets::dots().current_frame()
+}
 
 // Command registry — single source of truth
 
@@ -1367,7 +1371,6 @@ fn render_messages(frame: &mut Frame, state: &mut ChatState, area: Rect) {
 
     if state.pending.is_some() {
         lines.push(Line::from(""));
-        let f = (state.spinner_tick / 2) % SPINNER.len();
         let elapsed = state
             .pending_start
             .map(|s| s.elapsed().as_secs())
@@ -1378,7 +1381,7 @@ fn render_messages(frame: &mut Frame, state: &mut ChatState, area: Rect) {
             String::new()
         };
         lines.push(Line::from(vec![
-            Span::styled(format!("  {} ", SPINNER[f]), Style::default().fg(ACCENT)),
+            Span::styled(format!("  {} ", spinner_frame()), Style::default().fg(ACCENT)),
             Span::styled("thinking", Style::default().fg(DIM).italic()),
             Span::styled(t, Style::default().fg(FAINT)),
         ]));
@@ -1586,10 +1589,10 @@ fn render_model_picker(frame: &mut Frame, state: &ChatState, area: Rect) {
     if picker.loading {
         let lines = vec![
             Line::from(""),
-            Line::from(Span::styled(
-                "  loading models...",
-                Style::default().fg(DIM).italic(),
-            )),
+            Line::from(vec![
+                Span::styled(format!("  {} ", spinner_frame()), Style::default().fg(ACCENT)),
+                Span::styled("loading models", Style::default().fg(DIM).italic()),
+            ]),
         ];
         let block = Block::default()
             .borders(Borders::ALL)

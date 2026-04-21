@@ -12,15 +12,20 @@ use ratatui::{
 use std::io::stdout;
 use std::time::Duration;
 
-// Theme (matches dashboard).
-const BRAND_CYAN: Color = Color::Rgb(110, 110, 118);
-const BRAND_GREEN: Color = Color::Rgb(95, 140, 105);
-const BRAND_YELLOW: Color = Color::Rgb(150, 135, 70);
-const BRAND_RED: Color = Color::Rgb(150, 70, 70);
+// Monochrome theme — bold/italic carry emphasis instead of hue.
+const BRAND_CYAN: Color = Color::Rgb(170, 170, 178);
+const BRAND_GREEN: Color = Color::Rgb(200, 200, 208);
+const BRAND_YELLOW: Color = Color::Rgb(130, 130, 138);
+const BRAND_RED: Color = Color::Rgb(155, 110, 110);
 const BRAND_DIM: Color = Color::Rgb(70, 70, 78);
 const BRAND_BG: Color = Color::Reset;
-const ACCENT_BLUE: Color = Color::Rgb(100, 115, 150);
+const ACCENT_BLUE: Color = Color::Rgb(200, 200, 208);
 const SURFACE: Color = Color::Reset;
+
+fn spinner_frame() -> &'static str {
+    use rattles::presets::prelude as presets;
+    presets::dots().current_frame()
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Step {
@@ -828,10 +833,10 @@ fn render_model_select(frame: &mut Frame, state: &WizardState, area: Rect) {
         let lines = vec![
             Line::from(""),
             Line::from(""),
-            Line::from(Span::styled(
-                "  ◌ Loading models...",
-                Style::default().fg(BRAND_CYAN),
-            )),
+            Line::from(vec![
+                Span::styled(format!("  {} ", spinner_frame()), Style::default().fg(BRAND_CYAN)),
+                Span::styled("loading models", Style::default().fg(BRAND_DIM).italic()),
+            ]),
         ];
         let block = Block::default()
             .borders(Borders::ALL)
