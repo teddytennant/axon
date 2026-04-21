@@ -734,10 +734,7 @@ async fn mcp_client_full_lifecycle() {
     // Initialize the MCP handshake
     let init_result = client.initialize().await.unwrap();
     assert_eq!(
-        init_result
-            .get("serverInfo")
-            .and_then(|s| s.get("name"))
-            .and_then(|v| v.as_str()),
+        init_result.server_info.as_ref().map(|s| s.name.as_str()),
         Some("axon-test-mcp-server")
     );
 

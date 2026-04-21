@@ -3,6 +3,45 @@ use crate::mcp::schema::McpToolSchema;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+/// Typed response for the MCP `initialize` handshake.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpInitializeResult {
+    #[serde(rename = "protocolVersion")]
+    pub protocol_version: String,
+    #[serde(default)]
+    pub capabilities: serde_json::Map<String, serde_json::Value>,
+    #[serde(rename = "serverInfo", default)]
+    pub server_info: Option<McpServerInfo>,
+    #[serde(default)]
+    pub instructions: Option<String>,
+}
+
+/// Server identification returned as part of MCP initialize.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpServerInfo {
+    pub name: String,
+    #[serde(default)]
+    pub version: Option<String>,
+}
+
+/// Raw tool descriptor as returned by the MCP `tools/list` method.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpRawTool {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(rename = "inputSchema", default)]
+    pub input_schema: Option<serde_json::Value>,
+}
+
+/// Typed `tools/list` response body.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpToolsListResult {
+    #[serde(default)]
+    pub tools: Vec<McpRawTool>,
+}
+
 use std::time::Duration;
 use thiserror::Error;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -148,7 +187,7 @@ impl McpClient {
     }
 
     /// Run the MCP initialization handshake.
-    pub async fn initialize(&self) -> Result<serde_json::Value, McpClientError> {
+    pub async fn initialize(&self) -> Result<McpInitializeResult, McpClientError> {
         let params = serde_json::json!({
             "protocolVersion": "2024-11-05",
             "capabilities": {},
@@ -159,46 +198,28 @@ impl McpClient {
         });
 
         let result = self.request("initialize", Some(params)).await?;
+        let parsed: McpInitializeResult = serde_json::from_value(result)
+            .map_err(|e| McpClientError::ParseError(self.config.name.clone(), e.to_string()))?;
 
         // Send the initialized notification (no response expected)
         self.notify("notifications/initialized", None).await?;
 
         info!("MCP server '{}' initialized", self.config.name);
-        Ok(result)
+        Ok(parsed)
     }
 
     /// Discover tools via tools/list and cache them.
     pub async fn discover_tools(&self) -> Result<Vec<McpToolSchema>, McpClientError> {
         let result = self.request("tools/list", None).await?;
-
-        let tools_value = result.get("tools").ok_or_else(|| {
-            McpClientError::McpError(
-                self.config.name.clone(),
-                "tools/list response missing 'tools' field".into(),
-            )
-        })?;
-
-        let tools_array: Vec<serde_json::Value> = serde_json::from_value(tools_value.clone())
+        let list: McpToolsListResult = serde_json::from_value(result)
             .map_err(|e| McpClientError::ParseError(self.config.name.clone(), e.to_string()))?;
 
-        let mut schemas = Vec::with_capacity(tools_array.len());
-        for tool in tools_array {
-            let name = tool
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
-            let description = tool
-                .get("description")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            let input_schema = tool
-                .get("inputSchema")
-                .cloned()
-                .unwrap_or(serde_json::json!({}));
-
+        let mut schemas = Vec::with_capacity(list.tools.len());
+        for tool in list.tools {
+            let input_schema = tool.input_schema.unwrap_or(serde_json::json!({}));
             schemas.push(McpToolSchema::new(
-                name,
-                description,
+                tool.name,
+                tool.description,
                 input_schema,
                 &self.config.name,
             ));
