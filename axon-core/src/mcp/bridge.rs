@@ -238,7 +238,8 @@ impl Agent for McpBridgeAgent {
             .map_err(|e| AgentError::Internal(e.to_string()))?;
 
         // Serialize result as response payload
-        let payload = serde_json::to_vec(&result).unwrap_or_default();
+        let payload = serde_json::to_vec(&result)
+            .map_err(|e| AgentError::Internal(format!("failed to serialize MCP result: {}", e)))?;
 
         Ok(TaskResponse {
             request_id: request.id,
