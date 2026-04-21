@@ -44,7 +44,7 @@ Current AI agent frameworks are centralized — a single orchestrator dispatches
 - **Trust** — Subjective, experience-based, decay-weighted reputation per peer; persistent sled-backed store; gossip propagation; trust-weighted bid scoring
 - **Task Queue** — Persistent queue with crash recovery and automatic retries
 - **MCP Gateway** — `axon serve-mcp` exposes aggregated MCP tools on stdio; `--mesh` joins the mesh and forwards remote tool calls via QUIC; budget-constrained tool selection for context window optimization; ToolCatalog gossip for decentralized discovery
-- **Orchestration** — TOML-based agent definitions, shared blackboard state, capability-gated hooks, lifecycle management with heartbeat, workflow patterns (pipeline, fan-out, supervisor, swarm dispatch), workflow tracing with correlation IDs
+- **Orchestration** — TOML-based agent definitions, shared blackboard state, capability-gated hooks, lifecycle management with heartbeat, workflow patterns (pipeline, fan-out, delegate, supervisor), workflow tracing with correlation IDs
 - **Runtime** — Async agent executor with pluggable Agent trait
 - **CRDTs** — GCounter, LWWRegister, ORSet for eventually-consistent shared state; peer trust and throughput history in sync tick
 

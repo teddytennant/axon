@@ -36,6 +36,72 @@ pub struct Usage {
     pub completion_tokens: u32,
 }
 
+// Typed provider response bodies. Fields are optional / defaulted because
+// providers occasionally omit keys; prior code tolerated this via
+// `.as_str().unwrap_or("")` on serde_json::Value.
+
+#[derive(Debug, Default, Deserialize)]
+struct OllamaGenerateResponse {
+    #[serde(default)]
+    response: String,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct ChatCompletionMessage {
+    #[serde(default)]
+    content: String,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct ChatCompletionChoice {
+    #[serde(default)]
+    message: ChatCompletionMessage,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawUsage {
+    #[serde(default)]
+    prompt_tokens: u64,
+    #[serde(default)]
+    completion_tokens: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiChatResponse {
+    #[serde(default)]
+    choices: Vec<ChatCompletionChoice>,
+    #[serde(default)]
+    usage: Option<RawUsage>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct OllamaModelDetails {
+    #[serde(default)]
+    family: String,
+    #[serde(default)]
+    parameter_size: String,
+}
+
+fn unknown_model_name() -> String {
+    "unknown".to_string()
+}
+
+#[derive(Debug, Deserialize)]
+struct OllamaModelEntry {
+    #[serde(default = "unknown_model_name")]
+    name: String,
+    #[serde(default)]
+    size: Option<u64>,
+    #[serde(default)]
+    details: OllamaModelDetails,
+}
+
+#[derive(Debug, Deserialize)]
+struct OllamaTagsResponse {
+    #[serde(default)]
+    models: Vec<OllamaModelEntry>,
+}
+
 /// Trait that all LLM providers implement.
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
@@ -129,11 +195,10 @@ impl LlmProvider for OllamaProvider {
             return Err(ProviderError::Api(format!("Ollama {} : {}", status, text)));
         }
 
-        let json: serde_json::Value = resp.json().await?;
-        let text = json["response"].as_str().unwrap_or("").to_string();
+        let json: OllamaGenerateResponse = resp.json().await?;
 
         Ok(CompletionResponse {
-            text,
+            text: json.response,
             model: self.model.clone(),
             usage: None,
         })
@@ -229,16 +294,18 @@ impl LlmProvider for OpenAiCompatibleProvider {
             )));
         }
 
-        let json: serde_json::Value = resp.json().await?;
+        let json: OpenAiChatResponse = resp.json().await?;
 
-        let text = json["choices"][0]["message"]["content"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
+        let text = json
+            .choices
+            .into_iter()
+            .next()
+            .map(|c| c.message.content)
+            .unwrap_or_default();
 
-        let usage = json.get("usage").map(|u| Usage {
-            prompt_tokens: u["prompt_tokens"].as_u64().unwrap_or(0) as u32,
-            completion_tokens: u["completion_tokens"].as_u64().unwrap_or(0) as u32,
+        let usage = json.usage.map(|u| Usage {
+            prompt_tokens: u.prompt_tokens as u32,
+            completion_tokens: u.completion_tokens as u32,
         });
 
         Ok(CompletionResponse {
@@ -385,38 +452,28 @@ async fn fetch_ollama_models(endpoint: &str) -> Result<Vec<ModelInfo>, ProviderE
         )));
     }
 
-    let json: serde_json::Value = resp.json().await?;
-    let models = json["models"]
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .map(|m| {
-                    let name = m["name"].as_str().unwrap_or("unknown").to_string();
-                    let size = m["size"]
-                        .as_u64()
-                        .map(|s| format!("{:.1}GB", s as f64 / 1e9))
-                        .unwrap_or_default();
-                    let family = m["details"]["family"].as_str().unwrap_or("").to_string();
-                    let params = m["details"]["parameter_size"]
-                        .as_str()
-                        .unwrap_or("")
-                        .to_string();
-                    let desc = [family, params, size]
-                        .iter()
-                        .filter(|s| !s.is_empty())
-                        .cloned()
-                        .collect::<Vec<_>>()
-                        .join(" · ");
-                    ModelInfo {
-                        id: name.clone(),
-                        name,
-                        description: desc,
-                        context_length: None,
-                    }
-                })
-                .collect()
+    let json: OllamaTagsResponse = resp.json().await?;
+    let models = json
+        .models
+        .into_iter()
+        .map(|m| {
+            let size = m
+                .size
+                .map(|s| format!("{:.1}GB", s as f64 / 1e9))
+                .unwrap_or_default();
+            let desc = [m.details.family, m.details.parameter_size, size]
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join(" · ");
+            ModelInfo {
+                id: m.name.clone(),
+                name: m.name,
+                description: desc,
+                context_length: None,
+            }
         })
-        .unwrap_or_default();
+        .collect();
     Ok(models)
 }
 
@@ -437,31 +494,26 @@ async fn fetch_openrouter_models(api_key: &str) -> Result<Vec<ModelInfo>, Provid
         )));
     }
 
-    let json: serde_json::Value = resp.json().await?;
-    let mut models: Vec<ModelInfo> = json["data"]
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .map(|m| {
-                    let id = m["id"].as_str().unwrap_or("").to_string();
-                    let name = m["name"].as_str().unwrap_or(&id).to_string();
-                    let ctx = m["context_length"].as_u64();
-                    let desc = m["description"]
-                        .as_str()
-                        .unwrap_or("")
-                        .chars()
-                        .take(80)
-                        .collect::<String>();
-                    ModelInfo {
-                        id,
-                        name,
-                        description: desc,
-                        context_length: ctx,
-                    }
-                })
-                .collect()
+    let json: OpenRouterModelsResponse = resp.json().await?;
+    let mut models: Vec<ModelInfo> = json
+        .data
+        .into_iter()
+        .map(|m| {
+            let name = m.name.unwrap_or_else(|| m.id.clone());
+            let desc = m
+                .description
+                .unwrap_or_default()
+                .chars()
+                .take(80)
+                .collect::<String>();
+            ModelInfo {
+                id: m.id,
+                name,
+                description: desc,
+                context_length: m.context_length,
+            }
         })
-        .unwrap_or_default();
+        .collect();
 
     // Sort: popular models first
     let popular_prefixes = [
@@ -508,23 +560,17 @@ async fn fetch_xai_models(api_key: &str) -> Result<Vec<ModelInfo>, ProviderError
         )));
     }
 
-    let json: serde_json::Value = resp.json().await?;
-    let models = json["data"]
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .map(|m| {
-                    let id = m["id"].as_str().unwrap_or("").to_string();
-                    ModelInfo {
-                        name: id.clone(),
-                        id,
-                        description: String::new(),
-                        context_length: None,
-                    }
-                })
-                .collect()
+    let json: XaiModelsResponse = resp.json().await?;
+    let models = json
+        .data
+        .into_iter()
+        .map(|m| ModelInfo {
+            name: m.id.clone(),
+            id: m.id,
+            description: String::new(),
+            context_length: None,
         })
-        .unwrap_or_default();
+        .collect();
     Ok(models)
 }
 

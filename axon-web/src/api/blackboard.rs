@@ -33,10 +33,7 @@ pub async fn set_entry(
     axum::extract::Path(key): axum::extract::Path<String>,
     Json(req): Json<SetBlackboardEntryRequest>,
 ) -> StatusCode {
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64;
+    let ts = axon_core::util::now_ms();
 
     let mut ws = state.web_state.write().await;
     if let Some(entry) = ws.blackboard_entries.iter_mut().find(|e| e.key == key) {

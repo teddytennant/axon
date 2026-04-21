@@ -1,3 +1,6 @@
+use crate::api::provider_responses::{
+    OllamaTagsResponse, OpenRouterModelsResponse, XaiModelsResponse,
+};
 use crate::state::SharedWebState;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -74,39 +77,29 @@ pub async fn get_models(
                 return Err(StatusCode::BAD_GATEWAY);
             }
 
-            let json: serde_json::Value = resp.json().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+            let json: OllamaTagsResponse =
+                resp.json().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
 
-            json["models"]
-                .as_array()
-                .map(|arr| {
-                    arr.iter()
-                        .map(|m| {
-                            let name = m["name"].as_str().unwrap_or("unknown").to_string();
-                            let family = m["details"]["family"].as_str().unwrap_or("").to_string();
-                            let params = m["details"]["parameter_size"]
-                                .as_str()
-                                .unwrap_or("")
-                                .to_string();
-                            let size = m["size"]
-                                .as_u64()
-                                .map(|s| format!("{:.1}GB", s as f64 / 1e9))
-                                .unwrap_or_default();
-                            let desc = [family, params, size]
-                                .iter()
-                                .filter(|s| !s.is_empty())
-                                .cloned()
-                                .collect::<Vec<_>>()
-                                .join(" · ");
-                            ModelResponse {
-                                id: name.clone(),
-                                name,
-                                description: desc,
-                                context_length: None,
-                            }
-                        })
-                        .collect()
+            json.models
+                .into_iter()
+                .map(|m| {
+                    let size = m
+                        .size
+                        .map(|s| format!("{:.1}GB", s as f64 / 1e9))
+                        .unwrap_or_default();
+                    let desc = [m.details.family, m.details.parameter_size, size]
+                        .into_iter()
+                        .filter(|s| !s.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(" · ");
+                    ModelResponse {
+                        id: m.name.clone(),
+                        name: m.name,
+                        description: desc,
+                        context_length: None,
+                    }
                 })
-                .unwrap_or_default()
+                .collect()
         }
         "openrouter" => {
             let mut req = client

@@ -15,10 +15,7 @@ pub struct PeerResponse {
 
 pub async fn get_peers(State(state): State<Arc<SharedWebState>>) -> Json<Vec<PeerResponse>> {
     let peers = state.peer_table.read().await.all_peers_owned();
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let now = axon_core::util::now_secs();
 
     let result: Vec<PeerResponse> = peers
         .into_iter()

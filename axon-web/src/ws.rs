@@ -51,10 +51,7 @@ async fn handle_ws(socket: WebSocket, state: Arc<SharedWebState>) {
 
             // Peers
             let peers = push_state.peer_table.read().await.all_peers_owned();
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs();
+            let now = axon_core::util::now_secs();
             let peers_json: Vec<serde_json::Value> = peers
                 .iter()
                 .map(|p| {

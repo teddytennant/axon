@@ -5,6 +5,7 @@ pub mod chat;
 pub mod config;
 pub mod mesh;
 pub mod models;
+pub mod provider_responses;
 pub mod status;
 pub mod tasks;
 pub mod tools;

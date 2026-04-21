@@ -31,4 +31,4 @@ pub use trace::{
     emit_step_complete, emit_step_start, emit_workflow_complete, emit_workflow_error, WorkflowSpan,
 };
 pub use types::{PayloadTransform, WorkflowError, WorkflowId, WorkflowResult, WorkflowStep};
-pub use workflow::{delegate, fan_out, pipeline, supervisor, swarm_dispatch};
+pub use workflow::{delegate, fan_out, pipeline, supervisor};

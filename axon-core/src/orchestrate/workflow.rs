@@ -286,24 +286,6 @@ pub fn supervisor(
     })
 }
 
-/// Swarm dispatch: dispatch via the existing negotiation protocol.
-///
-/// In the current implementation this dispatches through the local runtime;
-/// the mesh-level bid collection (TaskOffer/TaskBid) is handled by the node's
-/// event loop. This function provides the orchestration-layer entry point for
-/// capability tasks that should be routed via negotiation.
-pub async fn swarm_dispatch(
-    runtime: &Runtime,
-    capability: &Capability,
-    payload: Vec<u8>,
-    timeout_ms: u64,
-    workflow_id: WorkflowId,
-) -> Result<WorkflowResult, WorkflowError> {
-    // Identical to delegate at the local dispatch level.
-    // Mesh-level swarm negotiation is triggered by the transport layer.
-    delegate(runtime, capability, payload, timeout_ms, workflow_id).await
-}
-
 // Tests
 
 #[cfg(test)]

@@ -1,4 +1,5 @@
 use crate::protocol::{Capability, PeerInfo};
+use crate::util::{hex_decode, now_secs};
 use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
 use std::collections::HashMap;
 use tokio::sync::mpsc;
@@ -144,25 +145,6 @@ fn parse_capability_tags(s: &str) -> Vec<Capability> {
             }
         })
         .collect()
-}
-
-fn hex_decode(s: &str) -> Vec<u8> {
-    if !s.is_ascii() {
-        return vec![];
-    }
-    // Guard against odd-length strings to avoid out-of-bounds slice
-    let len = s.len() & !1; // round down to even
-    (0..len)
-        .step_by(2)
-        .filter_map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok())
-        .collect()
-}
-
-fn now_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
 }
 
 #[cfg(test)]

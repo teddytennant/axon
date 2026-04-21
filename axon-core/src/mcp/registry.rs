@@ -1,4 +1,5 @@
 use crate::mcp::schema::{BudgetSearchResult, McpToolSchema, ToolFilter, ToolSearchResult};
+use crate::util::{hex_encode as hex_id, now_secs};
 use std::collections::HashMap;
 use tracing::info;
 
@@ -400,16 +401,6 @@ fn relevance_score(schema: &McpToolSchema, query: &str) -> f64 {
     score.min(1.0)
 }
 
-fn hex_id(id: &[u8]) -> String {
-    id.iter().map(|b| format!("{:02x}", b)).collect()
-}
-
-fn now_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
 
 #[cfg(test)]
 mod tests {

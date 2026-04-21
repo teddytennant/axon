@@ -1,4 +1,4 @@
-use crate::mcp::McpToolSchema;
+use crate::mcp::schema::McpToolSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

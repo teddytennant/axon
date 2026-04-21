@@ -230,11 +230,7 @@ impl McpStdioServer {
             // from the same server, or another remote tool), disambiguate with
             // the peer's short ID.
             if tools.contains_key(&exposed_name) {
-                let peer_short: String = peer_id
-                    .iter()
-                    .take(4)
-                    .map(|b| format!("{:02x}", b))
-                    .collect();
+                let peer_short = crate::util::peer_short(&peer_id, 4);
                 exposed_name = format!("{}@{}", exposed_name, peer_short);
             }
 

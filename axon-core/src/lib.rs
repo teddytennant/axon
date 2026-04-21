@@ -13,6 +13,7 @@ pub mod runtime;
 pub mod taskqueue;
 pub mod transport;
 pub mod trust;
+pub mod util;
 
 pub use crdt::{GCounter, LWWRegister, ORSet};
 pub use dashboard::{

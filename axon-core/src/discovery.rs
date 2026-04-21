@@ -1,7 +1,11 @@
 use crate::protocol::{Capability, PeerInfo};
+use crate::util::{now_secs, peer_short as short_id_util};
 use std::collections::HashMap;
-use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::info;
+
+fn short_id(id: &[u8]) -> String {
+    short_id_util(id, 4)
+}
 
 /// Peer liveness timeout — peers not seen within this window are considered dead.
 const PEER_TIMEOUT_SECS: u64 = 60;
@@ -132,20 +136,6 @@ impl PeerTable {
         }
         new_count
     }
-}
-
-fn now_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
-
-fn short_id(id: &[u8]) -> String {
-    id.iter()
-        .take(4)
-        .map(|b| format!("{:02x}", b))
-        .collect::<String>()
 }
 
 #[cfg(test)]
