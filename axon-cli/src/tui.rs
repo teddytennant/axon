@@ -1695,12 +1695,12 @@ impl Dashboard {
                 )),
                 Line::from(""),
                 Line::from(Span::styled(
-                    "  No workflows running. Use pipeline(), fan_out(), delegate(), or swarm_dispatch().",
+                    "  No workflows running. Use pipeline(), fan_out(), or delegate().",
                     Style::default().fg(BRAND_DIM),
                 )),
                 Line::from(""),
                 Line::from(Span::styled(
-                    "  Patterns: Pipeline \u{2192} FanOut \u{21c6} Delegate \u{27a4} Swarm \u{2731}",
+                    "  Patterns: Pipeline \u{2192} FanOut \u{21c6} Delegate \u{27a4}",
                     Style::default().fg(BRAND_DIM),
                 )),
             ])

@@ -46,7 +46,7 @@ export default function WorkflowsPage() {
         <div className="flex flex-col items-center justify-center py-24">
           <p className="text-sm text-[#3a3a3a]">No workflows running</p>
           <p className="mt-1 font-mono text-xs text-[#2a2a2a]">
-            pipeline(), fan_out(), delegate(), swarm_dispatch()
+            pipeline(), fan_out(), delegate()
           </p>
         </div>
       ) : (

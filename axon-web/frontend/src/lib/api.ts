@@ -6,10 +6,8 @@ import type {
   TaskStatsResponse,
   TrustEntry,
   ToolResponse,
-  ToolSearchParams,
   ConfigResponse,
   LlmConfigSection,
-  ModelResponse,
   ChatRequest,
   ValidateResponse,
 } from './types';
@@ -32,17 +30,7 @@ export const getAgents = () => request<AgentInfo[]>('/api/agents');
 export const getTaskLog = () => request<TaskLogEntry[]>('/api/tasks/log');
 export const getTaskStats = () => request<TaskStatsResponse>('/api/tasks/stats');
 export const getTrust = () => request<TrustEntry[]>('/api/trust');
-export const getPeerTrust = (peerId: string) => request<TrustEntry>(`/api/trust/${peerId}`);
 export const getTools = () => request<ToolResponse[]>('/api/tools');
-export const searchTools = (params: ToolSearchParams) => {
-  const qs = new URLSearchParams();
-  if (params.q) qs.set('q', params.q);
-  if (params.server) qs.set('server', params.server);
-  if (params.limit) qs.set('limit', String(params.limit));
-  return request<ToolResponse[]>(`/api/tools/search?${qs}`);
-};
-export const getModels = (provider: string) =>
-  request<ModelResponse[]>(`/api/models/${provider}`);
 export const getConfig = () => request<ConfigResponse>('/api/config');
 
 export const updateConfig = (data: Partial<ConfigResponse>) =>
@@ -68,16 +56,6 @@ export const setKey = (provider: string, api_key: string) =>
     method: 'PUT',
     body: JSON.stringify({ api_key }),
   });
-
-/** Returns an EventSource for SSE streaming. Caller is responsible for closing it. */
-export function sendChat(_req: ChatRequest): EventSource {
-  // POST via EventSource isn't supported; use fetch SSE pattern
-  // We POST the body, then read the response as a stream
-  // For simplicity, use a URL-encoded approach — but SSE requires GET
-  // So we send the request body as a query param (base64) — or better: use fetch API
-  // Actually, we'll use fetch with ReadableStream
-  throw new Error('Use sendChatFetch instead');
-}
 
 /** Stream chat response via fetch + ReadableStream. Returns async generator of chunks. */
 export async function* sendChatStream(req: ChatRequest): AsyncGenerator<string> {
