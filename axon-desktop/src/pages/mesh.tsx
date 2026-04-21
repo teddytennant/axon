@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { usePeers } from '../hooks/use-api';
 import { useWebSocket } from '../hooks/use-websocket';
+import { EmptyState, GridSkeleton, PageHeader } from '../components/page';
 import type { PeerResponse } from '../lib/types';
 
 export default function MeshPage() {
@@ -11,19 +12,14 @@ export default function MeshPage() {
   useEffect(() => { if (init) setPeers(init); }, [init]);
   useEffect(() => subscribe('peers', d => setPeers(d)), [subscribe]);
 
-  if (isLoading) return <Skeleton />;
+  if (isLoading) return <GridSkeleton cards={6} />;
 
   return (
     <div className="h-full overflow-auto p-6">
-      <div className="mb-6 flex items-baseline gap-3">
-        <span className="text-[11px] font-medium tracking-wider text-[#555]">mesh</span>
-        <span className="text-[10px] tabular-nums text-[#2e2e2e]">{peers.length}</span>
-      </div>
+      <PageHeader label="mesh" count={peers.length} />
 
       {peers.length === 0 ? (
-        <div className="flex h-48 items-center justify-center">
-          <p className="text-[11px] text-[#1e1e1e]">no peers connected</p>
-        </div>
+        <EmptyState text="no peers connected" />
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {peers.map(p => <PeerCard key={p.peer_id} peer={p} />)}
@@ -67,15 +63,3 @@ function PeerCard({ peer: p }: { peer: PeerResponse }) {
   );
 }
 
-function Skeleton() {
-  return (
-    <div className="p-6">
-      <div className="mb-6 h-4 w-16 rounded animate-shimmer" />
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="h-28 rounded-lg border border-[#141414] animate-shimmer" />
-        ))}
-      </div>
-    </div>
-  );
-}

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAgents } from '../hooks/use-api';
 import { useWebSocket } from '../hooks/use-websocket';
+import { EmptyState, GridSkeleton, PageHeader } from '../components/page';
 import type { AgentInfo } from '../lib/types';
 
 export default function AgentsPage() {
@@ -11,14 +12,14 @@ export default function AgentsPage() {
   useEffect(() => { if (init) setAgents(init); }, [init]);
   useEffect(() => subscribe('agents', d => setAgents(d)), [subscribe]);
 
-  if (isLoading) return <Skeleton />;
+  if (isLoading) return <GridSkeleton headerWidth={20} cards={6} cardHeight={36} />;
 
   return (
     <div className="h-full overflow-auto p-6">
       <PageHeader label="agents" count={agents.length} />
 
       {agents.length === 0 ? (
-        <Empty text="no agents registered" />
+        <EmptyState text="no agents registered" />
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {agents.map(a => <AgentCard key={a.name} agent={a} />)}
@@ -106,32 +107,3 @@ function StatCell({ label, value }: { label: string; value: string }) {
   );
 }
 
-function PageHeader({ label, count }: { label: string; count: number }) {
-  return (
-    <div className="mb-6 flex items-baseline gap-3">
-      <span className="text-[11px] font-medium tracking-wider text-[#555]">{label}</span>
-      <span className="text-[10px] tabular-nums text-[#2e2e2e]">{count}</span>
-    </div>
-  );
-}
-
-function Empty({ text }: { text: string }) {
-  return (
-    <div className="flex h-48 items-center justify-center">
-      <p className="text-[11px] text-[#1e1e1e]">{text}</p>
-    </div>
-  );
-}
-
-function Skeleton() {
-  return (
-    <div className="p-6">
-      <div className="mb-6 h-4 w-20 rounded animate-shimmer" />
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="h-36 rounded-lg border border-[#141414] animate-shimmer" />
-        ))}
-      </div>
-    </div>
-  );
-}

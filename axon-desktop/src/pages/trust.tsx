@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTrust } from '../hooks/use-api';
 import { useWebSocket } from '../hooks/use-websocket';
+import { EmptyState, GridSkeleton, PageHeader } from '../components/page';
 import type { TrustEntry } from '../lib/types';
 
 export default function TrustPage() {
@@ -13,19 +14,14 @@ export default function TrustPage() {
 
   const sorted = [...entries].sort((a, b) => b.overall - a.overall);
 
-  if (isLoading) return <Skeleton />;
+  if (isLoading) return <GridSkeleton cards={null} />;
 
   return (
     <div className="h-full overflow-auto p-6">
-      <div className="mb-6 flex items-baseline gap-3">
-        <span className="text-[11px] font-medium tracking-wider text-[#555]">trust</span>
-        <span className="text-[10px] tabular-nums text-[#2e2e2e]">{entries.length}</span>
-      </div>
+      <PageHeader label="trust" count={entries.length} />
 
       {sorted.length === 0 ? (
-        <div className="flex h-48 items-center justify-center">
-          <p className="text-[11px] text-[#1e1e1e]">no trust data</p>
-        </div>
+        <EmptyState text="no trust data" />
       ) : (
         <div className="overflow-hidden rounded-lg border border-[#1e1e1e]">
           <table className="w-full text-left">
@@ -78,11 +74,3 @@ function TrustRow({ entry: e }: { entry: TrustEntry }) {
   );
 }
 
-function Skeleton() {
-  return (
-    <div className="p-6">
-      <div className="mb-6 h-4 w-16 rounded animate-shimmer" />
-      <div className="h-48 rounded-lg border border-[#141414] animate-shimmer" />
-    </div>
-  );
-}

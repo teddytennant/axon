@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useWebSocket } from '../hooks/use-websocket';
+import { EmptyState } from '../components/page';
 import type { WorkflowSnapshot, WorkflowsResponse } from '../lib/types';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
@@ -47,9 +48,7 @@ export default function WorkflowsPage() {
       </div>
 
       {all.length === 0 ? (
-        <div className="flex h-40 items-center justify-center">
-          <p className="text-[11px] text-[#1e1e1e]">no workflows running</p>
-        </div>
+        <EmptyState text="no workflows running" height={40} />
       ) : (
         <div className="space-y-1.5">
           {all.map(wf => (

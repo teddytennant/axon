@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { clsx } from 'clsx';
 import { useTaskLog, useTaskStats } from '../hooks/use-api';
 import { useWebSocket } from '../hooks/use-websocket';
+import { EmptyState, GridSkeleton, PageHeader } from '../components/page';
 import type { TaskLogEntry, TaskStatsResponse } from '../lib/types';
 
 export default function TasksPage() {
@@ -13,20 +14,16 @@ export default function TasksPage() {
   useEffect(() => { if (initTasks) setTasks(initTasks); }, [initTasks]);
   useEffect(() => subscribe('tasks', d => setTasks(d.recent)), [subscribe]);
 
-  if (tl || sl) return <Skeleton />;
+  if (tl || sl) return <GridSkeleton statsCount={5} cards={null} />;
 
   return (
     <div className="h-full overflow-auto p-6">
-      <div className="mb-6 flex items-baseline gap-3">
-        <span className="text-[11px] font-medium tracking-wider text-[#555]">tasks</span>
-      </div>
+      <PageHeader label="tasks" />
 
       {stats && <StatsRow stats={stats} />}
 
       {tasks.length === 0 ? (
-        <div className="flex h-48 items-center justify-center">
-          <p className="text-[11px] text-[#1e1e1e]">no tasks recorded</p>
-        </div>
+        <EmptyState text="no tasks recorded" />
       ) : (
         <div className="overflow-hidden rounded-lg border border-[#1e1e1e]">
           <table className="w-full text-left">
@@ -104,16 +101,3 @@ function TaskRow({ task: t }: { task: TaskLogEntry }) {
   );
 }
 
-function Skeleton() {
-  return (
-    <div className="p-6">
-      <div className="mb-6 h-4 w-16 rounded animate-shimmer" />
-      <div className="mb-6 grid grid-cols-5 gap-2">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="h-20 rounded-lg border border-[#141414] animate-shimmer" />
-        ))}
-      </div>
-      <div className="h-48 rounded-lg border border-[#141414] animate-shimmer" />
-    </div>
-  );
-}

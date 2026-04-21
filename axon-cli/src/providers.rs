@@ -1,8 +1,6 @@
 use async_trait::async_trait;
-use axon_web::providers::{
-    self as shared, FetchModelsError, OllamaGenerateResponse, OllamaTagsResponse,
-    OpenAiChatResponse, OpenRouterModelsResponse, XaiModelsResponse,
-};
+use axon_web::api::provider_responses::{OllamaGenerateResponse, OpenAiChatResponse};
+use axon_web::providers::{self as shared, FetchModelsError};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -37,10 +35,8 @@ pub struct CompletionRequest {
 
 /// A completion response from any provider.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct CompletionResponse {
     pub text: String,
-    pub model: String,
     pub usage: Option<Usage>,
 }
 
@@ -147,7 +143,6 @@ impl LlmProvider for OllamaProvider {
 
         Ok(CompletionResponse {
             text: json.response,
-            model: self.model.clone(),
             usage: None,
         })
     }
@@ -256,11 +251,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
             completion_tokens: u.completion_tokens as u32,
         });
 
-        Ok(CompletionResponse {
-            text,
-            model: self.model.clone(),
-            usage,
-        })
+        Ok(CompletionResponse { text, usage })
     }
 }
 
@@ -321,205 +312,31 @@ pub fn build_provider(
 
 /// Resolve the API key: explicit flag > env var > empty.
 pub fn resolve_api_key(explicit: &str, kind: &ProviderKind) -> String {
-    if !explicit.is_empty() {
-        return explicit.to_string();
-    }
-    let env_var = match kind {
-        ProviderKind::Xai => "XAI_API_KEY",
-        ProviderKind::OpenRouter => "OPENROUTER_API_KEY",
-        ProviderKind::Custom => "LLM_API_KEY",
-        ProviderKind::Ollama => return String::new(),
-    };
-    std::env::var(env_var).unwrap_or_default()
+    shared::resolve_api_key(explicit, &kind.to_string())
 }
 
 /// Return the default model for a provider.
-///
-/// Users are expected to override these via `axon setup` or the settings
-/// UI; the defaults are only used when no config exists.
 pub fn default_model(kind: &ProviderKind) -> &'static str {
-    match kind {
-        ProviderKind::Ollama => "llama3",
-        ProviderKind::Xai => "grok-2-latest",
-        ProviderKind::OpenRouter => "anthropic/claude-sonnet-4",
-        ProviderKind::Custom => "default",
-    }
+    shared::default_model(&kind.to_string())
 }
 
 /// Return the default endpoint for a provider.
 pub fn default_endpoint(kind: &ProviderKind) -> &'static str {
-    match kind {
-        ProviderKind::Ollama => "http://localhost:11434",
-        ProviderKind::Xai => "https://api.x.ai/v1",
-        ProviderKind::OpenRouter => "https://openrouter.ai/api/v1",
-        ProviderKind::Custom => "",
-    }
+    shared::default_endpoint(&kind.to_string())
 }
 
-// Model listing
+// Model listing — re-export the shared type so callers still see `ModelInfo`.
+pub use axon_web::providers::ModelInfo;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ModelInfo {
-    pub id: String,
-    pub name: String,
-    pub description: String,
-    pub context_length: Option<u64>,
-}
-
-/// Fetch available models for a provider.
+/// Fetch available models for a provider. Delegates to the shared
+/// implementation in `axon_web::providers` so web + CLI share the exact
+/// same list/parse logic.
 pub async fn fetch_models(
     kind: &ProviderKind,
     endpoint: &str,
     api_key: &str,
 ) -> Result<Vec<ModelInfo>, ProviderError> {
-    match kind {
-        ProviderKind::Ollama => fetch_ollama_models(endpoint).await,
-        ProviderKind::OpenRouter => fetch_openrouter_models(api_key).await,
-        ProviderKind::Xai => fetch_xai_models(api_key).await,
-        ProviderKind::Custom => Ok(vec![ModelInfo {
-            id: "default".into(),
-            name: "Custom Model".into(),
-            description: "Specify model name manually".into(),
-            context_length: None,
-        }]),
-    }
-}
-
-async fn fetch_ollama_models(endpoint: &str) -> Result<Vec<ModelInfo>, ProviderError> {
-    let client = reqwest::Client::new();
-    let resp = client
-        .get(format!("{}/api/tags", endpoint))
-        .timeout(std::time::Duration::from_secs(5))
-        .send()
-        .await?;
-
-    if !resp.status().is_success() {
-        return Err(ProviderError::Api(format!(
-            "Ollama API returned {}",
-            resp.status()
-        )));
-    }
-
-    let json: OllamaTagsResponse = resp.json().await?;
-    let models = json
-        .models
-        .into_iter()
-        .map(|m| {
-            let size = m
-                .size
-                .map(|s| format!("{:.1}GB", s as f64 / 1e9))
-                .unwrap_or_default();
-            let desc = [m.details.family, m.details.parameter_size, size]
-                .into_iter()
-                .filter(|s| !s.is_empty())
-                .collect::<Vec<_>>()
-                .join(" · ");
-            ModelInfo {
-                id: m.name.clone(),
-                name: m.name,
-                description: desc,
-                context_length: None,
-            }
-        })
-        .collect();
-    Ok(models)
-}
-
-async fn fetch_openrouter_models(api_key: &str) -> Result<Vec<ModelInfo>, ProviderError> {
-    let client = reqwest::Client::new();
-    let mut req = client
-        .get("https://openrouter.ai/api/v1/models")
-        .timeout(std::time::Duration::from_secs(10));
-    if !api_key.is_empty() {
-        req = req.bearer_auth(api_key);
-    }
-    let resp = req.send().await?;
-
-    if !resp.status().is_success() {
-        return Err(ProviderError::Api(format!(
-            "OpenRouter API returned {}",
-            resp.status()
-        )));
-    }
-
-    let json: OpenRouterModelsResponse = resp.json().await?;
-    let mut models: Vec<ModelInfo> = json
-        .data
-        .into_iter()
-        .map(|m| {
-            let name = m.name.unwrap_or_else(|| m.id.clone());
-            let desc = m
-                .description
-                .unwrap_or_default()
-                .chars()
-                .take(80)
-                .collect::<String>();
-            ModelInfo {
-                id: m.id,
-                name,
-                description: desc,
-                context_length: m.context_length,
-            }
-        })
-        .collect();
-
-    // Sort: popular models first
-    let popular_prefixes = [
-        "anthropic/",
-        "openai/",
-        "google/",
-        "x-ai/",
-        "meta-llama/",
-        "deepseek/",
-        "mistralai/",
-    ];
-    models.sort_by(|a, b| {
-        let a_pop = popular_prefixes.iter().any(|p| a.id.starts_with(p));
-        let b_pop = popular_prefixes.iter().any(|p| b.id.starts_with(p));
-        b_pop.cmp(&a_pop).then(a.id.cmp(&b.id))
-    });
-
-    Ok(models)
-}
-
-/// Query the xAI /v1/models endpoint.
-///
-/// xAI returns `{ "data": [ { "id": "...", ... } ] }`. An empty / missing
-/// API key yields `ProviderError::Config` rather than a silent placeholder
-/// list, so callers see why discovery failed.
-async fn fetch_xai_models(api_key: &str) -> Result<Vec<ModelInfo>, ProviderError> {
-    if api_key.is_empty() {
-        return Err(ProviderError::Config(
-            "xAI model discovery requires an API key".into(),
-        ));
-    }
-    let client = reqwest::Client::new();
-    let resp = client
-        .get("https://api.x.ai/v1/models")
-        .bearer_auth(api_key)
-        .timeout(std::time::Duration::from_secs(10))
-        .send()
-        .await?;
-
-    if !resp.status().is_success() {
-        return Err(ProviderError::Api(format!(
-            "xAI API returned {}",
-            resp.status()
-        )));
-    }
-
-    let json: XaiModelsResponse = resp.json().await?;
-    let models = json
-        .data
-        .into_iter()
-        .map(|m| ModelInfo {
-            name: m.id.clone(),
-            id: m.id,
-            description: String::new(),
-            context_length: None,
-        })
-        .collect();
-    Ok(models)
+    Ok(shared::fetch_models(&kind.to_string(), endpoint, api_key).await?)
 }
 
 #[cfg(test)]
