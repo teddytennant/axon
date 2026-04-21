@@ -25,6 +25,14 @@ const TEXT_DIM: Color = Color::Rgb(145, 145, 152);
 const LABEL: Color = Color::Rgb(130, 130, 138);
 const POPUP_BG: Color = Color::Rgb(18, 18, 22);
 
+fn popup_bg(state: &ChatState) -> Color {
+    if state.transparent {
+        Color::Reset
+    } else {
+        POPUP_BG
+    }
+}
+
 fn spinner_frame() -> &'static str {
     use rattles::presets::prelude as presets;
     presets::dots().current_frame()
@@ -158,6 +166,13 @@ const COMMANDS: &[CmdDef] = &[
         category: "session",
     },
     CmdDef {
+        name: "transparent",
+        aliases: &["tp"],
+        args: "",
+        desc: "toggle transparent popup background",
+        category: "session",
+    },
+    CmdDef {
         name: "help",
         aliases: &["h", "?"],
         args: "",
@@ -282,6 +297,7 @@ struct ChatState {
     total_completion_tokens: u64,
 
     show_help: bool,
+    transparent: bool,
     model_picker: Option<ModelPicker>,
 
     // Autocomplete
@@ -413,6 +429,7 @@ pub async fn run_chat() -> anyhow::Result<()> {
         total_prompt_tokens: 0,
         total_completion_tokens: 0,
         show_help: false,
+        transparent: false,
         model_picker: None,
         ac_cursor: 0,
         jobs: Vec::new(),
@@ -780,6 +797,14 @@ async fn handle_command(name: &str, arg: &str, state: &mut ChatState, raw: &str)
         }
         "help" => {
             state.show_help = true;
+        }
+        "transparent" => {
+            state.transparent = !state.transparent;
+            state.sys_msg(if state.transparent {
+                "background → transparent".into()
+            } else {
+                "background → opaque".into()
+            });
         }
 
         "model" => {
@@ -1270,7 +1295,7 @@ fn render(frame: &mut Frame, state: &mut ChatState) {
     }
 
     if state.show_help {
-        render_help(frame, area);
+        render_help(frame, state, area);
     }
     if state.model_picker.is_some() {
         render_model_picker(frame, state, area);
@@ -1455,7 +1480,7 @@ fn render_autocomplete(frame: &mut Frame, state: &ChatState, input_area: Rect) {
     let y = input_area.y.saturating_sub(h);
     let popup = Rect::new(x, y, w, h);
 
-    frame.render_widget(Block::default().style(Style::default().bg(POPUP_BG)), popup);
+    frame.render_widget(Block::default().style(Style::default().bg(popup_bg(state))), popup);
 
     let mut lines: Vec<Line> = Vec::new();
     for (i, cmd) in suggestions.iter().enumerate().take(10) {
@@ -1491,7 +1516,7 @@ fn render_autocomplete(frame: &mut Frame, state: &ChatState, input_area: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(FAINT))
-        .style(Style::default().bg(POPUP_BG));
+        .style(Style::default().bg(popup_bg(state)));
     frame.render_widget(Paragraph::new(lines).block(block), popup);
 }
 
@@ -1526,12 +1551,12 @@ fn render_status_bar(frame: &mut Frame, state: &ChatState, area: Rect) {
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
-fn render_help(frame: &mut Frame, area: Rect) {
+fn render_help(frame: &mut Frame, state: &ChatState, area: Rect) {
     let w = 60u16.min(area.width.saturating_sub(4));
     let h = 26u16.min(area.height.saturating_sub(2));
     let popup = centered(area, w, h);
 
-    frame.render_widget(Block::default().style(Style::default().bg(POPUP_BG)), popup);
+    frame.render_widget(Block::default().style(Style::default().bg(popup_bg(state))), popup);
 
     let mut lines = vec![
         Line::from(""),
@@ -1571,7 +1596,7 @@ fn render_help(frame: &mut Frame, area: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(FAINT))
-        .style(Style::default().bg(POPUP_BG));
+        .style(Style::default().bg(popup_bg(state)));
     frame.render_widget(Paragraph::new(lines).block(block), popup);
 }
 
@@ -1584,7 +1609,7 @@ fn render_model_picker(frame: &mut Frame, state: &ChatState, area: Rect) {
     let h = (area.height - 4).min(24);
     let popup = centered(area, w, h);
 
-    frame.render_widget(Block::default().style(Style::default().bg(POPUP_BG)), popup);
+    frame.render_widget(Block::default().style(Style::default().bg(popup_bg(state))), popup);
 
     if picker.loading {
         let lines = vec![
@@ -1598,7 +1623,7 @@ fn render_model_picker(frame: &mut Frame, state: &ChatState, area: Rect) {
             .borders(Borders::ALL)
             .border_style(Style::default().fg(FAINT))
             .title(Span::styled(" model ", Style::default().fg(ACCENT)))
-            .style(Style::default().bg(POPUP_BG));
+            .style(Style::default().bg(popup_bg(state)));
         frame.render_widget(Paragraph::new(lines).block(block), popup);
         return;
     }
@@ -1672,7 +1697,7 @@ fn render_model_picker(frame: &mut Frame, state: &ChatState, area: Rect) {
             " ↑↓ enter esc ",
             Style::default().fg(FAINT),
         )))
-        .style(Style::default().bg(POPUP_BG));
+        .style(Style::default().bg(popup_bg(state)));
     frame.render_widget(Paragraph::new(lines).block(block), popup);
 }
 
