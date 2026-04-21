@@ -1,4 +1,7 @@
-// Types matching the axon-web Rust API responses exactly
+// Types matching the axon-web Rust API responses exactly.
+//
+// Kept manually in sync with `axon-desktop/src/lib/types.ts`. Both files
+// mirror the same backend shapes; drift between them is always a bug.
 
 export interface StatusResponse {
   peer_id: string;
@@ -130,6 +133,11 @@ export interface ValidateResponse {
   error: string | null;
 }
 
+/** Uniform `{ ok: true }` acknowledgement returned by mutating endpoints. */
+export interface OkResponse {
+  ok: boolean;
+}
+
 export interface StepSnapshot {
   capability: string;
   status: string;
@@ -159,21 +167,45 @@ export interface BlackboardEntry {
   timestamp_ms: number;
 }
 
-// WebSocket event types
-export type WsEventType = 'metrics' | 'peers' | 'agents' | 'tasks' | 'trust' | 'log' | 'workflows' | 'blackboard';
+// WebSocket event types — mirror of axon_web::ws::WsEvent (serde tag = "type", content = "data")
 
-export interface WsEvent {
-  type: WsEventType;
-  data: unknown;
+export interface WsMetricsData {
+  uptime_secs: number;
+  tasks_total: number;
+  tasks_failed: number;
+  messages_received: number;
+  messages_sent: number;
+  throughput: number[];
+}
+
+export interface WsTaskStats {
+  pending: number;
+  running: number;
+  completed: number;
+  failed: number;
+  timed_out: number;
 }
 
 export interface WsTasksData {
-  stats: {
-    pending: number;
-    running: number;
-    completed: number;
-    failed: number;
-    timed_out: number;
-  };
+  stats: WsTaskStats;
   recent: TaskLogEntry[];
 }
+
+/**
+ * Discriminated union of websocket frames pushed by `/api/ws/live`.
+ * Consumers should switch on `type` — TypeScript narrows `data` automatically.
+ */
+export type WsEvent =
+  | { type: 'metrics';    data: WsMetricsData }
+  | { type: 'peers';      data: PeerResponse[] }
+  | { type: 'agents';     data: AgentInfo[] }
+  | { type: 'tasks';      data: WsTasksData }
+  | { type: 'trust';      data: TrustEntry[] }
+  | { type: 'log';        data: string }
+  | { type: 'workflows';  data: WorkflowsResponse }
+  | { type: 'blackboard'; data: BlackboardEntry[] };
+
+export type WsEventType = WsEvent['type'];
+
+/** Extract the `data` type for a specific event tag. */
+export type WsEventDataFor<T extends WsEventType> = Extract<WsEvent, { type: T }>['data'];

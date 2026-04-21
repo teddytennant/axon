@@ -57,10 +57,25 @@ pub struct ChatCompletionChoice {
     pub message: ChatCompletionMessage,
 }
 
+/// Token usage reported by OpenAI-compatible providers.
+///
+/// `u64` to match provider wire values; callers narrow as needed.
+#[derive(Debug, Default, Deserialize)]
+pub struct RawUsage {
+    #[serde(default)]
+    pub prompt_tokens: u64,
+    #[serde(default)]
+    pub completion_tokens: u64,
+}
+
 #[derive(Debug, Default, Deserialize)]
 pub struct OpenAiChatResponse {
     #[serde(default)]
     pub choices: Vec<ChatCompletionChoice>,
+    /// Present on non-streaming responses; omitted by some providers and by
+    /// streamed endpoints.
+    #[serde(default)]
+    pub usage: Option<RawUsage>,
 }
 
 // OpenRouter models
