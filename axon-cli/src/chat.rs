@@ -246,11 +246,9 @@ impl ModelPicker {
 
 // Background jobs
 
-#[allow(dead_code)]
 struct BackgroundJob {
     id: usize,
     capability: String,
-    payload: String,
     started: Instant,
     rx: Option<oneshot::Receiver<Result<String, String>>>,
     result: Option<Result<String, String>>,
@@ -1126,7 +1124,6 @@ fn spawn_job(state: &mut ChatState, cap: &str, payload: &str) {
     state.jobs.push(BackgroundJob {
         id,
         capability: cap.to_string(),
-        payload: payload.to_string(),
         started: Instant::now(),
         rx: Some(rx),
         result: None,

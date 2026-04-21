@@ -1,15 +1,13 @@
 use crate::mcp::schema::{BudgetSearchResult, McpToolSchema, ToolFilter, ToolSearchResult};
-use crate::util::{hex_encode as hex_id, now_secs};
+use crate::util::hex_encode as hex_id;
 use std::collections::HashMap;
 use tracing::info;
 
 /// Tracks which peer offers a given tool.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 struct ToolEntry {
     schema: McpToolSchema,
     peer_id: Vec<u8>,
-    registered_at: u64,
 }
 
 /// Decentralized MCP tool registry.
@@ -51,7 +49,6 @@ impl ToolRegistry {
     /// registered tools from the same peer.
     pub fn register_peer_tools(&mut self, peer_id: &[u8], tools: Vec<McpToolSchema>) {
         let peer_hex = hex_id(peer_id);
-        let now = now_secs();
 
         // Remove old entries for this peer
         self.remove_peer(peer_id);
@@ -87,7 +84,6 @@ impl ToolRegistry {
                 ToolEntry {
                     schema,
                     peer_id: peer_id.to_vec(),
-                    registered_at: now,
                 },
             );
         }
