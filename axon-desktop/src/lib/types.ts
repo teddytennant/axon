@@ -65,21 +65,6 @@ export interface TrustEntry {
   observation_count: number;
 }
 
-export interface ToolResponse {
-  name: string;
-  server: string;
-  description: string;
-  peer_id: string;
-  score: number;
-}
-
-export interface ToolSearchParams {
-  q?: string;
-  server?: string;
-  limit?: number;
-  budget?: number;
-}
-
 export interface NodeConfigSection {
   listen: string;
   peers: string[];

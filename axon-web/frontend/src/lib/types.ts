@@ -73,13 +73,6 @@ export interface ToolResponse {
   score: number;
 }
 
-export interface ToolSearchParams {
-  q?: string;
-  server?: string;
-  limit?: number;
-  budget?: number;
-}
-
 export interface NodeConfigSection {
   listen: string;
   peers: string[];
@@ -172,15 +165,6 @@ export type WsEventType = 'metrics' | 'peers' | 'agents' | 'tasks' | 'trust' | '
 export interface WsEvent {
   type: WsEventType;
   data: unknown;
-}
-
-export interface WsMetricsData {
-  uptime_secs: number;
-  tasks_total: number;
-  tasks_failed: number;
-  messages_received: number;
-  messages_sent: number;
-  throughput: number[];
 }
 
 export interface WsTasksData {
