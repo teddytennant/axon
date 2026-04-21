@@ -854,7 +854,13 @@ fn handle_trust_command(action: TrustAction) {
             match PersistentTrustStore::open(&path, TrustScorer::default()) {
                 Ok(store) => {
                     if let Some(peer_hex) = peer {
-                        let peer_bytes = hex::decode(&peer_hex).unwrap_or_default();
+                        let peer_bytes = match hex::decode(&peer_hex) {
+                            Ok(b) => b,
+                            Err(e) => {
+                                eprintln!("Invalid peer id {:?}: {}", peer_hex, e);
+                                return;
+                            }
+                        };
                         let score = store.score(&peer_bytes);
                         if json {
                             println!(
@@ -902,7 +908,13 @@ fn handle_trust_command(action: TrustAction) {
             let path = trust_store_path();
             match PersistentTrustStore::open(&path, TrustScorer::default()) {
                 Ok(store) => {
-                    let peer_bytes = hex::decode(&peer).unwrap_or_default();
+                    let peer_bytes = match hex::decode(&peer) {
+                        Ok(b) => b,
+                        Err(e) => {
+                            eprintln!("Invalid peer id {:?}: {}", peer, e);
+                            return;
+                        }
+                    };
                     match store.get_record(&peer_bytes) {
                         Some(record) => {
                             let observations: Vec<_> =
