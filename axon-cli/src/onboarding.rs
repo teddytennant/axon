@@ -833,7 +833,10 @@ fn render_model_select(frame: &mut Frame, state: &WizardState, area: Rect) {
             Line::from(""),
             Line::from(""),
             Line::from(vec![
-                Span::styled(format!("  {} ", spinner_frame()), Style::default().fg(BRAND_CYAN)),
+                Span::styled(
+                    format!("  {} ", spinner_frame()),
+                    Style::default().fg(BRAND_CYAN),
+                ),
                 Span::styled("loading models", Style::default().fg(BRAND_DIM).italic()),
             ]),
         ];

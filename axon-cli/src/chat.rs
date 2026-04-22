@@ -1275,10 +1275,7 @@ fn render(frame: &mut Frame, state: &mut ChatState) {
     let area = frame.area();
 
     if !state.transparent {
-        frame.render_widget(
-            Block::default().style(Style::default().bg(POPUP_BG)),
-            area,
-        );
+        frame.render_widget(Block::default().style(Style::default().bg(POPUP_BG)), area);
     }
 
     let chunks = Layout::default()
@@ -1413,7 +1410,10 @@ fn render_messages(frame: &mut Frame, state: &mut ChatState, area: Rect) {
             String::new()
         };
         lines.push(Line::from(vec![
-            Span::styled(format!("  {} ", spinner_frame()), Style::default().fg(ACCENT)),
+            Span::styled(
+                format!("  {} ", spinner_frame()),
+                Style::default().fg(ACCENT),
+            ),
             Span::styled("thinking", Style::default().fg(DIM).italic()),
             Span::styled(t, Style::default().fg(FAINT)),
         ]));
@@ -1487,7 +1487,10 @@ fn render_autocomplete(frame: &mut Frame, state: &ChatState, input_area: Rect) {
     let y = input_area.y.saturating_sub(h);
     let popup = Rect::new(x, y, w, h);
 
-    frame.render_widget(Block::default().style(Style::default().bg(popup_bg(state))), popup);
+    frame.render_widget(
+        Block::default().style(Style::default().bg(popup_bg(state))),
+        popup,
+    );
 
     let mut lines: Vec<Line> = Vec::new();
     for (i, cmd) in suggestions.iter().enumerate().take(10) {
@@ -1563,7 +1566,10 @@ fn render_help(frame: &mut Frame, state: &ChatState, area: Rect) {
     let h = 26u16.min(area.height.saturating_sub(2));
     let popup = centered(area, w, h);
 
-    frame.render_widget(Block::default().style(Style::default().bg(popup_bg(state))), popup);
+    frame.render_widget(
+        Block::default().style(Style::default().bg(popup_bg(state))),
+        popup,
+    );
 
     let mut lines = vec![
         Line::from(""),
@@ -1616,13 +1622,19 @@ fn render_model_picker(frame: &mut Frame, state: &ChatState, area: Rect) {
     let h = (area.height - 4).min(24);
     let popup = centered(area, w, h);
 
-    frame.render_widget(Block::default().style(Style::default().bg(popup_bg(state))), popup);
+    frame.render_widget(
+        Block::default().style(Style::default().bg(popup_bg(state))),
+        popup,
+    );
 
     if picker.loading {
         let lines = vec![
             Line::from(""),
             Line::from(vec![
-                Span::styled(format!("  {} ", spinner_frame()), Style::default().fg(ACCENT)),
+                Span::styled(
+                    format!("  {} ", spinner_frame()),
+                    Style::default().fg(ACCENT),
+                ),
                 Span::styled("loading models", Style::default().fg(DIM).italic()),
             ]),
         ];
