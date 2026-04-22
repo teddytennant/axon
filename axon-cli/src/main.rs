@@ -276,9 +276,7 @@ async fn main() -> anyhow::Result<()> {
         } => {
             // First-run detection: if no config exists, offer setup
             if !config::config_exists() && !headless && atty::is(atty::Stream::Stdin) {
-                eprintln!(
-                    "\x1b[36mAXON\x1b[0m  No configuration found. Running setup wizard...\n"
-                );
+                eprintln!("\x1b[36mAXON\x1b[0m  No configuration found. Running setup wizard...\n");
                 match onboarding::run_onboarding().await {
                     Ok(true) => {
                         eprintln!("\n\x1b[32m✓\x1b[0m Setup complete. Starting node...\n");
