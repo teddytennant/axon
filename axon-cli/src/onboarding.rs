@@ -22,9 +22,45 @@ const BRAND_BG: Color = Color::Reset;
 const ACCENT_BLUE: Color = Color::Rgb(200, 200, 208);
 const SURFACE: Color = Color::Reset;
 
+static SPINNER_CHOICE: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+const SPINNER_COUNT: usize = 24;
+
+fn rotate_spinner() {
+    SPINNER_CHOICE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
 fn spinner_frame() -> &'static str {
-    use rattles::presets::prelude as presets;
-    presets::dots().current_frame()
+    use rattles::presets::prelude as p;
+    let idx = SPINNER_CHOICE.load(std::sync::atomic::Ordering::Relaxed) % SPINNER_COUNT;
+    match idx {
+        0 => p::dots().current_frame(),
+        1 => p::dots2().current_frame(),
+        2 => p::dots3().current_frame(),
+        3 => p::dots4().current_frame(),
+        4 => p::dots5().current_frame(),
+        5 => p::dots6().current_frame(),
+        6 => p::dots7().current_frame(),
+        7 => p::dots8().current_frame(),
+        8 => p::dots9().current_frame(),
+        9 => p::dots10().current_frame(),
+        10 => p::dots11().current_frame(),
+        11 => p::sand().current_frame(),
+        12 => p::dots_circle().current_frame(),
+        13 => p::rain().current_frame(),
+        14 => p::bounce().current_frame(),
+        15 => p::arrow().current_frame(),
+        16 => p::rolling_line().current_frame(),
+        17 => p::simple_dots().current_frame(),
+        18 => p::simple_dots_scrolling().current_frame(),
+        19 => p::circle_quarters().current_frame(),
+        20 => p::grow_horizontal().current_frame(),
+        21 => p::arc().current_frame(),
+        22 => p::toggle().current_frame(),
+        23 => p::triangle().current_frame(),
+        _ => p::dots().current_frame(),
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -248,6 +284,7 @@ async fn run_wizard_loop(
                     Action::Back => go_back(state),
                     Action::_FetchModels => {
                         state.models_loading = true;
+                        rotate_spinner();
                         state.models_error = None;
                         state.models.clear();
                         fetch_models_for_state(state).await;
@@ -436,12 +473,14 @@ async fn advance(state: &mut WizardState) {
                 // Skip API key for Ollama, go straight to models
                 state.step = Step::Models;
                 state.models_loading = true;
+                rotate_spinner();
                 fetch_models_for_state(state).await;
             }
         }
         Step::ApiKey => {
             state.step = Step::Models;
             state.models_loading = true;
+            rotate_spinner();
             state.models_error = None;
             fetch_models_for_state(state).await;
         }
