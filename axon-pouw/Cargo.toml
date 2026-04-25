@@ -1,0 +1,21 @@
+[package]
+name = "axon-pouw"
+description = "Adapter: run an axon orchestration workflow as one PoUW work unit, emit a WorkReceipt for nous-pouw consensus"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+axon-core = { path = "../axon-core" }
+nous-pouw = { path = "../../nous/crates/nous-pouw" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+blake3 = "1"
+rand = "0.8"
+thiserror = "2"
+tracing = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+rand_chacha = "0.3"
