@@ -17,12 +17,14 @@
 //! ```
 
 pub mod adapter;
+pub mod real_runner;
 pub mod rubric;
 pub mod runner;
 pub mod trace;
 pub mod trust_bridge;
 
 pub use adapter::Adapter;
+pub use real_runner::{RealAxonRunner, StageSpec, WorkflowBlob};
 pub use rubric::{ExactMatchRubric, Rubric, RubricEval};
 pub use runner::{AxonRunner, FakeRunner, RunnerError, WorkflowOutput};
 pub use trace::{build_trace_root, TraceEvent};
