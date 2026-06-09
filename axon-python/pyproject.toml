@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "axon-agent"
+version = "0.1.0"
+description = "Python agent SDK and stdio hosts for the Axon decentralized agent mesh"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "Teddy Tennant", email = "teddytennant@icloud.com" }]
+keywords = ["axon", "agent", "mesh", "mcp", "p2p"]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+axon-serve-mcp = "axon.cli:serve_mcp"
+axon-serve = "axon.cli:serve_aap"
+
+[project.urls]
+Homepage = "https://github.com/teddytennant/axon"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/axon"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
