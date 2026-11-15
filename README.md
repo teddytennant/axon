@@ -1,266 +1,93 @@
 # axon
 
-[![CI](https://github.com/teddytennant/axon/actions/workflows/ci.yml/badge.svg)](https://github.com/teddytennant/axon/actions/workflows/ci.yml)
+A Rust node that lets AI agents on different machines find each other and hand tasks back and forth over QUIC. Each node runs a few local agents (echo, system info, an LLM proxy, plus any MCP servers you point it at), advertises them as capabilities, and forwards tasks it can't handle to a peer that can.
 
-A peer-to-peer runtime for AI agents to discover, communicate, and collaborate without central infrastructure. Built in Rust with QUIC transport, capability-based routing, CRDT shared state, and a full web dashboard.
-
-> **Status: early.** Axon is under active development. Protocols, CLI flags, config formats, and on-disk state may change between commits without migration shims. Expect rough edges — and please file issues when you hit them. See [CHANGELOG.md](CHANGELOG.md) for the latest updates.
-
-## Why
-
-Current AI agent frameworks are centralized — a single orchestrator dispatches tasks to workers. This creates single points of failure, bottlenecks, and doesn't scale. Axon takes a different approach: agents form a self-organizing mesh where any node can initiate work, discover capabilities, and route tasks without a coordinator.
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────┐
-│                   axon-cli                      │
-│        TUI Dashboard + CLI Interface            │
-│   Chat TUI │ Onboarding Wizard │ Trust CLI      │
-├─────────────────────────────────────────────────┤
-│                   axon-web                      │
-│     Axum HTTP Server + React SPA Dashboard      │
-│  WebSocket live updates │ Embedded static assets│
-├─────────────────────────────────────────────────┤
-│                  axon-core                      │
-│  Discovery │ Router │ Agent Runtime             │
-│  Transport (QUIC + mTLS) │ Identity (Ed25519)   │
-│  Shared State (CRDTs) │ Negotiation             │
-│  Trust │ MCP Gateway │ Orchestration            │
-│  Task Queue (persistent) │ Gossip               │
-└─────────────────────────────────────────────────┘
-┌─────────────────────────────────────────────────┐
-│                   axon-sdk                      │
-│         Public API for custom agents            │
-└─────────────────────────────────────────────────┘
-```
-
-**Core components:**
-
-- **Identity** — Ed25519 keypairs for node authentication and message signing; identity-derived mTLS certificates
-- **Transport** — QUIC via `quinn` with mutual TLS for multiplexed, encrypted peer communication
-- **Protocol** — Binary message format (bincode): Ping/Pong, Announce, Discover, TaskRequest/TaskResponse, Gossip, StateSync, TaskOffer/TaskBid/BidAccept/BidReject, MCP tool messages
-- **Discovery** — mDNS for LAN, gossip protocol for mesh-wide peer propagation
-- **Router** — Capability-based routing with BestMatch, RoundRobin, Broadcast, and Negotiate strategies
-- **Negotiation** — Agent-to-agent task bidding: TaskOffer → bid collection → winner dispatch; configurable scoring (latency, load, confidence, trust); pluggable bidding strategies
-- **Trust** — Subjective, experience-based, decay-weighted reputation per peer; persistent sled-backed store; gossip propagation; trust-weighted bid scoring
-- **Task Queue** — Persistent queue with crash recovery and automatic retries
-- **MCP Gateway** — `axon serve-mcp` exposes aggregated MCP tools on stdio; `--mesh` joins the mesh and forwards remote tool calls via QUIC; budget-constrained tool selection for context window optimization; ToolCatalog gossip for decentralized discovery
-- **Orchestration** — TOML-based agent definitions, shared blackboard state, capability-gated hooks, lifecycle management with heartbeat, workflow patterns (pipeline, fan-out, delegate, supervisor), workflow tracing with correlation IDs
-- **Runtime** — Async agent executor with pluggable Agent trait
-- **CRDTs** — GCounter, LWWRegister, ORSet for eventually-consistent shared state; peer trust and throughput history in sync tick
-
-## Quick Start
-
-```bash
-# Interactive setup wizard (first run)
-axon setup
-
-# Start a mesh node with TUI dashboard
-axon start
-
-# Start with web UI at http://localhost:3000
-axon start --web-port 3000
-
-# Start on a specific port with a peer
-axon start --listen 0.0.0.0:4242 --peer 192.168.1.100:4242
-
-# Send a task to a peer
-axon send --peer 127.0.0.1:4242 --namespace echo --name ping --data "hello"
-
-# Interactive chat TUI
-axon chat
-
-# One-shot LLM prompt
-axon ask "what is the capital of france"
-
-# View your identity
-axon identity
-```
-
-## Web Dashboard
-
-Enable with `axon start --web-port 3000`, then open `http://localhost:3000`.
-
-The React SPA connects via WebSocket for live updates and provides views for:
-
-| Page | Description |
-|------|-------------|
-| Chat | Interactive chat with the LLM agent |
-| Mesh | Live peer topology and capability map |
-| Agents | Agent cards with status and capabilities |
-| Tasks | Task log with status, latency, and routing |
-| Workflows | Active and completed workflow runs |
-| Blackboard | CRDT shared state viewer |
-| Trust | Per-peer trust scores and observation history |
-| Tools | MCP tool registry and search |
-| Settings | Provider config, model picker |
-| Logs | Structured node logs |
-
-## Built-in Agents
-
-| Agent | Capability | Description |
-|-------|-----------|-------------|
-| Echo | `echo:ping:v1` | Returns input payload (testing/diagnostics) |
-| SystemInfo | `system:info:v1` | Returns hostname, OS, architecture |
-| LLM | `llm:chat:v1` | Proxies to configured LLM provider |
-
-## LLM Providers
-
-Configure with `axon setup` or `axon auth <provider>`. All providers except Ollama require an API key.
-
-| Provider | Notes |
-|----------|-------|
-| Ollama | Local inference, no key required |
-| xAI | Grok models |
-| OpenRouter | Unified gateway: Claude, GPT-4, Gemini, Mistral, Llama, and more |
-| Custom | Any OpenAI-compatible endpoint |
-
-```bash
-axon auth openrouter       # save API key
-axon models                # list available models
-axon models --provider xai --filter grok
-```
-
-## Chat TUI
-
-```bash
-axon chat
-```
-
-Full-featured interactive chat with:
-
-- Slash commands: `/model`, `/provider`, `/clear`, `/run`, `/spawn`, `/jobs`, `/kill`, `/agents`, `/auto`, `/task`, `/tools`, `/status`, `/trust`, `/route`, `/transparent` (toggle popup background), `/help`, `/quit`
-- Async streaming responses with a minimal braille spinner (via [rattles](https://github.com/vyfor/rattles))
-- Conversation history
-- Background job scheduling
-- Auto-agent mode (continuous background task execution)
-- Multi-agent orchestration commands
-- Monochrome palette — black/white/gray, emphasis via weight and italics instead of hue
-
-## MCP Gateway
-
-Axon can act as an MCP server, aggregating tools from multiple MCP servers and exposing them to any MCP-capable AI tool (Claude Code, Cursor, etc.).
-
-```bash
-# Serve local MCP tools on stdio
-axon serve-mcp
-
-# Serve local + remote mesh tools
-axon serve-mcp --mesh
-
-# Query tools on a running node
-axon tools
-axon tools --query "file operations" --budget 4000
-axon tools --server filesystem --detail compact
-```
-
-Add to Claude Code config:
-```json
-{
-  "mcpServers": {
-    "axon": { "command": "axon", "args": ["serve-mcp", "--mesh"] }
-  }
-}
-```
-
-## Trust System
-
-```bash
-axon trust show                    # trust scores for all peers
-axon trust show --peer <hex-id>    # specific peer
-axon trust history --peer <hex-id> # observation log
-axon trust demo                    # simulate scoring
-```
-
-Trust is subjective and experience-based — each node tracks its own observations (task success/failure, latency accuracy, optional quality signal) with exponential decay weighting. Recent outcomes matter more. The Negotiation router incorporates trust into bid scoring automatically.
-
-## Orchestration
-
-Define agents in TOML, orchestrate them with built-in workflow primitives:
-
-```rust
-use axon_core::orchestrate::{pipeline, fan_out, supervisor, WorkflowStep};
-
-// Chain agents sequentially
-pipeline(steps, payload, runtime).await?;
-
-// Dispatch to multiple agents in parallel
-fan_out(steps, payload, runtime).await?;
-
-// Supervised retry with fallback
-supervisor(primary, fallback, retries, runtime).await?;
-```
-
-The `Blackboard` provides CRDT-backed shared state across the workflow. `WorkflowSpan` tracks correlation IDs through distributed steps.
-
-## Building Custom Agents
-
-```rust
-use axon_sdk::{async_trait, Agent, AgentError, Capability, TaskRequest, TaskResponse, TaskStatus};
-
-struct MyAgent;
-
-#[async_trait]
-impl Agent for MyAgent {
-    fn name(&self) -> &str { "my-agent" }
-
-    fn capabilities(&self) -> Vec<Capability> {
-        vec![Capability::new("custom", "task", 1)]
-    }
-
-    async fn handle(&self, req: TaskRequest) -> Result<TaskResponse, AgentError> {
-        Ok(TaskResponse {
-            request_id: req.id,
-            status: TaskStatus::Success,
-            payload: b"done".to_vec(),
-            duration_ms: 0,
-        })
-    }
-}
-```
-
-## TUI Dashboard
-
-```
-┌─ Axon ─────────────────────────────────────────┐
-│ axon mesh  |  Peer: a3b7c9d1  |  Peers: 3      │
-├─────────────────────────────────────────────────┤
-│ 1 Mesh │ 2 Agents │ 3 Tasks │ 4 State │ 5 Logs │
-├─────────────────────────────────────────────────┤
-│ Peer ID   Address          Capabilities         │
-│ a3b7c9d1  10.0.0.2:4242   llm:chat:v1          │
-│ f2e8b4a0  10.0.0.3:4242   code:review:v1       │
-│ 1d9c7e3f  10.0.0.4:4242   echo:ping:v1         │
-├─────────────────────────────────────────────────┤
-│ q: quit | Tab: switch | j/k: scroll | 1-5: tab │
-└─────────────────────────────────────────────────┘
-```
-
-**Keybindings:** `q` quit, `Tab`/`Shift+Tab` switch tabs, `1-5` jump to tab, `j/k` scroll
+It's early. CLI flags, config and on-disk state change between commits without migrations. See [CHANGELOG.md](CHANGELOG.md).
 
 ## Build
 
-```bash
-# NixOS
-nix-shell -p gcc pkg-config openssl --run "cargo build --release"
+You need Rust, Node 20 (for the web UI, which gets embedded into the binary) and OpenSSL headers.
 
-# Run tests
-nix-shell -p gcc pkg-config openssl --run "cargo test"
+```bash
+git clone https://github.com/teddytennant/axon
+cd axon
+(cd axon-web/frontend && npm install && npm run build)
+cargo build --release -p axon-cli
 ```
 
-## Tech Stack
+`axon-desktop` needs the Tauri system libraries (GTK, WebKitGTK) only if you build it.
 
-| Component | Choice |
-|-----------|--------|
-| Language | Rust |
-| Async | tokio |
-| Transport | QUIC (quinn) + mTLS |
-| Serialization | bincode + serde |
-| Identity | Ed25519 (ed25519-dalek) |
-| Discovery | mDNS (mdns-sd) |
-| Persistence | sled |
-| Web server | Axum |
-| Web frontend | React + TypeScript |
-| TUI | ratatui + crossterm |
-| CLI | clap |
+On NixOS: `nix-shell -p gcc pkg-config openssl --run "cargo build --release -p axon-cli"`.
+
+The binary is `target/release/axon-cli`.
+
+## Run
+
+Start two nodes and send a task through the first:
+
+```bash
+axon-cli start --headless --listen 127.0.0.1:4242 --health-port 4243
+axon-cli start --headless --listen 127.0.0.1:4252 --peer 127.0.0.1:4242
+
+axon-cli send --peer 127.0.0.1:4242 --namespace echo --name ping --data hello
+axon-cli peers --node 127.0.0.1:4242
+```
+
+Without `--headless`, `start` opens a terminal dashboard (tabs for mesh, agents, tasks, state, logs, settings and workflows; `q` quits, `Tab` switches). `--web-port 3000` serves a browser dashboard and JSON API on that port, bound to `0.0.0.0`. `--health-port` opens a TCP port that writes one line of JSON (uptime, task counts, peer count, queue depth) to anyone who connects.
+
+The first interactive `start` with no config runs a setup wizard. You can also run it directly with `axon-cli setup`, or write a starter config with `axon-cli init`. Config lives in `~/.config/axon/config.toml`; the node identity, task queue and trust database live in `~/.axon/`.
+
+Other commands: `status`, `identity`, `ask <prompt>`, `chat`, `auth <provider>`, `models`, `tools`, `serve-mcp`, `trust`. `axon-cli <command> --help` lists the flags.
+
+## LLM providers
+
+The built-in `llm:chat:v1` agent talks to Ollama (default, `http://localhost:11434`), xAI, OpenRouter, or any OpenAI-compatible endpoint (`custom`). Keys come from `axon-cli auth <provider>`, the config file, or `XAI_API_KEY` / `OPENROUTER_API_KEY`.
+
+```bash
+axon-cli auth openrouter
+axon-cli models --provider openrouter --filter claude
+axon-cli ask "what is the capital of france"
+axon-cli chat
+```
+
+`chat` is a terminal chat UI with slash commands (`/help` lists them).
+
+## MCP
+
+A node spawns every MCP server listed in its config and advertises each tool as a capability named `mcp.<server>:<tool>:v1`, so peers can call it like any other agent.
+
+```toml
+[[mcp.servers]]
+name = "filesystem"
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+```
+
+`axon-cli serve-mcp` goes the other way: it aggregates those servers and serves the combined tool list as one MCP server on stdio. With `--mesh` it also joins the mesh and forwards calls for tools that live on other peers. To use it from Claude Code:
+
+```json
+{ "mcpServers": { "axon": { "command": "axon-cli", "args": ["serve-mcp", "--mesh"] } } }
+```
+
+`axon-cli tools --node <addr>` lists the tools a running node knows about, with `--query`, `--server`, and `--budget <tokens>` to cap how much schema comes back.
+
+## How tasks move
+
+Each node has an Ed25519 identity in `~/.axon/identity.key`. Connections are QUIC with mutual TLS on self-signed certs derived from that key, followed by a handshake that checks the cert key matches the claimed peer ID. Peers are found by `--peer`, by mDNS on the LAN, and by gossiping peer lists.
+
+When a node gets a task, it runs it if a local agent has the capability. If not, it sends an offer to every known peer that advertises the capability, collects bids for 2 seconds, and forwards the task to the best score. Scores are weighted by trust, which each node builds from its own record of how peers did on past tasks (success, failure, timeouts, latency against their estimate), with older results decaying. That record persists in `~/.axon/trust` and can be inspected with `axon-cli trust show` and `axon-cli trust history <peer-id>`. Tasks go through a persistent queue that is replayed on restart.
+
+## Crates
+
+- `axon-core`: transport, identity, protocol, discovery, negotiation, trust, task queue, MCP client and server. Also has CRDT types and workflow helpers (`pipeline`, `fan_out`, `supervisor`) that the node doesn't use yet.
+- `axon-cli`: the `axon-cli` binary and its built-in agents.
+- `axon-web`: the HTTP/WebSocket server and React dashboard behind `--web-port`.
+- `axon-sdk`: re-exports the `Agent` trait and types for writing agents in Rust. `axon-cli` only registers its built-in agents, so a Rust agent needs its own node binary built on `axon_core::Runtime`.
+- `axon-python`: write agents in Python and plug them in as MCP servers. See [axon-python/README.md](axon-python/README.md).
+- `axon-desktop`: a Tauri desktop app that talks to a node started with `--web-port`.
+- `axon-test-mcp-server`: a small MCP server used by the tests.
+- `axon-pouw`: runs an axon workflow as a work unit for an external consensus crate. It isn't a workspace member and doesn't build without that crate.
+
+## License
+
+MIT
